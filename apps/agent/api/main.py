@@ -427,7 +427,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-app = FastAPI(title="Sorelia API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="Sorelia API",
+    version="0.1.0",
+    lifespan=lifespan,
+    # Behind Traefik strip-prefix the app lives under COBRANZA_ROOT_PATH
+    # (e.g. /pubot-gj5w2a0p). Empty in local dev. Makes /docs + generated URLs
+    # respect the prefix. uvicorn --root-path sets the same; this is the
+    # belt-and-suspenders so it works even without the CLI flag.
+    root_path=settings.root_path,
+)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

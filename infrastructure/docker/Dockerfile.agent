@@ -4,15 +4,23 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# curl for the container HEALTHCHECK (busybox wget is not in slim).
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dependency resolution (build context = repo root)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Application source (engine + cobranza domain layer)
+# Application source + frontend (served same-origin) + tenant fixtures.
 COPY apps/agent/ apps/agent/
+COPY frontend/ frontend/
+COPY tenants/ tenants/
 
-# Engine modules use absolute imports (from core.X) — run from apps/agent.
-WORKDIR /app/apps/agent
+# Engine modules use absolute imports (from core.X). uv project root is /app.
+ENV PYTHONPATH=/app/apps/agent
+# Reverse-proxy prefix; empty by default, overridden by .env in prod.
+ENV COBRANZA_ROOT_PATH=""
 
 # Run as non-root user
 RUN addgroup --system --gid 1001 appgroup && \
@@ -21,9 +29,13 @@ RUN addgroup --system --gid 1001 appgroup && \
     chown -R appuser:appgroup /app /home/appuser
 USER appuser
 ENV HOME=/home/appuser
-# uv project root is /app; run uvicorn from there with the app on the path.
-ENV PYTHONPATH=/app/apps/agent
 
 EXPOSE 8000
 
-CMD ["uv", "run", "--project", "/app", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# HEALTHCHECK uses 127.0.0.1 (NOT localhost — some minimal images don't resolve it).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:8000${COBRANZA_ROOT_PATH}/docs" || exit 1
+
+# uvicorn --root-path mirrors COBRANZA_ROOT_PATH so generated URLs respect the
+# Traefik strip-prefix. FastAPI(root_path=...) also reads the env (belt+suspenders).
+CMD ["sh", "-c", "uv run --project /app uvicorn api.main:app --app-dir /app/apps/agent --host 0.0.0.0 --port 8000 --root-path \"${COBRANZA_ROOT_PATH}\""]

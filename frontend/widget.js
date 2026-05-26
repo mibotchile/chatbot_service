@@ -9,8 +9,14 @@
  * identity gate lives server-side; this is just the chat surface.
  *
  * Config via the script tag's data-* attributes or query params:
- *   data-api   | ?api=  → backend base URL (default: same origin)
+ *   data-api   | ?api=  → backend base URL override (default: auto)
  *   data-ct    | ?ct=   → demo token: demo-juan | demo-carlos | demo-maria
+ *
+ * BASE PATH (reverse proxy): all API URLs are built against a base derived
+ * from the URL of THIS script. Served at /widget.js → base "" (local); served
+ * at /pubot-gj5w2a0p/widget.js (behind Traefik strip-prefix) → base
+ * "https://host/pubot-gj5w2a0p". Works in both without code changes. An
+ * explicit data-api / ?api= still wins (e.g. external embed on another origin).
  */
 (() => {
   "use strict";
@@ -18,7 +24,25 @@
   // ── Config resolution ──
   const scriptEl = document.currentScript;
   const qs = new URLSearchParams(location.search);
-  const API = ((scriptEl && scriptEl.dataset.api) || qs.get("api") || location.origin).replace(/\/$/, "");
+
+  function _deriveApiBase() {
+    // 1) explicit override (external embed)
+    const override = (scriptEl && scriptEl.dataset.api) || qs.get("api");
+    if (override) return override.replace(/\/$/, "");
+    // 2) derive from this script's own URL: origin + everything up to /widget.js
+    try {
+      const src = scriptEl && scriptEl.src;
+      if (src) {
+        const u = new URL(src, location.href);
+        const prefix = u.pathname.replace(/\/widget\.js$/, "");  // "" or "/pubot-gj5w2a0p"
+        return (u.origin + prefix).replace(/\/$/, "");
+      }
+    } catch (_e) { /* fall through */ }
+    // 3) fallback: current origin (no prefix)
+    return location.origin.replace(/\/$/, "");
+  }
+
+  const API = _deriveApiBase();
   const CT = (scriptEl && scriptEl.dataset.ct) || qs.get("ct") || null;
   const TENANT = "prestaunion";
 

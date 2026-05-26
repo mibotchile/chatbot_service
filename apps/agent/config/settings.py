@@ -56,10 +56,17 @@ class Settings(BaseSettings):
 
     daily_message_limit: int = 50  # per visitor/IP, resets at midnight
 
+    # Reverse-proxy path prefix (Traefik strip-prefix). Empty in local dev;
+    # set to e.g. "/pubot-gj5w2a0p" behind the proxy so FastAPI builds correct
+    # URLs and /docs works under the prefix. Env: COBRANZA_ROOT_PATH.
+    root_path: str = ""
+
     cors_origins: list[str] = [
         "http://localhost:4321",
         "http://localhost:4322",
         "http://localhost:3000",
+        "http://localhost:8099",
+        "https://demos.mibot.cl",
     ]
 
     model_config = SettingsConfigDict(

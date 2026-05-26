@@ -1,0 +1,46 @@
+# Traefik dynamic (file-based) config for the PrestaUnion cobranza demo.
+#
+# Deploy: copy this file to the automation Traefik dynamic dir, e.g.
+#   /home/onbot/automation/shared/traefik/dynamic/pubot.yml
+# Traefik hot-reloads it. The container (compose service `pubot-demo`) serves
+# front + API on :8000 under the slug prefix; this strips the prefix before
+# forwarding so the app receives clean paths (with FastAPI root_path keeping
+# generated URLs correct).
+#
+# Slug (anti-bot): /pubot-gj5w2a0p  → must match COBRANZA_ROOT_PATH in .env.
+
+http:
+  routers:
+    # ── HTTPS (primary) ──
+    pubot-gj5w2a0p-secure:
+      rule: "Host(`demos.mibot.cl`) && PathPrefix(`/pubot-gj5w2a0p`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - pubot-gj5w2a0p-strip
+      service: pubot-gj5w2a0p
+      tls:
+        certResolver: letsencrypt
+
+    # ── HTTP (redirect / fallback) ──
+    pubot-gj5w2a0p-web:
+      rule: "Host(`demos.mibot.cl`) && PathPrefix(`/pubot-gj5w2a0p`)"
+      entryPoints:
+        - web
+      middlewares:
+        - pubot-gj5w2a0p-strip
+      service: pubot-gj5w2a0p
+
+  middlewares:
+    # Strip the slug prefix so the app sees clean paths (/, /api/v1/..., /docs).
+    pubot-gj5w2a0p-strip:
+      stripPrefix:
+        prefixes:
+          - "/pubot-gj5w2a0p"
+
+  services:
+    pubot-gj5w2a0p:
+      loadBalancer:
+        servers:
+          # container_name on the shared traefik_proxy network, internal port.
+          - url: "http://pubot-demo:8000"

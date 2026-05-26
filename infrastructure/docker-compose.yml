@@ -1,20 +1,25 @@
 services:
-  agent:
+  pubot-demo:
     build:
       context: ..
       dockerfile: infrastructure/docker/Dockerfile.agent
+    container_name: pubot-demo
     env_file:
       - ../.env
+    # Front + API in one container on :8000. Traefik (file-based dynamic config,
+    # see infrastructure/traefik/pubot.yml) routes demos.mibot.cl/pubot-gj5w2a0p
+    # here and strips the prefix. No published host port — Traefik reaches it on
+    # the shared proxy network.
+    expose:
+      - "8000"
     volumes:
-      # Tenants are mounted read-only; api/main.py resolves /app/tenants.
+      # Tenants mounted read-only; api/main.py resolves /app/tenants first.
       - ../tenants:/app/tenants:ro
     restart: unless-stopped
     networks:
       - traefik_proxy
-      - prod_backend
 
 networks:
+  # External proxy network shared with Traefik on automation.
   traefik_proxy:
-    external: true
-  prod_backend:
     external: true
