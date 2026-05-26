@@ -42,19 +42,69 @@
       background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 9999px; padding: 6px 12px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vox-success); box-shadow: 0 0 0 3px rgba(16,185,129,0.18); }
 
-    .hero { padding: 72px 0 40px; }
-    .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--vox-brand-hover); }
-    .hero h1 { font-size: 44px; line-height: 1.1; font-weight: 800; letter-spacing: -0.03em; margin: 14px 0 0; max-width: 760px; }
+    /* Split hero: copy left, product-in-action phone mockup right (asymmetric ~56/44). */
+    .hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+      gap: clamp(32px, 5vw, 72px); align-items: center; padding: clamp(48px, 7vw, 88px) 0 56px; }
+    .hero-copy { max-width: 560px; }
+    .kicker { font-size: 13px; font-weight: 600; color: var(--vox-brand-hover); display: inline-flex; align-items: center; gap: 8px; }
+    .kicker .dot { box-shadow: 0 0 0 3px rgba(16,185,129,0.18); }
+    .hero h1 { font-size: clamp(40px, 5.4vw, 64px); line-height: 1.04; font-weight: 800; letter-spacing: -0.035em; margin: 16px 0 0; }
     .hero h1 .accent { color: var(--vox-brand-hover); }
-    .hero p.lead { font-size: 18px; line-height: 1.6; color: var(--vox-text-muted); margin: 18px 0 0; max-width: 620px; }
-    .hero .cta-hint { margin-top: 26px; display: inline-flex; align-items: center; gap: 9px; font-size: 14px; color: var(--vox-text-muted);
-      background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 9999px; padding: 9px 16px; }
-    .hero .cta-hint b { color: var(--vox-text); font-weight: 600; }
+    .hero p.lead { font-size: clamp(17px, 1.4vw, 20px); line-height: 1.6; color: var(--vox-text-muted); margin: 20px 0 0; max-width: 480px; }
+    .hero-cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .btn-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--vox-brand); color: #fff;
+      font-weight: 600; font-size: 15px; padding: 13px 22px; border-radius: 12px; text-decoration: none;
+      box-shadow: 0 8px 20px -8px rgba(0,131,224,0.5); transition: background .2s, transform .2s; }
+    .btn-primary:hover { background: var(--vox-brand-hover); transform: translateY(-1px); }
+    .hero-note { font-size: 13.5px; color: var(--vox-text-subtle); }
+
+    /* ── Phone mockup (CSS device frame, product in action — no external image).
+       Light silver frame: keeps text on the white screen at full contrast. ── */
+    .device-stage { display: flex; justify-content: center; position: relative; }
+    /* Bezel via thick light border + shadow (no background) so the white screen
+       is the nearest background for the chat text — keeps contrast unambiguous. */
+    .phone { position: relative; z-index: 1; width: 300px; max-width: 100%;
+      background: var(--vox-surface); border: 11px solid #eef1f5; border-radius: 40px;
+      box-shadow: 0 0 0 1px #dfe3e8, 0 40px 80px -30px rgba(13,30,50,0.32), 0 12px 30px -14px rgba(13,30,50,0.18); }
+    .phone::after { content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      width: 88px; height: 7px; background: #cfd5dc; border-radius: 9999px; z-index: 3; }
+    .phone-screen { background: var(--vox-surface); border-radius: 30px; overflow: hidden; display: flex; flex-direction: column; height: 540px; }
+    .ph-head { background: var(--vox-surface); color: var(--vox-text); padding: 22px 16px 12px;
+      display: flex; align-items: center; gap: 11px; flex-shrink: 0; border-bottom: 1px solid var(--vox-border-soft); }
+    .ph-avatar { width: 38px; height: 38px; border-radius: 11px; background: var(--vox-brand-hover); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+    .ph-name { font-weight: 700; font-size: 14.5px; line-height: 1.2; color: var(--vox-text); }
+    .ph-status { font-size: 11.5px; display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--vox-brand-hover); }
+    .ph-status .dot { width: 6px; height: 6px; }
+    .ph-ident { background: var(--vox-surface-2); border-bottom: 1px solid var(--vox-border-soft); padding: 8px 14px;
+      display: flex; align-items: center; justify-content: space-between; font-size: 11px; flex-shrink: 0; }
+    .ph-ident .who { font-weight: 700; color: var(--vox-text); }
+    .ph-ident .mora { font-size: 10px; font-weight: 700; color: #dc2626; background: rgba(239,68,68,0.12); padding: 3px 8px; border-radius: 9999px; }
+    .ph-msgs { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 11px; overflow: hidden; background: var(--vox-surface); }
+    .ph-row { display: flex; }
+    .ph-row.u { justify-content: flex-end; }
+    .ph-row.a { gap: 7px; }
+    .ph-ava { width: 24px; height: 24px; border-radius: 7px; background: var(--vox-brand-soft); color: var(--vox-brand-hover);
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 10px; flex-shrink: 0; }
+    .bub { font-size: 12.5px; line-height: 1.45; padding: 9px 12px; max-width: 80%; }
+    .bub.u { background: var(--vox-brand-hover); color: #fff; border-radius: 14px 14px 4px 14px; font-weight: 500; }
+    .bub.a { background: var(--vox-surface-2); color: var(--vox-text); border: 1px solid var(--vox-border-soft); border-radius: 4px 14px 14px 14px; }
+    .bub.a strong { color: var(--vox-brand-hover); font-weight: 700; }
+    .ph-input { flex-shrink: 0; border-top: 1px solid var(--vox-border-soft); padding: 10px 12px; display: flex; align-items: center; gap: 8px; }
+    .ph-input .field { flex: 1; background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 11px; padding: 9px 12px; font-size: 12px; color: var(--vox-text-subtle); }
+    .ph-input .send { width: 34px; height: 34px; border-radius: 50%; background: var(--vox-brand-hover); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ph-input .send svg { width: 15px; height: 15px; }
+
+    @media (max-width: 880px) {
+      .hero { grid-template-columns: 1fr; gap: 36px; padding-top: 40px; text-align: left; }
+      .hero-copy { max-width: none; }
+      .device-stage { order: 2; }
+    }
 
     /* h2 used for screen-reader outline; visually it's the small section label. */
     h2.section-label { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--vox-text-subtle); margin: 56px 0 18px; }
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } .hero h1 { font-size: 34px; } }
+    @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } }
     .card {
       background: var(--vox-surface); border: 1px solid var(--vox-border); border-radius: 16px;
       padding: 24px; cursor: pointer; transition: border-color .2s, transform .2s, box-shadow .2s;
@@ -108,16 +158,56 @@
 
   <main class="wrap">
     <section class="hero">
-      <div class="eyebrow">Portal de clientes · Demostración</div>
-      <h1>Resuelve tu préstamo con <span class="accent">Ada</span>, tu asistente de PrestaUnion.</h1>
-      <p class="lead">Consulta tu saldo y cuotas, presenta un reclamo o descarga tu certificado de no adeudo. Atención clara, sin letra chica, las 24 horas.</p>
-      <div class="cta-hint">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:16px;height:16px;color:var(--vox-brand-hover)"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-        Habla con <b>Ada</b> desde el botón de chat, abajo a la derecha.
+      <div class="hero-copy">
+        <span class="kicker"><span class="dot"></span> Ada responde al instante, las 24 horas</span>
+        <h1>Resuelve tu préstamo hablando con <span class="accent">Ada</span>.</h1>
+        <p class="lead">Consulta tu saldo, regulariza una cuota, presenta un reclamo o pide tu certificado de no adeudo. Atención clara y en tu idioma, sin letra chica.</p>
+        <div class="hero-cta">
+          <a class="btn-primary" href="#acceso">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            Probar la demo
+          </a>
+          <span class="hero-note">Elige un cliente o identifícate por DNI.</span>
+        </div>
+      </div>
+
+      <!-- Product in action: CSS phone mockup with a real Ada conversation (no external image). -->
+      <div class="device-stage" aria-hidden="true">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="ph-head">
+              <div class="ph-avatar">A</div>
+              <div>
+                <div class="ph-name">Ada · PrestaUnion</div>
+                <div class="ph-status"><span class="dot"></span> En línea ahora</div>
+              </div>
+            </div>
+            <div class="ph-ident">
+              <span class="who">Carlos Huamán Flores</span>
+              <span class="mora">En mora</span>
+            </div>
+            <div class="ph-msgs">
+              <div class="ph-row u"><div class="bub u">Hola, ¿cuál es mi saldo?</div></div>
+              <div class="ph-row a">
+                <div class="ph-ava">A</div>
+                <div class="bub a">Carlos, tu saldo es <strong>S/ 2,300</strong>. Tienes una cuota vencida hace 8 días con un recargo de <strong>S/ 85</strong>. Regularizarla detiene el recargo. ¿Te muestro cómo pagar?</div>
+              </div>
+              <div class="ph-row u"><div class="bub u">Sí, por favor</div></div>
+              <div class="ph-row a">
+                <div class="ph-ava">A</div>
+                <div class="bub a">Puedes pagar por el enlace seguro o en agentes autorizados. ¿Te envío el detalle a tu correo o WhatsApp?</div>
+              </div>
+            </div>
+            <div class="ph-input">
+              <span class="field">Escribe tu mensaje...</span>
+              <span class="send"><svg fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <h2 class="section-label">Ingresa a la demo como uno de estos clientes</h2>
+    <h2 class="section-label" id="acceso">Ingresa a la demo como uno de estos clientes</h2>
     <div class="cards">
       <a class="card" href="?ct=demo-juan">
         <div class="ico">
