@@ -166,7 +166,7 @@ def build_system_prompt(
             f"Negocio (MYPE): {identity.get('business_name', '')}\n"
             f"Préstamo: {identity.get('loan_number', '')}\n"
             f"Estado: {identity.get('status_label', '')}\n"
-            "Para montos exactos, cuotas y fechas usá la herramienta consultar_deuda. "
+            "Para montos exactos, cuotas y fechas usa la herramienta consultar_deuda. "
             "Nunca inventes cifras."
         )
 

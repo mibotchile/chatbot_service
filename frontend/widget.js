@@ -228,7 +228,7 @@
           <textarea id="pu-input" placeholder="Escribe tu mensaje..." rows="1"></textarea>
           <button type="submit" class="pu-sendbtn" id="pu-send" aria-label="Enviar">${ICONS.send}</button>
         </form>
-        <div class="pu-footer">Powered by <b>PrestaUnion</b> · demo con datos ficticios</div>
+        <div class="pu-footer">Powered by <b>Onbotgo</b> · demo con datos ficticios</div>
       </div>`;
     document.body.appendChild(root);
 
@@ -255,7 +255,7 @@
       const badge = CT === "demo-juan" ? ["aldia", "Al día"] : CT === "demo-carlos" ? ["mora", "En mora"] : ["libre", "Sin deuda"];
       $i.innerHTML = `<div><div class="who">${p.who}</div><div class="biz">${p.biz}</div></div><span class="pu-ibadge ${badge[0]}">${badge[1]}</span>`;
     } else {
-      $i.innerHTML = `<div><div class="who">Sesión no identificada</div><div class="biz">Ingresá por tu enlace seguro.</div></div><span class="pu-ibadge cold">Sin verificar</span>`;
+      $i.innerHTML = `<div><div class="who">Sesión no identificada</div><div class="biz">Ingresa por tu enlace seguro.</div></div><span class="pu-ibadge cold">Sin verificar</span>`;
     }
   }
 
@@ -264,7 +264,7 @@
     const p = CT && PROFILES[CT];
     const sub = p
       ? `Hola ${p.first}, soy Ada. Puedo consultar tu préstamo, registrar un reclamo o gestionar tu certificado.`
-      : "Para ver la información de tu préstamo, ingresá por tu enlace seguro. Igual puedo orientarte.";
+      : "Para ver la información de tu préstamo, ingresa por tu enlace seguro. Igual puedo orientarte.";
     const wrap = document.createElement("div");
     wrap.className = "pu-welcome";
     wrap.id = "pu-welcome";
@@ -388,10 +388,10 @@
       const chips = (msg.quick_replies && msg.quick_replies.buttons)
         ? msg.quick_replies.buttons.map((b) => b.label)
         : (Array.isArray(msg.suggested_replies) ? msg.suggested_replies : []);
-      fillAgent(typingEl, msg.content || "Disculpá, no pude procesar eso.", chips);
+      fillAgent(typingEl, msg.content || "Disculpa, no pude procesar eso.", chips);
     } catch (e) {
       console.error("[pu-widget] send failed", e);
-      fillAgent(typingEl, "Tuve un problema de conexión con el servicio. Intentá de nuevo.", []);
+      fillAgent(typingEl, "Tuve un problema de conexión con el servicio. Inténtalo de nuevo.", []);
     } finally {
       busy = false; $send.disabled = false; $input.focus();
     }
@@ -402,7 +402,7 @@
   const SEEDS = {
     "demo-maria": [
       ["user", "¿Tengo deuda pendiente?"],
-      ["agent", "Buenas noticias, María. Tu préstamo <strong>PYPE-2023-00088</strong> figura <strong>cancelado</strong> y tu saldo es <strong>S/ 0.00</strong>. No mantenés deuda con PrestaUnion.\n\n¿Querés que te emita tu <strong>certificado de no adeudo</strong> en PDF?", ["Sí, emitir certificado", "Poner un reclamo"]],
+      ["agent", "Buenas noticias, María. Tu préstamo <strong>PYPE-2023-00088</strong> figura <strong>cancelado</strong> y tu saldo es <strong>S/ 0.00</strong>. No mantienes deuda con PrestaUnion.\n\n¿Quieres que te emita tu <strong>certificado de no adeudo</strong> en PDF?", ["Sí, emitir certificado", "Poner un reclamo"]],
     ],
     "demo-juan": [
       ["user", "¿Cuánto debo?"],
@@ -414,7 +414,7 @@
     ],
     "cold": [
       ["user", "¿Cuánto debo?"],
-      ["agent", "Para mostrarte la información de tu préstamo necesito que ingreses por el <strong>enlace seguro</strong> que te enviamos. Sin ese enlace no puedo ver datos de tu cuenta. ¿Lo tenés a mano?", ["No tengo el enlace", "Hablar con un asesor"]],
+      ["agent", "Para mostrarte la información de tu préstamo necesito que ingreses por el <strong>enlace seguro</strong> que te enviamos. Sin ese enlace no puedo ver datos de tu cuenta. ¿Lo tienes a mano?", ["No tengo el enlace", "Hablar con un asesor"]],
     ],
   };
 

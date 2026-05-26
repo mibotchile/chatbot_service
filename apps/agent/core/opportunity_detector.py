@@ -45,7 +45,7 @@ def detect_opportunities(
         if "phone" in missing:
             opportunities.append({
                 "field": "phone",
-                "excuse": f"Para darte una atencion mas personalizada, a que numero te contacto?",
+                "excuse": "Para darte una atención más personalizada, ¿a qué número te contacto?",
                 "trigger": "pre_lead_with_name",
             })
 

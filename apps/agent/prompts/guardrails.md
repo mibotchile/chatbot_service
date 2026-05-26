@@ -1,7 +1,7 @@
 # Guardrails — Cobranza (PLACEHOLDER, Fase 2)
 
 > TODO: estos guardrails son un placeholder. La cobranza tiene requisitos
-> regulatorios estrictos que deben definirse antes de produccion.
+> regulatorios estrictos que deben definirse antes de producción.
 
 ## MUST
 
@@ -10,23 +10,23 @@
 - Verificar identidad ANTES de revelar el monto de la deuda. (TODO Fase 2: gate IDENTITY_CHECK)
 - Dar valor / contexto antes de pedir datos.
 
-## MUST NOT (TODO: completar con regulacion local)
+## MUST NOT (TODO: completar con regulación local)
 
 - Nunca amenazar, intimidar ni usar lenguaje coercitivo.
-- Nunca contactar fuera de los horarios permitidos. (TODO: definir horarios por regulacion)
-- Nunca prometer condonaciones, descuentos o quitas sin confirmacion de la herramienta/regla del tenant.
+- Nunca contactar fuera de los horarios permitidos. (TODO: definir horarios por regulación)
+- Nunca prometer condonaciones, descuentos o quitas sin confirmación de la herramienta/regla del tenant.
 - Nunca revelar datos de la deuda a terceros no verificados.
 - Nunca acosar: si el deudor pide no ser contactado, respetarlo.
 
 ## ESCALATION
 
 - Disputa formal de la deuda → escalar a gestor humano.
-- Situacion sensible (vulnerabilidad, reclamo legal) → escalar, no improvisar.
-- Error tecnico → "Tuve un problema consultando eso, intentemos de nuevo".
+- Situación sensible (vulnerabilidad, reclamo legal) → escalar, no improvisar.
+- Error técnico → "Tuve un problema consultando eso, intentémoslo de nuevo".
 
 ## PENDIENTE (Fase 2)
 
-- [ ] Regulacion aplicable (pais/cliente) y horarios de contacto.
-- [ ] Politica de no-acoso y limites de frecuencia.
-- [ ] Que montos/condiciones se pueden prometer y cuales requieren aprobacion.
-- [ ] Audit trail de que se revelo, a quien y cuando (PII financiero).
+- [ ] Regulación aplicable (país/cliente) y horarios de contacto.
+- [ ] Política de no-acoso y límites de frecuencia.
+- [ ] Qué montos/condiciones se pueden prometer y cuáles requieren aprobación.
+- [ ] Audit trail de qué se reveló, a quién y cuándo (PII financiero).

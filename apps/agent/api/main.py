@@ -117,8 +117,8 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         if _wa_svc:
             await _wa_svc.send_text(
                 phone,
-                "Me encanto conversar contigo! Ya cubrimos bastante por hoy. "
-                f"Escribenos manana o llamanos al {_contact_phone} para atencion directa.",
+                "Gracias por tu mensaje. Por hoy ya cubrimos bastante. "
+                f"Escríbenos mañana o llámanos al {_contact_phone} para una atención directa.",
             )
         return
 
@@ -601,16 +601,16 @@ async def chat(request: Request, body: ChatRequest):
             "message": {
                 "conversation_id": body.conversation_id or "limit",
                 "content": (
-                    "Me encanto conversar contigo! Ya cubrimos bastante por hoy. "
-                    "Para seguir ayudandote, te conecto directo con nuestro equipo de asesores "
-                    "que puede darte atencion personalizada. Escribenos por WhatsApp y te atendemos al toque."
+                    "Gracias por escribirnos. Por hoy ya cubrimos bastante. "
+                    "Para seguir ayudándote, te conecto con nuestro equipo de asesores, "
+                    "que puede darte una atención personalizada. Escríbenos por WhatsApp y con gusto te atendemos."
                 ),
                 "response_id": "daily-limit",
                 "metadata": {},
                 "quick_replies": {
                     "type": "single_select",
                     "buttons": [
-                        {"id": "wa", "label": "Escribir por WhatsApp", "value": f"https://wa.me/{get_tenant_contact_phone(body.tenant_id)}?text=Hola%2C+quiero+regularizar+mi+situacion"},
+                        {"id": "wa", "label": "Escribir por WhatsApp", "value": f"https://wa.me/{get_tenant_contact_phone(body.tenant_id)}?text=Hola%2C+quiero+regularizar+mi+situaci%C3%B3n"},
                         {"id": "call", "label": "Llamar ahora", "value": f"tel:+{get_tenant_contact_phone(body.tenant_id)}"},
                     ],
                 },
@@ -905,8 +905,8 @@ def _fallback_response(text: str, conv) -> str:
     """Simple fallback when LLM is unavailable. Domain-neutral (config-driven copy is TODO)."""
     lead = conv.lead
     if lead.level == "VISITOR":
-        return "Hola, gracias por escribir. En un momento le ayudo con su consulta."
-    return "Entendido. En este momento no puedo consultar el detalle, pero le ayudo por WhatsApp."
+        return "Hola, gracias por escribir. En un momento te ayudo con tu consulta."
+    return "Entendido. En este momento no puedo consultar el detalle, pero te ayudo por WhatsApp."
 
 
 @app.get("/api/v1/conversations/{conversation_id}/messages")
@@ -953,7 +953,7 @@ async def page_context(request: Request, body: PageContextRequest):
         return Response(status_code=403, content="Invalid CSRF token")
 
     # TODO Fase 1: make greeting tenant/soul-driven.
-    greeting = "Hola, gracias por escribir. En que le puedo ayudar?"
+    greeting = "Hola, gracias por escribir. ¿En qué te puedo ayudar?"
 
     return {
         "initial_message": greeting,
@@ -1063,8 +1063,8 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
         if _wa_svc:
             await _wa_svc.send_text(
                 phone,
-                "Recibi tu imagen/archivo, por ahora solo puedo responder mensajes de texto. "
-                "Escribeme tu consulta y te ayudo!",
+                "Recibí tu imagen/archivo, por ahora solo puedo responder mensajes de texto. "
+                "Escríbeme tu consulta y con gusto te ayudo.",
             )
         return {"status": "ack", "reason": "media", "tenant_id": tenant_id}
 
