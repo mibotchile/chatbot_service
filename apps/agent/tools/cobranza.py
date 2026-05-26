@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -248,28 +249,88 @@ def _estado_cuenta_html(profile: dict) -> str:
     return f'<table style="border-collapse:collapse;width:100%;">{cells}</table>'
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _infer_canal(destino: str) -> str:
+    """Infer the channel from the destination string: '@' → correo, digits → whatsapp."""
+    d = (destino or "").strip()
+    if "@" in d:
+        return "correo"
+    if sum(c.isdigit() for c in d) >= 8:
+        return "whatsapp"
+    return ""
+
+
+def _valid_email(destino: str) -> bool:
+    return bool(_EMAIL_RE.match((destino or "").strip()))
+
+
+def _valid_phone(destino: str) -> bool:
+    digits = re.sub(r"\D", "", destino or "")
+    # Peru mobile: 9 digits (9XXXXXXXX) or 11 with country code (519XXXXXXXX)
+    return len(digits) in (9, 11)
+
+
 async def enviar_documento(
     profile: dict,
     tipo: str,
-    canal: str,
+    destino: str = "",
+    canal: str = "",
     *,
     email_service=None,
     whatsapp_service=None,
     download_base_url: str = "",
 ) -> dict:
-    """Deliver a cobranza document to the borrower by the chosen channel.
+    """Deliver a cobranza document to the destination the USER provided.
 
-    tipo ∈ {certificado_no_adeudo, estado_cuenta}; canal ∈ {correo, whatsapp}.
-    Destination email/phone come from the VERIFIED profile, never from the LLM.
+    tipo ∈ {certificado_no_adeudo, estado_cuenta}.
+    destino = the email or phone the user typed to RECEIVE the document.
+    canal ∈ {correo, whatsapp} — inferred from `destino` when omitted.
+
+    The document content and the borrower identity (account_id) ALWAYS come from
+    the verified ``profile`` (debt_context), server-side. The ONLY thing that
+    comes from the user is the *delivery destination* — deliberate PII the user
+    provides to receive their own document, validated for format here.
+
+    TODO PRODUCCIÓN — SEGURIDAD: en producción el destino debe ser el correo /
+    teléfono REGISTRADO del cliente (mostrarlo enmascarado y pedir confirmación,
+    NO aceptar uno arbitrario) para evitar fuga de documentos a terceros. En la
+    DEMO se acepta el destino que ingresa el usuario para que sea tangible.
+
     WhatsApp is in backlog: if Evolution isn't configured, the service logs an
     honest dry-run (no fake success). Extensible: add new tipos to _DOC_TIPOS.
     """
     tipo_norm = (tipo or "").strip().lower()
-    canal_norm = (canal or "").strip().lower()
     if tipo_norm not in _DOC_TIPOS:
         return {"error": "tipo_invalido", "message": f"Documento no soportado: {tipo}."}
+
+    destino = (destino or "").strip()
+    canal_norm = (canal or "").strip().lower() or _infer_canal(destino)
+
+    # Need a destination from the user before sending.
+    if not destino:
+        return {
+            "error": "destino_requerido",
+            "message": "¿A qué correo o número de WhatsApp te lo envío?",
+        }
     if canal_norm not in _CANALES:
-        return {"error": "canal_invalido", "message": "Indica el canal: correo o WhatsApp."}
+        return {
+            "error": "canal_invalido",
+            "message": "Indícame un correo (con @) o un número de WhatsApp para enviártelo.",
+        }
+
+    # Validate the destination format; ask again cordially if wrong.
+    if canal_norm == "correo" and not _valid_email(destino):
+        return {
+            "error": "email_invalido",
+            "message": "Ese correo no parece válido. ¿Me lo confirmas? (ejemplo: nombre@correo.com)",
+        }
+    if canal_norm == "whatsapp" and not _valid_phone(destino):
+        return {
+            "error": "telefono_invalido",
+            "message": "Ese número no parece válido. ¿Me confirmas tu WhatsApp? (9 dígitos)",
+        }
 
     label = _DOC_LABELS[tipo_norm]
     name = profile.get("borrower_name", "")
@@ -288,34 +349,26 @@ async def enviar_documento(
         doc_ref = profile.get("loan_number")
 
     if canal_norm == "correo":
-        to_email = profile.get("email", "")
-        if not to_email:
-            return {"error": "sin_email", "message": "No tengo un correo registrado en tu cuenta."}
         sent = False
         if email_service:
             sent = await email_service.send_document(
-                to_email, name, label, pdf_path=pdf_path, summary_html=summary_html,
+                destino, name, label, pdf_path=pdf_path, summary_html=summary_html,
             )
-        # mask the email in the user-facing confirmation
-        masked = _mask_email(to_email)
         return {
             "delivered": bool(sent),
             "canal": "correo",
             "tipo": tipo_norm,
             "doc_label": label,
-            "destino": masked,
+            "destino": destino,  # the address the user gave (demo: tangible)
             "doc_ref": doc_ref,
             "message": (
-                f"Listo, te envié tu {label.lower()} al correo {masked}."
+                f"Listo, te envié tu {label.lower()} al correo {destino}."
                 if sent else
-                f"Intenté enviar tu {label.lower()} al correo {masked}; si no llega, escríbenos de nuevo."
+                f"Intenté enviar tu {label.lower()} al correo {destino}; si no llega, escríbenos de nuevo."
             ),
         }
 
     # canal == whatsapp (backlog: dry-run honesto si Evolution no está conectado)
-    phone = profile.get("phone", "")
-    if not phone:
-        return {"error": "sin_telefono", "message": "No tengo un número registrado en tu cuenta."}
     media_url = ""
     if pdf_path and download_base_url:
         # certificate has a public download URL we can attach
@@ -323,31 +376,17 @@ async def enviar_documento(
     configured = bool(whatsapp_service and getattr(whatsapp_service, "is_configured", False))
     sent = False
     if whatsapp_service:
-        sent = await whatsapp_service.send_document(phone, name, label, media_url=media_url)
-    masked = _mask_phone(phone)
+        sent = await whatsapp_service.send_document(destino, name, label, media_url=media_url)
     return {
         "delivered": bool(sent),
         "canal": "whatsapp",
         "tipo": tipo_norm,
         "doc_label": label,
-        "destino": masked,
+        "destino": destino,  # the number the user gave (demo: tangible)
         "doc_ref": doc_ref,
         # Honest status: WhatsApp is backlog unless Evolution is fully wired.
         "channel_status": "configured" if configured else "backlog_or_dry_run",
         "message": (
-            f"Listo, te envío tu {label.lower()} a tu WhatsApp {masked}."
+            f"Listo, te envío tu {label.lower()} a tu WhatsApp {destino}."
         ),
     }
-
-
-def _mask_email(email: str) -> str:
-    if "@" not in email:
-        return email
-    user, dom = email.split("@", 1)
-    shown = user[:3] if len(user) > 3 else user[:1]
-    return f"{shown}***@{dom}"
-
-
-def _mask_phone(phone: str) -> str:
-    digits = "".join(c for c in phone if c.isdigit())
-    return f"+51 ***{digits[-3:]}" if len(digits) >= 3 else phone

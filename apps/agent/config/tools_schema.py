@@ -132,11 +132,12 @@ TOOL_DEFINITIONS = [
     {
         "name": "enviar_documento",
         "description": (
-            "Envía al cliente identificado un documento por el canal que elija. "
-            "OFRÉCELE primero: '¿Te lo envío a tu correo o a tu WhatsApp?'. "
+            "Envía al cliente identificado un documento al correo o WhatsApp que ÉL indique. "
+            "ANTES de llamar esta tool PREGÚNTALE a qué correo o número de WhatsApp quiere recibirlo "
+            "('¿A qué correo o WhatsApp te lo envío?') y pasa ese dato en 'destino'. "
             "tipo: 'certificado_no_adeudo' (solo si no tiene deuda) o 'estado_cuenta' (resumen de su deuda). "
-            "canal: 'correo' o 'whatsapp'. El correo y el teléfono salen de su cuenta verificada, "
-            "NO los pidas ni los inventes."
+            "El documento y la identidad salen de su cuenta verificada; lo ÚNICO que viene del usuario es "
+            "el 'destino' de entrega. No inventes el destino: si no te lo dio, pregúntalo."
         ),
         "parameters": {
             "type": "object",
@@ -146,13 +147,17 @@ TOOL_DEFINITIONS = [
                     "enum": ["certificado_no_adeudo", "estado_cuenta"],
                     "description": "Documento a enviar",
                 },
+                "destino": {
+                    "type": "string",
+                    "description": "Correo (con @) o número de WhatsApp que el USUARIO indicó para recibir el documento",
+                },
                 "canal": {
                     "type": "string",
                     "enum": ["correo", "whatsapp"],
-                    "description": "Canal de entrega elegido por el cliente",
+                    "description": "Opcional; se infiere de 'destino' (con @ → correo; número → whatsapp)",
                 },
             },
-            "required": ["tipo", "canal"],
+            "required": ["tipo", "destino"],
         },
     },
     {

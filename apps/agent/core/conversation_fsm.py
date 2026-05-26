@@ -37,8 +37,9 @@ _STATE_RULES: dict[str, str] = {
         "2. registrar_reclamo — Libro de Reclamaciones (pide tipo y descripción antes de registrar).\n"
         "3. emitir_certificado_no_adeudo — SOLO si el saldo es CERO; si hay deuda, explica que no procede "
         "hasta cancelar el préstamo (no lo ofrezcas a quien tiene deuda).\n"
-        "4. enviar_documento — entrega un documento (certificado_no_adeudo o estado_cuenta) por el canal "
-        "que elija el cliente; pregúntale '¿te lo envío a tu correo o a tu WhatsApp?' antes de enviar.\n"
+        "4. enviar_documento — entrega un documento (certificado_no_adeudo o estado_cuenta). ANTES de "
+        "enviar, PREGÚNTALE a qué correo o WhatsApp quiere recibirlo ('¿A qué correo o WhatsApp te lo "
+        "envío?') y envíalo a ESE destino (no asumas el de su cuenta). Confírmale el envío al destino dado.\n"
         "Usa SIEMPRE los datos que devuelven las herramientas. NUNCA inventes montos, fechas ni "
         "condiciones. Si la consulta es legal o una disputa formal, deriva con escalate_to_human."
     ),

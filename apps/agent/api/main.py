@@ -880,6 +880,15 @@ async def chat(request: Request, body: ChatRequest):
         from core.response_builder import build_quick_replies
         quick_replies = build_quick_replies(conv.lead.get_status(), ui_actions, tool_pairs, content)
 
+    # Current identity state (updated this turn if the user identified via DNI).
+    # Lets the widget refresh its identity strip without a token.
+    _identity_state = {"verified": bool(conv.identity_verified)}
+    if conv.identity_verified and conv.debt_context:
+        _identity_state.update({
+            "display_name": conv.debt_context.get("borrower_name", ""),
+            "status_label": conv.debt_context.get("status_label", ""),
+        })
+
     return {
         "message": {
             "conversation_id": conv.conversation_id,
@@ -889,6 +898,7 @@ async def chat(request: Request, body: ChatRequest):
             "quick_replies": quick_replies or None,
             "form_data": ui_actions.get("form_data"),
             "ui_actions": ui_actions,
+            "identity": _identity_state,
         },
         "context": {},
         "context_updated": True,

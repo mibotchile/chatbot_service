@@ -76,42 +76,69 @@ async def test_enviar_documento_blocked_without_identity():
     assert r.get("blocked") == "identity_required"
 
 
-# ── Email delivery (dry-run) — destino from profile, not LLM ───────────────
+# ── Delivery uses the USER-PROVIDED destination, not the profile's ─────────
 
-async def test_send_document_email_dryrun_estado_cuenta():
+async def test_send_document_uses_user_destino_not_profile():
+    """Demo tangible: the document goes to the address the USER typed."""
+    carlos = resolve_dni(CARLOS_DNI)
     reg = ToolRegistry(
         identity_verified=True,
-        debt_context=resolve_dni(CARLOS_DNI),
+        debt_context=carlos,
         email_service=EmailService(api_url=""),  # not configured → dry-run
     )
-    r = await reg.execute("enviar_documento", {"tipo": "estado_cuenta", "canal": "correo"})
-    assert r["delivered"] is True          # dry-run reports logged-true
-    assert r["canal"] == "correo"
-    assert r["destino"].endswith("@correo.pe")   # masked, from profile
-    assert r["destino"].startswith("car") and "***" in r["destino"]  # masked, not full
+    r = await reg.execute(
+        "enviar_documento",
+        {"tipo": "estado_cuenta", "destino": "test@ejemplo.com"},  # canal inferred
+    )
+    assert r["delivered"] is True
+    assert r["canal"] == "correo"                 # inferred from "@"
+    assert r["destino"] == "test@ejemplo.com"     # the user's address, verbatim
+    assert r["destino"] != carlos["email"]        # NOT the profile's email
+
+
+async def test_send_document_invalid_email_asks_again():
+    reg = ToolRegistry(identity_verified=True, debt_context=resolve_dni(JUAN_DNI),
+                        email_service=EmailService(api_url=""))
+    r = await reg.execute("enviar_documento", {"tipo": "estado_cuenta", "destino": "no-es-un-correo", "canal": "correo"})
+    assert r.get("error") == "email_invalido"
+    assert "delivered" not in r  # error path → nothing was sent
+
+
+async def test_send_document_missing_destino_prompts():
+    reg = ToolRegistry(identity_verified=True, debt_context=resolve_dni(JUAN_DNI))
+    r = await reg.execute("enviar_documento", {"tipo": "estado_cuenta"})
+    assert r.get("error") == "destino_requerido"
+    assert "correo" in r["message"].lower() or "whatsapp" in r["message"].lower()
 
 
 async def test_send_document_email_certificate_only_when_no_debt():
-    # María (no debt) → certificate delivered
+    # María (no debt) → certificate delivered to the address she gives
     reg_ok = ToolRegistry(
         identity_verified=True, debt_context=resolve_dni(MARIA_DNI),
         email_service=EmailService(api_url=""), download_base_url="http://t",
     )
-    ok = await reg_ok.execute("enviar_documento", {"tipo": "certificado_no_adeudo", "canal": "correo"})
+    ok = await reg_ok.execute(
+        "enviar_documento",
+        {"tipo": "certificado_no_adeudo", "destino": "yo@ejemplo.com"},
+    )
     assert ok["delivered"] is True
+    assert ok["destino"] == "yo@ejemplo.com"
     assert ok["doc_ref"].startswith("CNA-")
 
-    # Carlos (debt) → certificate does NOT proceed
+    # Carlos (debt) → certificate does NOT proceed (gated by balance)
     reg_no = ToolRegistry(
         identity_verified=True, debt_context=resolve_dni(CARLOS_DNI),
         email_service=EmailService(api_url=""), download_base_url="http://t",
     )
-    no = await reg_no.execute("enviar_documento", {"tipo": "certificado_no_adeudo", "canal": "correo"})
+    no = await reg_no.execute(
+        "enviar_documento",
+        {"tipo": "certificado_no_adeudo", "destino": "yo@ejemplo.com"},
+    )
     assert no.get("issued") is False
     assert no["reason"] == "outstanding_balance"
 
 
-# ── WhatsApp delivery (backlog: honest dry-run) ────────────────────────────
+# ── WhatsApp delivery (backlog: honest dry-run) — user-provided number ─────
 
 async def test_send_document_whatsapp_dryrun():
     reg = ToolRegistry(
@@ -119,17 +146,27 @@ async def test_send_document_whatsapp_dryrun():
         whatsapp_service=WhatsAppService(api_url="", api_key="", instance_name=""),
         download_base_url="http://t",
     )
-    r = await reg.execute("enviar_documento", {"tipo": "certificado_no_adeudo", "canal": "whatsapp"})
+    r = await reg.execute(
+        "enviar_documento",
+        {"tipo": "certificado_no_adeudo", "destino": "999111222"},  # canal inferred → whatsapp
+    )
     assert r["canal"] == "whatsapp"
-    assert r["destino"].startswith("+51 ***")     # masked phone from profile
+    assert r["destino"] == "999111222"            # the number the user gave
     # not configured → honest backlog/dry-run, never a fake success
     assert r["channel_status"] == "backlog_or_dry_run"
 
 
-async def test_enviar_documento_rejects_unknown_type_and_channel():
+async def test_send_document_invalid_phone_asks_again():
+    reg = ToolRegistry(identity_verified=True, debt_context=resolve_dni(MARIA_DNI),
+                        whatsapp_service=WhatsAppService(api_url="", api_key="", instance_name=""))
+    r = await reg.execute("enviar_documento", {"tipo": "estado_cuenta", "destino": "123", "canal": "whatsapp"})
+    assert r.get("error") == "telefono_invalido"
+
+
+async def test_enviar_documento_rejects_unknown_type():
     reg = ToolRegistry(identity_verified=True, debt_context=resolve_dni(JUAN_DNI))
-    assert (await reg.execute("enviar_documento", {"tipo": "x", "canal": "correo"})).get("error") == "tipo_invalido"
-    assert (await reg.execute("enviar_documento", {"tipo": "estado_cuenta", "canal": "x"})).get("error") == "canal_invalido"
+    r = await reg.execute("enviar_documento", {"tipo": "x", "destino": "a@b.co"})
+    assert r.get("error") == "tipo_invalido"
 
 
 # ── Chip/offer gating by balance: certificate tool blocks for debtors ──────

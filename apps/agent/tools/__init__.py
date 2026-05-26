@@ -193,9 +193,9 @@ class ToolRegistry:
             self._debt_context, download_base_url=self._download_base_url
         )
 
-    async def _enviar_documento(self, tipo: str, canal: str) -> dict:
+    async def _enviar_documento(self, tipo: str, destino: str = "", canal: str = "") -> dict:
         return await enviar_documento(
-            self._debt_context, tipo, canal,
+            self._debt_context, tipo, destino, canal,
             email_service=self._email_service,
             whatsapp_service=self._whatsapp_service,
             download_base_url=self._download_base_url,

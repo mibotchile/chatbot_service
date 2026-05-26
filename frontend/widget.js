@@ -248,14 +248,35 @@
   }
 
   // ── Identity strip ──
-  function renderIdentity() {
+  function _badgeFor(statusLabel) {
+    const s = (statusLabel || "").toLowerCase();
+    if (s.includes("mora")) return ["mora", statusLabel];
+    if (s.includes("sin deuda") || s.includes("cancelado")) return ["libre", statusLabel || "Sin deuda"];
+    return ["aldia", statusLabel || "Al día"];
+  }
+
+  function _renderIdentified(name, statusLabel, biz) {
     const $i = root.querySelector("#pu-ident");
+    const [cls, label] = _badgeFor(statusLabel);
+    const sub = biz ? `<div class="biz">${biz}</div>` : "";
+    $i.innerHTML = `<div><div class="who">${name}</div>${sub}</div><span class="pu-ibadge ${cls}">${label}</span>`;
+  }
+
+  function renderIdentity() {
     const p = CT && PROFILES[CT];
     if (p) {
-      const badge = CT === "demo-juan" ? ["aldia", "Al día"] : CT === "demo-carlos" ? ["mora", "En mora"] : ["libre", "Sin deuda"];
-      $i.innerHTML = `<div><div class="who">${p.who}</div><div class="biz">${p.biz}</div></div><span class="pu-ibadge ${badge[0]}">${badge[1]}</span>`;
+      const label = CT === "demo-juan" ? "Al día" : CT === "demo-carlos" ? "En mora" : "Sin deuda";
+      _renderIdentified(p.who, label, p.biz);
     } else {
-      $i.innerHTML = `<div><div class="who">Sesión no identificada</div><div class="biz">Ingresa por tu enlace seguro.</div></div><span class="pu-ibadge cold">Sin verificar</span>`;
+      const $i = root.querySelector("#pu-ident");
+      $i.innerHTML = `<div><div class="who">Sesión no identificada</div><div class="biz">Indícame tu DNI para ayudarte.</div></div><span class="pu-ibadge cold">Sin verificar</span>`;
+    }
+  }
+
+  // Refresh the strip from the backend identity state (after DNI verification).
+  function updateIdentityFromResponse(identity) {
+    if (identity && identity.verified) {
+      _renderIdentified(identity.display_name || "Cliente verificado", identity.status_label || "");
     }
   }
 
@@ -385,6 +406,9 @@
       const data = await r.json();
       const msg = data.message || {};
       conversationId = msg.conversation_id || conversationId;
+      // Refresh the identity strip if the backend verified the user this turn
+      // (e.g. after they typed their DNI mid-conversation).
+      updateIdentityFromResponse(msg.identity);
       const chips = (msg.quick_replies && msg.quick_replies.buttons)
         ? msg.quick_replies.buttons.map((b) => b.label)
         : (Array.isArray(msg.suggested_replies) ? msg.suggested_replies : []);
