@@ -1,0 +1,15 @@
+{
+  "name": "PrestaUnion",
+  "que_es": "PrestaUnion es una fintech peruana de financiamiento para micro y pequeñas empresas (MYPEs). Otorga préstamos de capital de trabajo de forma simple, rápida y transparente, con cuotas y condiciones claras.",
+  "mision": "Impulsar el progreso de las MYPEs del Perú con acceso a financiamiento justo y acompañamiento real.",
+  "productos": [
+    "Préstamo de capital de trabajo para MYPEs (montos típicos S/ 3,000 a S/ 50,000)",
+    "Cronograma de cuotas mensuales fijas"
+  ],
+  "regulacion": "Opera en Perú; cuenta con Libro de Reclamaciones conforme a Indecopi. Toda comunicación respeta el trato digno al cliente.",
+  "canales_pago": [
+    "Pago en línea desde el portal del cliente",
+    "Transferencia bancaria a la cuenta recaudadora de PrestaUnion",
+    "Agentes y bancos afiliados"
+  ]
+}

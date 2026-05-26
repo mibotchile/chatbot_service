@@ -15,7 +15,7 @@ import anthropic
 import httpx
 from fastapi import BackgroundTasks, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
@@ -535,6 +535,21 @@ class ChatRequest(BaseModel):
     visitor_id: str | None = None
     previous_response_id: str | None = None
     page_context: dict | None = None
+    # Cobranza: demo campaign token (e.g. "demo-juan"). The token IS the
+    # identity — resolved server-side to a verified borrower profile. The
+    # widget reads it from ?ct= and sends it on the first message.
+    campaign_token: str | None = Field(default=None, max_length=64)
+
+    @field_validator("campaign_token")
+    @classmethod
+    def validate_campaign_token(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                return None
+            if not re.fullmatch(r"[A-Za-z0-9_\-\.]{1,64}", v):
+                raise ValueError("campaign_token has invalid format")
+        return v
 
     @field_validator("text")
     @classmethod
@@ -660,6 +675,26 @@ async def chat(request: Request, body: ChatRequest):
     from config.settings import resolve_api_key
     _api_key = resolve_api_key(body.tenant_id)
 
+    # ── Cobranza identity gate: resolve the campaign token (demo: mock source).
+    # The token can arrive on the request or inside page_context (widget). It
+    # resolves to a verified borrower profile; account_id is NEVER from the LLM.
+    _token = body.campaign_token or (body.page_context or {}).get("campaign_token")
+    if _token and not conv.identity_verified:
+        from integrations.mock_debt_source import resolve_token
+
+        _profile = resolve_token(_token, tenant_id=body.tenant_id or "prestaunion")
+        if _profile:
+            conv.identity_verified = True
+            conv.debt_context = _profile
+            logger.info(
+                "Identity resolved: conversation={} account={}",
+                conv.conversation_id, _profile.get("account_id"),
+            )
+        else:
+            logger.info("Campaign token did not resolve: conversation={}", conv.conversation_id)
+
+    _download_base = str(request.base_url).rstrip("/")
+
     try:
         client = anthropic.AsyncAnthropic(api_key=_api_key)
 
@@ -672,6 +707,9 @@ async def chat(request: Request, body: ChatRequest):
             visitor_memory=visitor_memory,
             email_service=email_service,
             whatsapp_service=get_whatsapp_service(body.tenant_id),
+            identity_verified=conv.identity_verified,
+            debt_context=conv.debt_context,
+            download_base_url=_download_base,
         )
         agent = SoreliaAgent(llm_client=client, tool_registry=registry, tenant=_tenant_config)
 
@@ -683,6 +721,17 @@ async def chat(request: Request, body: ChatRequest):
                 "visit_count": visitor_profile.get("visit_count", 1),
                 "projects_viewed": visitor_profile.get("projects_viewed", []),
             }
+        # Inject identity status so the prompt knows the gate state (cobranza).
+        if conv.identity_verified and conv.debt_context:
+            enriched_page_context["identity"] = {
+                "verified": True,
+                "borrower_name": conv.debt_context.get("borrower_name"),
+                "business_name": conv.debt_context.get("business_name"),
+                "loan_number": conv.debt_context.get("loan_number"),
+                "status_label": conv.debt_context.get("status_label"),
+            }
+        else:
+            enriched_page_context["identity"] = {"verified": False}
 
         result = await agent.process_message(
             text=body.text,
@@ -819,6 +868,37 @@ async def chat(request: Request, body: ChatRequest):
 @app.post("/api/v1/conversations/messages")
 async def chat_compat(request: Request, body: ChatRequest):
     return await chat(request, body)
+
+
+# ── Cobranza: certificate download (no-debt certificate PDF) ──
+@app.get("/api/v1/cobranza/certificate/{filename}")
+async def download_certificate(filename: str):
+    """Serve a generated no-debt certificate PDF. Filename is sanitized to a
+    safe pattern so it cannot escape the certificates directory."""
+    from pathlib import Path as _CPath
+
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+\.pdf", filename):
+        return Response(status_code=400, content="Invalid filename")
+    path = _CPath("/tmp/prestaunion_certificates") / filename
+    if not path.exists():
+        return Response(status_code=404, content="Certificate not found")
+    return FileResponse(path, media_type="application/pdf", filename=filename)
+
+
+# ── Cobranza: list registered reclamos (demo visibility) ──
+@app.get("/api/v1/cobranza/reclamos")
+async def list_reclamos():
+    """Return the (mock) Libro de Reclamaciones entries so the demo can show them."""
+    from pathlib import Path as _RPath
+
+    path = _RPath("/tmp/prestaunion_reclamos.json")
+    if not path.exists():
+        return {"reclamos": []}
+    try:
+        import json as _json
+        return {"reclamos": _json.loads(path.read_text(encoding="utf-8"))}
+    except (ValueError, OSError):
+        return {"reclamos": []}
 
 
 def _fallback_response(text: str, conv) -> str:
@@ -1056,3 +1136,23 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(_process_whatsapp_message, phone, sender_name, text, message_id, tenant_id)
 
     return {"status": "queued", "tenant_id": tenant_id}
+
+
+# ── Demo frontend (PrestaUnion landing + chat widget) ──
+# Mounted LAST so it never shadows API routes. Serving same-origin removes any
+# CORS friction for the demo. Path resolves in both Docker and local-dev.
+def _mount_demo_frontend() -> None:
+    from pathlib import Path as _FPath
+
+    from fastapi.staticfiles import StaticFiles
+
+    for candidate in (_FPath("/app/frontend"),
+                      _FPath(__file__).resolve().parent.parent.parent.parent / "frontend"):
+        if candidate.exists():
+            app.mount("/", StaticFiles(directory=str(candidate), html=True), name="demo")
+            logger.info("Demo frontend mounted from {}", candidate)
+            return
+    logger.info("Demo frontend directory not found — skipping static mount")
+
+
+_mount_demo_frontend()

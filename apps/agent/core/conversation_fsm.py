@@ -1,47 +1,43 @@
 """Conversation state machine — controls agent behavior per stage.
 
-States progress based on what the agent knows about the user, not on
-lead qualification level.  The lead machine tracks *data completeness*;
-this FSM tracks *conversational intent* and gates what the agent is
-allowed to ask or offer at each turn.
+Cobranza model: the primary axis is *identity*, not data completeness. The
+identity gate short-circuits everything else (design doc, riesgo #2):
+  - No verified identity  → COLD  (cold channel: offer the secure link / human)
+  - Verified identity     → VERIFIED (debt / reclamo / certificado available)
+
+The lead-completeness states are not used in the demo flow.
 """
 
 # --- States ---
 
 GREETING = "greeting"
-EXPLORING = "exploring"
-INTERESTED = "interested"
-QUALIFYING = "qualifying"
-CLOSING = "closing"
-ENRICHING = "enriching"
+COLD = "cold"
+VERIFIED = "verified"
 
 # --- State rules (Spanish — injected into system prompt) ---
 
 _STATE_RULES: dict[str, str] = {
     GREETING: (
-        "Saluda brevemente. Pregunta que busca. NO pidas datos personales.\n"
-        "Tu objetivo es entender que necesita: zona, tipo de depa, presupuesto."
+        "Saluda de forma breve, cálida y profesional (trato de usted). Presentate como "
+        "asistente de PrestaUnion. Si el usuario YA está identificado (ingresó por su enlace), "
+        "podés ofrecerle consultar su préstamo, registrar un reclamo o (si no tiene deuda) emitir "
+        "su certificado de no adeudo. NO pidas datos personales por el chat."
     ),
-    EXPLORING: (
-        "Responde preguntas, muestra opciones. Usa herramientas (search_properties, simulate_mortgage).\n"
-        "NO pidas datos personales todavia. Enfocate en dar valor y entender preferencias."
+    COLD: (
+        "El usuario NO está identificado (no ingresó por su enlace seguro). "
+        "NO reveles ni consultes datos de ninguna cuenta. NO pidas DNI, número de cuenta ni datos "
+        "sensibles por el chat. Explicá con amabilidad que, para ver la información de su préstamo, "
+        "necesita ingresar por el enlace seguro que se le envió. Podés ofrecer derivar a un asesor "
+        "humano (escalate_to_human). Solo podés responder preguntas generales (cómo pagar, qué es la "
+        "TCEA, requisitos) sin tocar datos de cuenta."
     ),
-    INTERESTED: (
-        "Profundiza en el proyecto que interesa. Usa el arsenal de ventas (CPP, experiencia, palabras clave).\n"
-        "Puedes preguntar el nombre de forma natural: 'A quien le preparo la cotizacion?'"
-    ),
-    QUALIFYING: (
-        "Ya sabes su interes. Pide email O telefono (no ambos a la vez).\n"
-        "Ofrece valor a cambio: brochure, planos, simulacion personalizada, agendar visita.\n"
-        "Si ya pidiste un dato y no lo dio, NO insistas — espera a que surja naturalmente."
-    ),
-    CLOSING: (
-        "Agenda visita, envia brochure, conecta con asesor. Usa datos reales de urgencia.\n"
-        "Tienes suficiente info para actuar — ejecuta las acciones, no solo las propongas."
-    ),
-    ENRICHING: (
-        "Ya es contacto completo. Solo pide datos extra (DNI, ingreso, empleador) si la conversacion\n"
-        "lo permite naturalmente. Usa excusas de valor: pre-calificacion bancaria, bono MiVivienda, convenios."
+    VERIFIED: (
+        "El usuario está IDENTIFICADO. Tenés tres acciones disponibles:\n"
+        "1. consultar_deuda — saldo, cuotas, próximo vencimiento, estado (al día / en mora).\n"
+        "2. registrar_reclamo — Libro de Reclamaciones (pedí tipo y descripción antes de registrar).\n"
+        "3. emitir_certificado_no_adeudo — solo si el saldo es CERO; si hay deuda, explicá que no procede.\n"
+        "Usá SIEMPRE los datos que devuelven las herramientas. NUNCA inventes montos, fechas ni "
+        "condiciones. Si la consulta es legal o una disputa formal, derivá con escalate_to_human."
     ),
 }
 
@@ -50,53 +46,24 @@ def detect_state(
     lead_status: dict,
     history: list[dict],
     page_context: dict,
+    identity: dict | None = None,
 ) -> str:
-    """Detect current conversation state from lead data and history.
+    """Detect conversation state. Identity gate has absolute priority.
 
-    Priority order (first match wins):
-      1. No messages at all → GREETING
-      2. Has name + email + phone → ENRICHING
-      3. Has name + (email or phone) → CLOSING
-      4. Has some contact data (name or email) → QUALIFYING
-      5. Has project interest → INTERESTED
-      6. Has messages but nothing else → EXPLORING
+    Priority:
+      1. No messages → GREETING
+      2. Verified identity → VERIFIED
+      3. Otherwise → COLD (cold channel, gate closed)
     """
-    collected = lead_status.get("collected", {})
-
-    # 1. No history → greeting
     if not history:
         return GREETING
 
-    has_name = "name" in collected
-    has_email = "email" in collected
-    has_phone = "phone" in collected
-    has_project = "project_interest" in collected
-
-    # 2. Full contact → enriching
-    if has_name and has_email and has_phone:
-        return ENRICHING
-
-    # 3. Name + one contact method → closing
-    if has_name and (has_email or has_phone):
-        return CLOSING
-
-    # 4. Any contact data → qualifying
-    if has_name or has_email:
-        return QUALIFYING
-
-    # 5. Project interest (from collected data or page context)
-    if has_project:
-        return INTERESTED
-
-    # Also check page context — viewing a project detail page signals interest
-    page = page_context.get("page", "")
-    if page == "project_detail" or page_context.get("project_slug"):
-        return INTERESTED
-
-    # 6. Default for active conversations
-    return EXPLORING
+    ident = identity if identity is not None else page_context.get("identity", {})
+    if ident.get("verified"):
+        return VERIFIED
+    return COLD
 
 
 def get_state_rules(state: str) -> str:
     """Return the behavioral rules for a given conversation state."""
-    return _STATE_RULES.get(state, _STATE_RULES[EXPLORING])
+    return _STATE_RULES.get(state, _STATE_RULES[COLD])

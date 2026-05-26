@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "tenant": "prestaunion",
+    "disclaimer": "DATOS 100% FICTICIOS. No corresponden a personas ni empresas reales. Solo para demostración.",
+    "currency": "PEN",
+    "currency_symbol": "S/"
+  },
+  "tokens": {
+    "demo-juan": "ACC-PYPE-2024-00123",
+    "demo-carlos": "ACC-PYPE-2024-00210",
+    "demo-maria": "ACC-PYPE-2023-00088"
+  },
+  "borrowers": {
+    "ACC-PYPE-2024-00123": {
+      "account_id": "ACC-PYPE-2024-00123",
+      "borrower_name": "Juan Pérez Rojas",
+      "business_name": "Bodega Don Juan E.I.R.L.",
+      "business_type": "Bodega / minimarket",
+      "loan_number": "PYPE-2024-00123",
+      "currency": "PEN",
+      "currency_symbol": "S/",
+      "principal_original": 12000.00,
+      "balance": 4850.00,
+      "tcea_pct": 45.0,
+      "installments_total": 12,
+      "installments_paid": 9,
+      "installments_pending": 3,
+      "next_due_date": "2026-06-15",
+      "next_installment_amount": 1650.00,
+      "late_fee": 0.00,
+      "days_overdue": 0,
+      "status": "al_dia",
+      "status_label": "Al día",
+      "disbursed_at": "2024-09-15",
+      "installment_history": [
+        {"n": 7, "due_date": "2026-04-15", "amount": 1650.00, "paid": true, "paid_date": "2026-04-12"},
+        {"n": 8, "due_date": "2026-05-15", "amount": 1650.00, "paid": true, "paid_date": "2026-05-14"},
+        {"n": 9, "due_date": "2026-06-15", "amount": 1650.00, "paid": false, "paid_date": null},
+        {"n": 10, "due_date": "2026-07-15", "amount": 1650.00, "paid": false, "paid_date": null},
+        {"n": 11, "due_date": "2026-08-15", "amount": 1650.00, "paid": false, "paid_date": null}
+      ]
+    },
+    "ACC-PYPE-2024-00210": {
+      "account_id": "ACC-PYPE-2024-00210",
+      "borrower_name": "Carlos Huamán Flores",
+      "business_name": "Ferretería El Tornillo S.A.C.",
+      "business_type": "Ferretería",
+      "loan_number": "PYPE-2024-00210",
+      "currency": "PEN",
+      "currency_symbol": "S/",
+      "principal_original": 8000.00,
+      "balance": 2300.00,
+      "tcea_pct": 52.0,
+      "installments_total": 10,
+      "installments_paid": 8,
+      "installments_pending": 2,
+      "next_due_date": "2026-05-18",
+      "next_installment_amount": 1150.00,
+      "late_fee": 85.00,
+      "days_overdue": 8,
+      "status": "en_mora",
+      "status_label": "En mora",
+      "disbursed_at": "2024-08-18",
+      "installment_history": [
+        {"n": 7, "due_date": "2026-04-18", "amount": 1150.00, "paid": true, "paid_date": "2026-04-17"},
+        {"n": 8, "due_date": "2026-05-18", "amount": 1150.00, "paid": false, "paid_date": null, "overdue": true},
+        {"n": 9, "due_date": "2026-06-18", "amount": 1150.00, "paid": false, "paid_date": null},
+        {"n": 10, "due_date": "2026-07-18", "amount": 1150.00, "paid": false, "paid_date": null}
+      ]
+    },
+    "ACC-PYPE-2023-00088": {
+      "account_id": "ACC-PYPE-2023-00088",
+      "borrower_name": "María Quispe Mamani",
+      "business_name": "Textiles María E.I.R.L.",
+      "business_type": "Confección textil",
+      "loan_number": "PYPE-2023-00088",
+      "currency": "PEN",
+      "currency_symbol": "S/",
+      "principal_original": 15000.00,
+      "balance": 0.00,
+      "tcea_pct": 41.0,
+      "installments_total": 18,
+      "installments_paid": 18,
+      "installments_pending": 0,
+      "next_due_date": null,
+      "next_installment_amount": 0.00,
+      "late_fee": 0.00,
+      "days_overdue": 0,
+      "status": "cancelado",
+      "status_label": "Cancelado",
+      "disbursed_at": "2023-09-10",
+      "cancelled_at": "2026-03-10",
+      "installment_history": [
+        {"n": 16, "due_date": "2026-01-10", "amount": 980.00, "paid": true, "paid_date": "2026-01-09"},
+        {"n": 17, "due_date": "2026-02-10", "amount": 980.00, "paid": true, "paid_date": "2026-02-08"},
+        {"n": 18, "due_date": "2026-03-10", "amount": 980.00, "paid": true, "paid_date": "2026-03-10"}
+      ]
+    }
+  }
+}

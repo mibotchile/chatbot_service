@@ -36,16 +36,18 @@ def test_empty_tenant_loads():
 
 
 def test_tool_registry_has_cobranza_tools():
-    """ToolRegistry exposes generic + cobranza stub tools, not real-estate ones."""
+    """ToolRegistry exposes generic + the 3 consolidated cobranza tools."""
     from tools import ToolRegistry
 
     reg = ToolRegistry()
-    assert reg.has_tool("get_debt_detail")
-    assert reg.has_tool("simulate_payment_plan")
+    assert reg.has_tool("consultar_deuda")
+    assert reg.has_tool("registrar_reclamo")
+    assert reg.has_tool("emitir_certificado_no_adeudo")
     assert reg.has_tool("suggest_quick_replies")
-    # Real-estate tools must be gone.
+    # Old Fase-0 stubs and real-estate tools must be gone.
+    assert not reg.has_tool("get_debt_detail")
+    assert not reg.has_tool("simulate_payment_plan")
     assert not reg.has_tool("search_properties")
-    assert not reg.has_tool("simulate_mortgage")
 
 
 def test_lead_machine_uses_cobranza_fields():

@@ -42,6 +42,10 @@ class ConversationState:
         self.page_context: dict = {}
         self.brochures_sent: set[str] = set()  # project slugs already emailed
         self.lead_notified: bool = False  # sales team already notified
+        # Identity gate (cobranza): resolved server-side from the campaign token.
+        # debt_context holds the verified borrower profile (incl. account_id).
+        self.identity_verified: bool = False
+        self.debt_context: dict = {}
 
     # -- Sync API (in-memory only, backwards-compatible) --
 

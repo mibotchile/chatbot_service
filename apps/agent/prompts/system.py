@@ -152,10 +152,23 @@ def build_system_prompt(
             if rendered:
                 sections.append(rendered)
 
-    # FSM state
+    # FSM state — identity gate drives the state (cobranza)
     conv_history = history if history is not None else []
-    state = detect_state(lead_state, conv_history, page_context)
+    identity = page_context.get("identity", {}) if page_context else {}
+    state = detect_state(lead_state, conv_history, page_context, identity=identity)
     sections.append(f"# ESTADO CONVERSACIONAL: {state}\n{get_state_rules(state)}")
+
+    # Verified identity context — the agent narrates only what's here / from tools
+    if identity.get("verified"):
+        sections.append(
+            "# USUARIO IDENTIFICADO\n"
+            f"Nombre: {identity.get('borrower_name', '')}\n"
+            f"Negocio (MYPE): {identity.get('business_name', '')}\n"
+            f"Préstamo: {identity.get('loan_number', '')}\n"
+            f"Estado: {identity.get('status_label', '')}\n"
+            "Para montos exactos, cuotas y fechas usá la herramienta consultar_deuda. "
+            "Nunca inventes cifras."
+        )
 
     # Lead state
     if lead_state:

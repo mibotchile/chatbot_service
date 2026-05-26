@@ -1,0 +1,75 @@
+{
+  "faqs": [
+    {
+      "category": "pagos",
+      "questions": [
+        "¿Cómo pago mi cuota?",
+        "¿Qué medios de pago tengo?",
+        "¿Dónde transfiero?"
+      ],
+      "knowledge": {
+        "medios": "Puede pagar en línea desde el portal del cliente, por transferencia bancaria a la cuenta recaudadora de PrestaUnion, o en agentes y bancos afiliados.",
+        "recomendacion": "Pagar antes de la fecha de vencimiento evita recargos por mora.",
+        "comprobante": "Conserve su comprobante; el pago se refleja en su cuenta en pocas horas."
+      }
+    },
+    {
+      "category": "mora",
+      "questions": [
+        "¿Qué pasa si me atraso?",
+        "¿Qué es el recargo por mora?",
+        "Estoy en mora, ¿qué hago?"
+      ],
+      "knowledge": {
+        "que_es": "Si una cuota vence sin pago, la cuenta entra en mora y se aplica un recargo según el cronograma.",
+        "que_hacer": "Regularice la cuota vencida lo antes posible para detener el recargo. Si necesita ayuda, un asesor puede orientarle.",
+        "tono": "La mora se aborda con acompañamiento, nunca con presión."
+      }
+    },
+    {
+      "category": "tcea",
+      "questions": [
+        "¿Qué es la TCEA?",
+        "¿Por qué pago más que el monto prestado?"
+      ],
+      "knowledge": {
+        "definicion": "La TCEA (Tasa de Costo Efectivo Anual) es el costo total anual del crédito: incluye la tasa de interés más comisiones y gastos. Permite comparar préstamos de forma justa.",
+        "ejemplo": "Una TCEA de 45% significa que, en términos anuales, ese es el costo efectivo total del préstamo."
+      }
+    },
+    {
+      "category": "requisitos",
+      "questions": [
+        "¿Qué necesito para un préstamo?",
+        "¿Quiénes pueden acceder?"
+      ],
+      "knowledge": {
+        "perfil": "MYPEs con actividad económica demostrable (bodegas, ferreterías, talleres, textiles, etc.).",
+        "documentos": "Por lo general: RUC activo, documento del titular y referencia del negocio. El detalle lo confirma un asesor.",
+        "nota": "Esta asistente no inicia solicitudes nuevas; para ello, derive a un asesor."
+      }
+    },
+    {
+      "category": "certificado",
+      "questions": [
+        "¿Cómo obtengo mi certificado de no adeudo?",
+        "Ya pagué todo, ¿me dan constancia?"
+      ],
+      "knowledge": {
+        "que_es": "El certificado de no adeudo es la constancia de que ya no mantiene deuda con PrestaUnion respecto de un préstamo cancelado.",
+        "como": "Si su préstamo está cancelado (saldo cero), la asistente puede emitirlo al instante en PDF. Si aún tiene saldo, no procede hasta cancelar."
+      }
+    },
+    {
+      "category": "reclamos",
+      "questions": [
+        "Quiero poner un reclamo",
+        "¿Tienen Libro de Reclamaciones?"
+      ],
+      "knowledge": {
+        "libro": "Sí. PrestaUnion cuenta con Libro de Reclamaciones conforme a Indecopi. Puede registrar un reclamo o queja desde el chat.",
+        "plazo": "Todo reclamo recibe un folio y respuesta en un plazo máximo de 15 días hábiles."
+      }
+    }
+  ]
+}
