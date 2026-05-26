@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Dependency resolution (build context = repo root)
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+
+# Application source (engine + cobranza domain layer)
+COPY apps/agent/ apps/agent/
+
+# Engine modules use absolute imports (from core.X) — run from apps/agent.
+WORKDIR /app/apps/agent
+
+# Run as non-root user
+RUN addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 --home /home/appuser --ingroup appgroup appuser && \
+    mkdir -p /home/appuser/.cache/uv && \
+    chown -R appuser:appgroup /app /home/appuser
+USER appuser
+ENV HOME=/home/appuser
+# uv project root is /app; run uvicorn from there with the app on the path.
+ENV PYTHONPATH=/app/apps/agent
+
+EXPOSE 8000
+
+CMD ["uv", "run", "--project", "/app", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

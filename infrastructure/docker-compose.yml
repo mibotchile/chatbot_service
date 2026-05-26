@@ -1,0 +1,20 @@
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.agent
+    env_file:
+      - ../.env
+    volumes:
+      # Tenants are mounted read-only; api/main.py resolves /app/tenants.
+      - ../tenants:/app/tenants:ro
+    restart: unless-stopped
+    networks:
+      - traefik_proxy
+      - prod_backend
+
+networks:
+  traefik_proxy:
+    external: true
+  prod_backend:
+    external: true

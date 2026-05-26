@@ -1,0 +1,23 @@
+{
+  "slug": "_template",
+  "id": "_template",
+  "name": "Entidad Demo",
+  "domain": "demo.example.com",
+  "branding": {
+    "primary_color": "#1d4ed8",
+    "logo_url": "",
+    "favicon_url": ""
+  },
+  "content": {
+    "hero_headline": "Te ayudamos a regularizar tu situacion"
+  },
+  "contact": {
+    "email": "",
+    "whatsapp": ""
+  },
+  "agent": {
+    "agent_name": "Agente",
+    "excluded_tools": [],
+    "skills": null
+  }
+}

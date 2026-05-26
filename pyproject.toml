@@ -1,0 +1,45 @@
+[project]
+name = "chatbot-cobranza"
+version = "0.1.0"
+description = "Multi-tenant AI collections (cobranza) chatbot — engine extracted from sorelia"
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "anthropic>=0.52.0",
+    "asyncpg>=0.30.0",
+    "redis>=5.0.0",
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.9.0",
+    "python-dotenv>=1.1.0",
+    "loguru>=0.7.0",
+    "httpx>=0.28.0",
+    "dramatiq[redis]>=0.11.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.26.0",
+    "pytest-httpx>=0.35.0",
+    "ruff>=0.11.0",
+]
+
+# Not a packaged library — it's an app run from source. Avoid build backend.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Engine modules use absolute imports (from core.X, from api.X, from config.X).
+# Put apps/agent on the path so both the app and tests resolve them.
+pythonpath = ["apps/agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B"]

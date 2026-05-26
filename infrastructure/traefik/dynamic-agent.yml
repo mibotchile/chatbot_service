@@ -1,0 +1,18 @@
+# Traefik dynamic config for the cobranza agent backend.
+# Replace YOUR_DOMAIN with the deployment host. One backend serves all tenants
+# (multi-tenant resolved by tenant_id in the request payload).
+http:
+  routers:
+    cobranza-agent:
+      rule: "Host(`YOUR_DOMAIN`) && PathPrefix(`/api/v1`)"
+      entryPoints:
+        - websecure
+      service: cobranza-agent
+      tls:
+        certResolver: le
+
+  services:
+    cobranza-agent:
+      loadBalancer:
+        servers:
+          - url: "http://agent:8000"
