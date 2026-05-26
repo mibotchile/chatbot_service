@@ -1,80 +1,83 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="dark">
+<html lang="es" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
   <title>PrestaUnion · Portal de clientes</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230083E0'/%3E%3Ctext x='16' y='22' font-family='Inter,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --vox-bg:         #09090b;
-      --vox-surface:    #111113;
-      --vox-surface-2:  #18181b;
-      --vox-border:     #27272a;
-      --vox-text:       #fafafa;
-      --vox-text-muted: #a1a1aa;
-      --vox-text-subtle:#71717a;
-      --vox-brand:      #f5c518;
-      --vox-brand-hover:#e0b315;
-      --vox-brand-soft: #3a2e08;
-      --vox-success:    #22c55e;
+      --vox-bg:         #ffffff;
+      --vox-surface:    #ffffff;
+      --vox-surface-2:  #f7f8fa;
+      --vox-border:     #D7D8DB;
+      --vox-border-soft:#eef0f3;
+      --vox-text:       #1A1A1C;
+      --vox-text-muted: #4a5568;
+      --vox-text-subtle:#94a3b8;
+      --vox-brand:      #0083E0;
+      --vox-brand-hover:#0070bf;
+      --vox-brand-soft: #C5E4F9;
+      --vox-success:    #10b981;
     }
     * { font-family: 'Inter', system-ui, sans-serif; box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--vox-bg); color: var(--vox-text); }
     body {
       min-height: 100vh;
-      background-image: radial-gradient(circle at top right, rgba(245,197,24,0.06), transparent 50%);
+      background-image:
+        radial-gradient(ellipse 70% 50% at 85% 0%, rgba(0,131,224,0.06), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 0% 100%, rgba(197,228,249,0.30), transparent 60%);
     }
     .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
 
-    /* Header */
-    header { border-bottom: 1px solid var(--vox-border); position: sticky; top: 0; z-index: 20;
-      background: rgba(9,9,11,0.85); backdrop-filter: blur(12px); }
+    header { border-bottom: 1px solid var(--vox-border-soft); position: sticky; top: 0; z-index: 20;
+      background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
     .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
     .wordmark { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
     .wordmark .accent { color: var(--vox-brand); }
     .status-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--vox-text-muted);
       background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 9999px; padding: 6px 12px; }
-    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vox-success); box-shadow: 0 0 8px var(--vox-success); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vox-success); box-shadow: 0 0 0 3px rgba(16,185,129,0.18); }
 
-    /* Hero */
     .hero { padding: 72px 0 40px; }
     .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--vox-brand); }
     .hero h1 { font-size: 44px; line-height: 1.1; font-weight: 800; letter-spacing: -0.03em; margin: 14px 0 0; max-width: 760px; }
     .hero h1 .accent { color: var(--vox-brand); }
     .hero p.lead { font-size: 18px; line-height: 1.6; color: var(--vox-text-muted); margin: 18px 0 0; max-width: 620px; }
+    .hero .cta-hint { margin-top: 26px; display: inline-flex; align-items: center; gap: 9px; font-size: 14px; color: var(--vox-text-muted);
+      background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 9999px; padding: 9px 16px; }
+    .hero .cta-hint b { color: var(--vox-text); font-weight: 600; }
 
-    /* Access cards */
     .section-label { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--vox-text-subtle); margin: 56px 0 18px; }
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } .hero h1 { font-size: 34px; } }
     .card {
       background: var(--vox-surface); border: 1px solid var(--vox-border); border-radius: 16px;
-      padding: 24px; cursor: pointer; transition: border-color .2s, transform .2s; text-align: left; color: inherit;
-      display: flex; flex-direction: column; gap: 0; text-decoration: none;
+      padding: 24px; cursor: pointer; transition: border-color .2s, transform .2s, box-shadow .2s;
+      text-align: left; color: inherit; display: flex; flex-direction: column; text-decoration: none;
+      box-shadow: 0 1px 3px rgba(19,53,77,0.04);
     }
-    .card:hover { border-color: var(--vox-brand); transform: translateY(-2px); }
+    .card:hover { border-color: var(--vox-brand); transform: translateY(-2px); box-shadow: 0 12px 28px -10px rgba(0,131,224,0.18); }
     .card .ico { width: 38px; height: 38px; border-radius: 10px; background: var(--vox-brand-soft);
       display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
-    .card .ico svg { width: 20px; height: 20px; color: var(--vox-brand); }
+    .card .ico svg { width: 20px; height: 20px; color: var(--vox-brand-hover); }
     .card .who { font-weight: 700; font-size: 16px; }
     .card .biz { font-size: 13px; color: var(--vox-text-muted); margin-top: 2px; }
     .card .badge { margin-top: 14px; align-self: flex-start; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 9999px; }
-    .badge.aldia { background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
-    .badge.mora  { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
-    .badge.libre { background: var(--vox-brand-soft); color: var(--vox-brand); border: 1px solid rgba(245,197,24,0.3); }
+    .badge.aldia { background: rgba(16,185,129,0.12); color: #059669; }
+    .badge.mora  { background: rgba(239,68,68,0.12); color: #dc2626; }
+    .badge.libre { background: var(--vox-brand-soft); color: var(--vox-brand-hover); }
     .card .go { margin-top: 18px; font-size: 13px; font-weight: 600; color: var(--vox-brand); display: inline-flex; align-items: center; gap: 6px; }
 
-    /* Feature row */
     .features { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-top: 24px; }
     @media (max-width: 760px) { .features { grid-template-columns: 1fr; } }
     .feat { background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 12px; padding: 18px; }
     .feat h3 { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
     .feat p { font-size: 13px; color: var(--vox-text-muted); margin: 0; line-height: 1.5; }
 
-    footer { margin-top: 72px; padding: 28px 0; border-top: 1px solid var(--vox-border); color: var(--vox-text-subtle); font-size: 12px; text-align: center; }
+    footer { margin-top: 72px; padding: 28px 0; border-top: 1px solid var(--vox-border-soft); color: var(--vox-text-subtle); font-size: 12px; text-align: center; }
   </style>
 </head>
 <body>
@@ -90,11 +93,15 @@
       <div class="eyebrow">Portal de clientes · Demostración</div>
       <h1>Resolvé tu préstamo con <span class="accent">Ada</span>, tu asistente de PrestaUnion.</h1>
       <p class="lead">Consultá tu saldo y cuotas, presentá un reclamo o descargá tu certificado de no adeudo. Atención clara, sin letra chica, las 24 horas.</p>
+      <div class="cta-hint">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:16px;height:16px;color:var(--vox-brand)"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        Hablá con <b>Ada</b> desde el botón de chat, abajo a la derecha.
+      </div>
     </section>
 
     <div class="section-label">Ingresá a la demo como uno de estos clientes</div>
     <div class="cards">
-      <a class="card" href="chat.html?ct=demo-juan">
+      <a class="card" href="?ct=demo-juan">
         <div class="ico">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21V7a2 2 0 012-2h14a2 2 0 012 2v14M3 21h18M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"/></svg>
         </div>
@@ -103,7 +110,7 @@
         <span class="badge aldia">Al día</span>
         <span class="go">Entrar como Juan <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
       </a>
-      <a class="card" href="chat.html?ct=demo-carlos">
+      <a class="card" href="?ct=demo-carlos">
         <div class="ico">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-5.2-5.2M8 11h6"/></svg>
         </div>
@@ -112,7 +119,7 @@
         <span class="badge mora">En mora</span>
         <span class="go">Entrar como Carlos <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
       </a>
-      <a class="card" href="chat.html?ct=demo-maria">
+      <a class="card" href="?ct=demo-maria">
         <div class="ico">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
@@ -134,5 +141,8 @@
   <footer class="wrap">
     PrestaUnion · Demostración con datos 100% ficticios. No corresponde a personas ni empresas reales.
   </footer>
+
+  <!-- Floating chat widget. Reads ?ct= from the URL (set by the access cards). -->
+  <script src="widget.js"></script>
 </body>
 </html>

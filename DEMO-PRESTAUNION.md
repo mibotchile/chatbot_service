@@ -1,11 +1,15 @@
 # DEMO — PrestaUnion (cobranza MYPE)
 
 > Demostración funcional, **marca blanca PrestaUnion** (fintech ficticia de préstamos a MYPEs).
-> Datos 100% ficticios. Sin integración real, sin base de datos. Theming: Onbotgo Vox (dark + gold).
+> Datos 100% ficticios. Sin integración real, sin base de datos.
+> **Frontend**: landing en **tema claro Vox** (blanco + azul `#0083E0` + Inter) con un
+> **widget de chat flotante embebible** (FAB abajo-derecha → panel anclado, estilo producto).
 
 ## Qué muestra
 
-Una asistente de cobranzas llamada **Ada** que resuelve tres casos de uso, con un **gate de identidad duro**: sin ingresar por su enlace, el usuario NO ve datos de ninguna cuenta.
+Una asistente de cobranzas llamada **Ada** —disponible como **widget flotante** sobre el portal—
+que resuelve tres casos de uso, con un **gate de identidad duro**: sin ingresar por su enlace, el
+usuario NO ve datos de ninguna cuenta.
 
 1. **Consulta de deuda** — saldo, cuotas pagadas/pendientes, próximo vencimiento, estado (al día / en mora), recargo por mora y TCEA.
 2. **Reclamos (Libro de Reclamaciones, Indecopi)** — registra reclamo/queja, devuelve folio `LR-2026-NNNNN` y plazo de 15 días hábiles.
@@ -50,21 +54,37 @@ El frontend se monta como estático dentro del backend (mismo origen → sin fri
 http://localhost:8099/
 ```
 
+Abrí el portal y tocá el **botón de chat flotante** (FAB azul, abajo a la derecha) para hablar
+con Ada. Las tarjetas de acceso recargan el portal con el token del escenario.
+
 ---
 
 ## Los 3 enlaces de acceso (para mostrar en vivo)
 
-Desde el portal hay un botón por escenario; o entrá directo por URL:
+Desde el portal hay una tarjeta por escenario; o entrá directo por URL (abre el portal con la
+identidad ya cargada — luego tocá el FAB para abrir el widget):
 
 | Escenario | Enlace | Estado |
 |---|---|---|
-| **Juan — al día** | `http://localhost:8099/chat.html?ct=demo-juan` | Bodega Don Juan E.I.R.L. · saldo S/ 4,850 · 3 cuotas |
-| **Carlos — en mora** | `http://localhost:8099/chat.html?ct=demo-carlos` | Ferretería El Tornillo S.A.C. · saldo S/ 2,300 · vencido 8 días |
-| **María — sin deuda** | `http://localhost:8099/chat.html?ct=demo-maria` | Textiles María E.I.R.L. · saldo S/ 0 · cancelado |
+| **Juan — al día** | `http://localhost:8099/?ct=demo-juan` | Bodega Don Juan E.I.R.L. · saldo S/ 4,850 · 3 cuotas |
+| **Carlos — en mora** | `http://localhost:8099/?ct=demo-carlos` | Ferretería El Tornillo S.A.C. · saldo S/ 2,300 · vencido 8 días |
+| **María — sin deuda** | `http://localhost:8099/?ct=demo-maria` | Textiles María E.I.R.L. · saldo S/ 0 · cancelado |
 
-El parámetro `?ct=` es el **token de campaña** (identidad). El portal lo pasa al widget y el
-backend lo resuelve server-side a un perfil verificado. El `account_id` **nunca** lo dicta el
-usuario ni el LLM.
+> **Tip de preview sin LLM**: agregá `&demo=open` (ej. `…/?ct=demo-maria&demo=open`) y el widget
+> se abre con mensajes de ejemplo precargados — útil para mostrar el look sin gastar API.
+
+El parámetro `?ct=` es el **token de campaña** (identidad). El portal lo lee y el widget lo manda
+al backend, que lo resuelve server-side a un perfil verificado. El `account_id` **nunca** lo dicta
+el usuario ni el LLM.
+
+### Embeber el widget en cualquier página
+
+El widget es un único `widget.js` autocontenido (inyecta FAB + panel + estilos). Para integrarlo
+en otra web basta una línea:
+
+```html
+<script src="https://<host>/widget.js" data-api="https://<host>" data-ct="demo-juan"></script>
+```
 
 ---
 
@@ -91,7 +111,7 @@ enlace seguro de campaña; al entrar, ya queda identificado sin tipear ningún d
 3. Contraste: si pedís el certificado como Juan o Carlos → Ada explica que **no procede** hasta cancelar.
 
 ### Gate de identidad (opcional, impactante)
-- Abrir el chat **sin** `?ct=` (`http://localhost:8099/chat.html`) → tarjeta "Sesión no identificada".
+- Abrir el portal **sin** `?ct=` (`http://localhost:8099/`) y tocar el FAB → tira "Sesión no identificada".
 - Preguntar "¿cuánto debo?" → Ada **no revela nada** y pide ingresar por el enlace seguro.
   El bloqueo es **duro** (ToolRegistry), no depende del prompt.
 
@@ -121,12 +141,17 @@ uv run pytest -v      # 20 passed
 - **API key**: `export COBRANZA_ANTHROPIC_API_KEY=sk-ant-...` (sin ella, el chat no llega a Claude).
 - **Puerto**: 8099 (ajustable con `--port`).
 - **URL**: `http://localhost:8099/` (portal) — backend y frontend van juntos.
-- **Branding**: theming Vox (dark + gold + Inter), wordmark de texto "PrestaUnion".
-  TODO opcional: reemplazar el wordmark por un logo si el cliente provee uno.
+- **Branding**: theming Vox **tema claro** (blanco + azul `#0083E0` + Inter), wordmark de texto
+  "PrestaUnion". TODO opcional: reemplazar el wordmark por un logo si el cliente provee uno.
 
 ## Notas técnicas
 
+- **Frontend** (`frontend/`): `index.html` (landing tema claro) + `widget.js` (widget flotante
+  embebible: FAB + panel, CSS scoped, sin dependencias). El backend lo sirve mismo-origen
+  (StaticFiles montado al final → cero CORS).
+- El widget abre con FAB azul abajo-derecha; panel ~384×600 (mobile: casi fullscreen); header con
+  avatar de Ada + "En línea ahora" + reset/minimizar; footer "Powered by PrestaUnion".
+- Botón **reset** del header reinicia la conversación (nuevo welcome, `conversation_id` nuevo).
 - Reclamos persisten en `/tmp/prestaunion_reclamos.json`; certificados en `/tmp/prestaunion_certificates/`.
 - Perfiles ficticios en `tenants/prestaunion/mock/borrowers.json`.
 - Identidad, knowledge y guardrails del tenant en `tenants/prestaunion/`.
-- Para resetear la conversación, recargá el chat (cada sesión usa un `conversation_id` nuevo en memoria).
