@@ -8,12 +8,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # ── LLM provider selection (Strategy adapter; NOT LiteLLM) ──
+    # COBRANZA_LLM_PROVIDER = "anthropic" (default) | "openai"
+    llm_provider: str = "anthropic"
+
     anthropic_api_key: str = ""  # Default/fallback API key
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
     # Per-tenant API keys: JSON {"tenant_id": "sk-ant-..."}
     # Falls back to anthropic_api_key if tenant not mapped
     anthropic_tenant_keys: str = "{}"
+
+    # OpenAI (active only when llm_provider == "openai")
+    openai_api_key: str = ""  # COBRANZA_OPENAI_API_KEY
+    openai_model: str = "gpt-4o"
 
     database_url: str = "postgresql://nexo_ai:pass@localhost:5432/nexo"
     database_schema: str = "dev"
@@ -82,7 +90,14 @@ def resolve_whatsapp_tenant(instance_name: str) -> dict | None:
 
 
 def resolve_api_key(tenant_id: str | None = None) -> str:
-    """Get Anthropic API key for a tenant from TENANT_KEYS mapping."""
+    """Resolve the API key for the ACTIVE provider.
+
+    OpenAI uses a single key. Anthropic supports per-tenant keys
+    (anthropic_tenant_keys JSON), falling back to anthropic_api_key.
+    """
+    if (settings.llm_provider or "anthropic").lower() == "openai":
+        return settings.openai_api_key
+
     keys = json.loads(settings.anthropic_tenant_keys)
     if tenant_id and tenant_id in keys:
         return keys[tenant_id]

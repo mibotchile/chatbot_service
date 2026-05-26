@@ -1,4 +1,8 @@
-"""Anthropic tool definitions for the PrestaUnion cobranza agent (DEMO).
+"""NEUTRAL tool definitions for the PrestaUnion cobranza agent (DEMO).
+
+Provider-agnostic schema: each tool is {name, description, parameters} where
+`parameters` is a JSON Schema object. Providers translate it (Anthropic →
+`input_schema`, OpenAI → `function.parameters`). See core/llm/.
 
 Generic engine tools (suggest_quick_replies, navigate_page, collect_contact_info,
 get_lead_status) are kept. The cobranza domain has THREE tools:
@@ -17,7 +21,7 @@ TOOL_DEFINITIONS = [
     {
         "name": "get_lead_status",
         "description": "Get current lead qualification level and missing data. Use to decide what to ask next.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "conversation_id": {"type": "string", "description": "Current conversation ID"},
@@ -28,7 +32,7 @@ TOOL_DEFINITIONS = [
     {
         "name": "navigate_page",
         "description": "Scroll to a section on the current page or highlight an element. Use instead of re-fetching data the user can already see.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "scroll_to": {"type": "string", "description": "CSS selector to scroll to"},
@@ -40,7 +44,7 @@ TOOL_DEFINITIONS = [
     {
         "name": "suggest_quick_replies",
         "description": "OBLIGATORIO: llama esta tool AL FINAL de cada respuesta para generar opciones de respuesta rapida, coherentes con lo que acabas de preguntar o proponer.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "options": {
@@ -57,7 +61,7 @@ TOOL_DEFINITIONS = [
     {
         "name": "collect_contact_info",
         "description": "Show an inline contact form. Use ONLY in canal frio (sin identidad verificada) si el usuario quiere que lo contacte un asesor.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "form_type": {"type": "string", "enum": ["contact"], "description": "contact = nombre + telefono"},
@@ -74,7 +78,7 @@ TOOL_DEFINITIONS = [
             "recargo por mora y TCEA. NO recibe parámetros: la cuenta se resuelve por la identidad "
             "verificada del usuario. Solo disponible si el usuario ingresó por su enlace."
         ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
+        "parameters": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "registrar_reclamo",
@@ -83,7 +87,7 @@ TOOL_DEFINITIONS = [
             "Devuelve el número de folio y el plazo de respuesta (15 días hábiles). "
             "Pide al usuario el tipo y una descripción ANTES de llamar esta tool."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "tipo": {
@@ -106,12 +110,12 @@ TOOL_DEFINITIONS = [
             "(préstamo cancelado). Si tiene deuda pendiente, la tool indica que no procede. "
             "NO recibe parámetros: la cuenta se resuelve por la identidad verificada."
         ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
+        "parameters": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "escalate_to_human",
         "description": "Deriva la conversación a un asesor humano de PrestaUnion (consultas legales, disputas formales, casos sensibles, o usuario sin enlace).",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "reason": {"type": "string", "description": "Motivo de la derivación"},

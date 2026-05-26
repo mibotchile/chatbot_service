@@ -26,17 +26,30 @@ cd /home/ricardo/projects/chatbot-cobranza
 uv sync
 ```
 
-### 2. API key de Anthropic (necesaria para la conversación en vivo)
+### 2. Elegir proveedor LLM (Anthropic o OpenAI)
 
-La demo conversacional usa Claude Haiku 4.5. **Exportá tu key antes de levantar el server:**
+El agente es **multi-proveedor** vía un adaptador propio (patrón Strategy, sin LiteLLM). Se elige
+con el flag `COBRANZA_LLM_PROVIDER` (default `anthropic`) y se exporta la key del proveedor activo:
+
+| Proveedor | Flag | Key a exportar | Modelo (default) |
+|---|---|---|---|
+| **Anthropic** (default) | `COBRANZA_LLM_PROVIDER=anthropic` | `COBRANZA_ANTHROPIC_API_KEY="sk-ant-..."` | Claude Haiku 4.5 (`COBRANZA_ANTHROPIC_MODEL`) |
+| **OpenAI** | `COBRANZA_LLM_PROVIDER=openai` | `COBRANZA_OPENAI_API_KEY="sk-..."` | `gpt-4o` (`COBRANZA_OPENAI_MODEL`) |
 
 ```bash
-export COBRANZA_ANTHROPIC_API_KEY="sk-ant-..."   # o ANTHROPIC_API_KEY
+# Opción A — Anthropic (mantiene prompt caching nativo)
+export COBRANZA_LLM_PROVIDER=anthropic
+export COBRANZA_ANTHROPIC_API_KEY="sk-ant-..."
+
+# Opción B — OpenAI
+export COBRANZA_LLM_PROVIDER=openai
+export COBRANZA_OPENAI_API_KEY="sk-..."
 ```
 
-> Sin la key, el server arranca igual y el frontend se ve, pero el chat responde con un
-> mensaje de fallback (no llega a Claude). Las 3 herramientas y el certificado PDF funcionan
-> de todos modos (probados con tests).
+> El server **arranca con cualquiera de los dos flags aunque falte la key del proveedor inactivo**.
+> Sin la key del proveedor activo, el chat responde con un mensaje de fallback (no llega al LLM),
+> pero el frontend, las 3 herramientas y el certificado PDF funcionan igual (probados con tests).
+> Solo el proveedor activo se instancia; el caching de Anthropic es nativo (no se pierde con el adaptador).
 
 ### 3. Levantar el server (sirve backend + frontend en el mismo puerto)
 
@@ -128,17 +141,19 @@ enlace seguro de campaña; al entrar, ya queda identificado sin tipear ningún d
 | Certificado PDF | OK (genera `%PDF`, descargable vía `GET /api/v1/cobranza/certificate/{file}`) |
 | Gate sin identidad | OK (tools devuelven `{"blocked":"identity_required"}`; E2E HTTP probado) |
 | `tools_schema` sin `account_id` | OK (verificado: 0 leaks de account/borrower en los schemas) |
-| `uv run pytest -v` | **20 passed** |
+| LLM multi-proveedor | OK (factory anthropic/openai; server arranca con ambos flags sin key del inactivo) |
+| `uv run pytest -v` | **33 passed** (20 demo + 13 del paquete LLM) |
 
 ```bash
-uv run pytest -v      # 20 passed
+uv run pytest -v      # 33 passed
 ```
 
 ---
 
 ## Qué necesita el dueño para levantarla
 
-- **API key**: `export COBRANZA_ANTHROPIC_API_KEY=sk-ant-...` (sin ella, el chat no llega a Claude).
+- **Proveedor + key**: elegí `COBRANZA_LLM_PROVIDER` (`anthropic` default | `openai`) y exportá la key
+  del activo: `COBRANZA_ANTHROPIC_API_KEY` o `COBRANZA_OPENAI_API_KEY` (ver sección "Elegir proveedor LLM").
 - **Puerto**: 8099 (ajustable con `--port`).
 - **URL**: `http://localhost:8099/` (portal) — backend y frontend van juntos.
 - **Branding**: theming Vox **tema claro** (blanco + azul `#0083E0` + Inter), wordmark de texto
@@ -146,6 +161,12 @@ uv run pytest -v      # 20 passed
 
 ## Notas técnicas
 
+- **LLM multi-proveedor** (`apps/agent/core/llm/`): adaptador propio (patrón Strategy), sin LiteLLM.
+  `base.py` (interfaz `LLMProvider` + tipos neutros `LLMResponse`/`ToolCall`), `anthropic_provider.py`
+  (mantiene prompt caching nativo con `cache_control`), `openai_provider.py` (chat.completions,
+  traduce tools a formato `function` y parsea `arguments` string→dict), `factory.py`
+  (`build_llm_provider`). El agente (`core/agent.py`) solo conoce el formato neutro. Las tool defs
+  (`config/tools_schema.py`) son neutras (`name`/`description`/`parameters`); cada provider las traduce.
 - **Frontend** (`frontend/`): `index.html` (landing tema claro) + `widget.js` (widget flotante
   embebible: FAB + panel, CSS scoped, sin dependencias). El backend lo sirve mismo-origen
   (StaticFiles montado al final → cero CORS).

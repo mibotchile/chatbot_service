@@ -1,4 +1,10 @@
-"""Sorelia agent core — single LLM call with function calling."""
+"""Sorelia agent core — provider-agnostic LLM loop with function calling.
+
+The agent knows ONLY the neutral LLM interface (core/llm). It builds the system
+prompt + neutral message list + neutral tool defs, calls `provider.complete(...)`,
+and works with the normalized `LLMResponse` (`.text`, `.tool_calls`). The same
+loop runs unchanged on Anthropic (with prompt caching) or OpenAI.
+"""
 
 import json
 from typing import Any
@@ -6,7 +12,7 @@ from typing import Any
 from loguru import logger
 from prompts.system import build_system_prompt
 from config.tools_schema import TOOL_DEFINITIONS
-from config.settings import settings
+from core.llm import LLMProvider, ToolCall
 from tools import ToolRegistry
 from core.response_builder import build_ui_actions
 from core.prospect_profile import build_prospect_profile, truncate_history
@@ -15,8 +21,8 @@ from core.prospect_profile import build_prospect_profile, truncate_history
 class SoreliaAgent:
     """Core agent: context assembly → LLM with tools → tool execution → response."""
 
-    def __init__(self, llm_client, tool_registry: ToolRegistry | None = None, tenant=None):
-        self.llm_client = llm_client
+    def __init__(self, provider: LLMProvider, tool_registry: ToolRegistry | None = None, tenant=None):
+        self.provider = provider
         self.tool_registry = tool_registry or ToolRegistry()
         self.tenant = tenant
         self.prompt_builder = _PromptBuilder(tenant=tenant)
@@ -39,24 +45,16 @@ class SoreliaAgent:
         # Truncate history: profile replaces old messages, keep only recent ones
         recent = truncate_history(history)
 
-        # Inject profile as first message if we truncated
-        messages = []
+        # Neutral message list ({"role", "content"} text turns).
+        messages: list[dict[str, Any]] = []
         if len(history) > len(recent) and profile:
             messages.append({"role": "user", "content": f"[Contexto de la conversacion anterior]\n{profile}"})
             messages.append({"role": "assistant", "content": "Entendido, continuo la conversacion con ese contexto."})
         messages.extend(recent)
         messages.append({"role": "user", "content": text})
 
-        model = settings.anthropic_model
         token_savings = len(history) - len(recent)
         logger.info(f"Agent call | conv={conversation_id[:12]} | msg='{text[:50]}' | lead={lead_state.get('level', '?')} | history={len(history)} truncated={token_savings}")
-
-        # Anthropic prompt caching: cache system prompt across turns
-        system_with_cache = [{
-            "type": "text",
-            "text": system_prompt,
-            "cache_control": {"type": "ephemeral"},
-        }]
 
         # Filter tools per tenant config (agent.excluded_tools in tenant.config.json)
         _excluded_tools = set()
@@ -65,90 +63,66 @@ class SoreliaAgent:
             _excluded_tools = set(_tenant.excluded_tools or [])
         tools = [t for t in TOOL_DEFINITIONS if t["name"] not in _excluded_tools] if _excluded_tools else TOOL_DEFINITIONS
 
-        # Single LLM call with tools
-        response = await self.llm_client.messages.create(
-            model=model,
-            max_tokens=1024,
-            system=system_with_cache,
-            messages=messages,
-            tools=tools,
+        # First LLM call with tools (neutral request → neutral response)
+        response = await self.provider.complete(
+            system=system_prompt, messages=messages, tools=tools, max_tokens=1024,
         )
 
-        # Parse Anthropic response content blocks
-        tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
-        text_blocks = [b for b in response.content if b.type == "text"]
-
-        # If LLM wants to call tools
-        ui_actions = {}
-        tool_pairs = []
+        ui_actions: dict = {}
+        tool_pairs: list[tuple[str, dict]] = []
         suggested_replies = None
 
-        # Separate suggest_quick_replies from other tools
-        data_tools = [b for b in tool_use_blocks if b.name != "suggest_quick_replies"]
-        chip_tools = [b for b in tool_use_blocks if b.name == "suggest_quick_replies"]
+        # Separate suggest_quick_replies from data tools
+        data_tools = [tc for tc in response.tool_calls if tc.name != "suggest_quick_replies"]
+        chip_tools = [tc for tc in response.tool_calls if tc.name == "suggest_quick_replies"]
 
         if data_tools:
-            tool_names = [b.name for b in data_tools]
-            logger.info(f"Tool calls: {tool_names}")
+            logger.info(f"Tool calls: {[tc.name for tc in data_tools]}")
             tool_results = await self._execute_tools(data_tools)
 
-            tool_pairs = [
-                (block.name, result)
-                for block, result in zip(data_tools, tool_results)
-            ]
+            tool_pairs = [(tc.name, result) for tc, result in zip(data_tools, tool_results)]
             ui_actions = build_ui_actions(tool_pairs)
 
-            # Add assistant response + tool results to messages, call LLM again
-            messages.append({"role": "assistant", "content": response.content})
-
-            tool_result_content = [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
+            # Re-add the assistant tool-call turn + tool results (neutral shape),
+            # then call the model again for the final answer.
+            all_calls = data_tools + chip_tools
+            messages.append({
+                "role": "assistant",
+                "content": response.text,
+                "tool_calls": all_calls,
+            })
+            for tc, result in zip(data_tools, tool_results):
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
                     "content": json.dumps(result, ensure_ascii=False),
-                }
-                for block, result in zip(data_tools, tool_results)
-            ]
-            # Include chip tool results too if present
-            for block in chip_tools:
-                chip_result = await self.tool_registry.execute(block.name, block.input)
+                })
+            for tc in chip_tools:
+                chip_result = await self.tool_registry.execute(tc.name, tc.input)
                 suggested_replies = chip_result.get("options", [])
-                tool_result_content.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
                     "content": json.dumps(chip_result, ensure_ascii=False),
                 })
 
-            messages.append({"role": "user", "content": tool_result_content})
-
-            final_response = await self.llm_client.messages.create(
-                model=model,
-                max_tokens=1024,
-                system=system_with_cache,
-                messages=messages,
-                tools=TOOL_DEFINITIONS,
+            final = await self.provider.complete(
+                system=system_prompt, messages=messages, tools=TOOL_DEFINITIONS, max_tokens=1024,
             )
-
-            content = next((b.text for b in final_response.content if b.type == "text"), "")
-
-            # Check if final response also has chip suggestions
-            for b in final_response.content:
-                if b.type == "tool_use" and b.name == "suggest_quick_replies":
-                    chip_result = await self.tool_registry.execute(b.name, b.input)
+            content = final.text
+            for tc in final.tool_calls:
+                if tc.name == "suggest_quick_replies":
+                    chip_result = await self.tool_registry.execute(tc.name, tc.input)
                     suggested_replies = chip_result.get("options", [])
         else:
-            content = next((b.text for b in text_blocks), "")
-
-            # Handle chip tools from non-data-tool responses
-            for block in chip_tools:
-                chip_result = await self.tool_registry.execute(block.name, block.input)
+            content = response.text
+            for tc in chip_tools:
+                chip_result = await self.tool_registry.execute(tc.name, tc.input)
                 suggested_replies = chip_result.get("options", [])
 
-        # Force chip generation if LLM didn't call suggest_quick_replies
+        # Force chip generation if the model didn't call suggest_quick_replies
         if not suggested_replies and content:
-            suggested_replies = await self._force_chip_generation(
-                content, lead_state, tool_pairs, system_with_cache, model,
-            )
+            suggested_replies = await self._force_chip_generation(content, lead_state, tool_pairs)
 
         return {
             "content": content or "",
@@ -165,52 +139,44 @@ class SoreliaAgent:
         content: str,
         lead_state: dict,
         tool_pairs: list[tuple[str, dict]],
-        system_with_cache: list[dict],
-        model: str,
     ) -> list[str] | None:
-        """Lightweight LLM call to force quick reply generation when main flow didn't produce them."""
+        """Lightweight forced call to produce quick replies when the main flow didn't."""
         chip_tool = next((t for t in TOOL_DEFINITIONS if t["name"] == "suggest_quick_replies"), None)
         if not chip_tool:
             return None
 
         tools_called = [name for name, _ in tool_pairs] if tool_pairs else ["ninguna"]
         collected = lead_state.get("collected", {})
-
+        system = (
+            "Genera opciones de respuesta rapida para el usuario. "
+            "Deben ser 2-4 opciones cortas (2-5 palabras), coherentes con lo que acabas de decir. "
+            "Usa datos reales: acciones concretas de cobranza."
+        )
+        messages = [{"role": "user", "content": (
+            f"Tu respuesta al cliente: {content[:300]}\n"
+            f"Tools usadas: {', '.join(tools_called)}\n"
+            f"Datos del lead: {json.dumps(collected, ensure_ascii=False)}"
+        )}]
         try:
-            chip_response = await self.llm_client.messages.create(
-                model=model,
-                max_tokens=256,
-                system=[{"type": "text", "text": (
-                    "Genera opciones de respuesta rapida para el usuario. "
-                    "Deben ser 2-4 opciones cortas (2-5 palabras), coherentes con lo que acabas de decir. "
-                    "Usa datos reales: nombres de proyectos, distritos, acciones concretas."
-                )}],
-                messages=[{"role": "user", "content": (
-                    f"Tu respuesta al cliente: {content[:300]}\n"
-                    f"Tools usadas: {', '.join(tools_called)}\n"
-                    f"Datos del lead: {json.dumps(collected, ensure_ascii=False)}"
-                )}],
-                tools=[chip_tool],
-                tool_choice={"type": "tool", "name": "suggest_quick_replies"},
+            chip_response = await self.provider.complete(
+                system=system, messages=messages, tools=[chip_tool],
+                max_tokens=256, force_tool="suggest_quick_replies",
             )
-
-            for b in chip_response.content:
-                if b.type == "tool_use" and b.name == "suggest_quick_replies":
-                    result = await self.tool_registry.execute(b.name, b.input)
+            for tc in chip_response.tool_calls:
+                if tc.name == "suggest_quick_replies":
+                    result = await self.tool_registry.execute(tc.name, tc.input)
                     options = result.get("options", [])
                     if options:
                         logger.debug(f"Forced chip generation: {options}")
                         return options
         except Exception:
             logger.opt(exception=True).debug("Forced chip generation failed (non-blocking)")
-
         return None
 
-    async def _execute_tools(self, tool_use_blocks) -> list[dict]:
+    async def _execute_tools(self, tool_calls: list[ToolCall]) -> list[dict]:
         results = []
-        for block in tool_use_blocks:
-            result = await self.tool_registry.execute(block.name, block.input)
-            results.append(result)
+        for tc in tool_calls:
+            results.append(await self.tool_registry.execute(tc.name, tc.input))
         return results
 
 

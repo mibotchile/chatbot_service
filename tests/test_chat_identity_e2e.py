@@ -1,8 +1,9 @@
 """End-to-end HTTP test of the identity gate through the real /api/v1/chat path.
 
-The Anthropic client is faked (no API key / network needed). The fake LLM
-always asks to call `consultar_deuda`, so we observe whether the ToolRegistry
-gate — wired from the resolved campaign token — lets it through or blocks it.
+The LLM provider is faked (no API key / network needed) by patching
+`build_llm_provider`. The fake provider always asks to call `consultar_deuda` on
+the first turn, then echoes whether the tool was blocked — so we observe whether
+the ToolRegistry gate (wired from the resolved campaign token) lets it through.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+
+from core.llm import LLMProvider, LLMResponse, ToolCall
 
 
 def _tokens():
@@ -26,55 +29,30 @@ def _tokens():
     return csrf, session
 
 
-class _Block:
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
-
-
-class _Resp:
-    def __init__(self, content):
-        self.content = content
-
-
-class _FakeMessages:
-    """First create() asks for consultar_deuda; second returns final text echoing
-    whether the tool was blocked."""
+class _FakeProvider(LLMProvider):
+    """Turn 1 → tool_call consultar_deuda; turn 2 → text echoing tool result."""
 
     def __init__(self):
         self._calls = 0
-        self.last_tool_result = None
 
-    async def create(self, **kwargs):
+    async def complete(self, *, system, messages, tools, model=None, max_tokens=1024, force_tool=None):
         self._calls += 1
         if self._calls == 1:
-            return _Resp([
-                _Block(type="tool_use", id="t1", name="consultar_deuda", input={}),
-            ])
-        # second call: messages include our tool_result; surface it as text
-        import json as _json
-        msgs = kwargs.get("messages", [])
+            return LLMResponse(text="", tool_calls=[ToolCall(id="t1", name="consultar_deuda", input={})])
+        # later turns: read the neutral tool result message we appended
         tool_payload = ""
-        for msg in msgs:
-            content = msg.get("content")
-            if isinstance(content, list):
-                for c in content:
-                    if isinstance(c, dict) and c.get("type") == "tool_result":
-                        tool_payload = c.get("content", "")
-        self.last_tool_result = tool_payload
+        for msg in messages:
+            if msg.get("role") == "tool":
+                tool_payload = msg.get("content", "")
         verdict = "BLOCKED" if "identity_required" in tool_payload else "OK"
-        return _Resp([_Block(type="text", text=f"verdict={verdict}")])
-
-
-class _FakeAnthropic:
-    def __init__(self, *a, **kw):
-        self.messages = _FakeMessages()
+        return LLMResponse(text=f"verdict={verdict}", tool_calls=[])
 
 
 @pytest.fixture
 def client(monkeypatch):
     import api.main as m
 
-    monkeypatch.setattr(m.anthropic, "AsyncAnthropic", _FakeAnthropic)
+    monkeypatch.setattr(m, "build_llm_provider", lambda *a, **k: _FakeProvider())
     # fresh in-memory store per test
     m.store = m.get_store()
     return TestClient(m.app)

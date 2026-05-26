@@ -11,7 +11,6 @@ from datetime import date
 
 import re
 
-import anthropic
 import httpx
 from fastapi import BackgroundTasks, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +24,7 @@ from contextlib import asynccontextmanager
 from config.settings import settings
 from core.state import get_store
 from core.agent import SoreliaAgent
+from core.llm import LLMError, build_llm_provider
 from core.email_service import EmailService
 from core.whatsapp_service import WhatsAppService
 from core.response_guard import guard_response
@@ -139,7 +139,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
     lead_level_before = conv.lead.level
 
     try:
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        provider = build_llm_provider(settings)
 
         # Meilisearch was real-estate property search — not used in cobranza.
         meili_client = None
@@ -151,7 +151,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
             email_service=email_service,
             whatsapp_service=_wa_svc,
         )
-        agent = SoreliaAgent(llm_client=client, tool_registry=registry)
+        agent = SoreliaAgent(provider=provider, tool_registry=registry)
 
         enriched_page_context: dict = {}
         if visitor_memory:
@@ -696,7 +696,7 @@ async def chat(request: Request, body: ChatRequest):
     _download_base = str(request.base_url).rstrip("/")
 
     try:
-        client = anthropic.AsyncAnthropic(api_key=_api_key)
+        provider = build_llm_provider(settings, api_key_override=_api_key)
 
         # Meilisearch was real-estate property search — not used in cobranza.
         meili_client = None
@@ -711,7 +711,7 @@ async def chat(request: Request, body: ChatRequest):
             debt_context=conv.debt_context,
             download_base_url=_download_base,
         )
-        agent = SoreliaAgent(llm_client=client, tool_registry=registry, tenant=_tenant_config)
+        agent = SoreliaAgent(provider=provider, tool_registry=registry, tenant=_tenant_config)
 
         # Inject visitor context into page_context so the agent sees it
         enriched_page_context = dict(conv.page_context or {})
@@ -746,7 +746,7 @@ async def chat(request: Request, body: ChatRequest):
         ui_actions = result.get("ui_actions", {})
         tool_pairs = result.get("tool_pairs", [])
         suggested_replies = result.get("suggested_replies")
-    except (KeyError, ValueError, TypeError, anthropic.APIError) as exc:
+    except (KeyError, ValueError, TypeError, LLMError) as exc:
         logger.exception("Agent processing error (recoverable)")
         content = _fallback_response(body.text, conv)
         response_id = f"fallback_{conv.conversation_id[:8]}"
