@@ -77,6 +77,13 @@
     .feat h3 { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
     .feat p { font-size: 13px; color: var(--vox-text-muted); margin: 0; line-height: 1.5; }
 
+    .dni-note { margin-top: 28px; background: var(--vox-brand-soft); border: 1px solid #bfe0f7; border-radius: 14px; padding: 18px 20px; }
+    .dni-note-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--vox-brand-hover); }
+    .dni-note-title svg { width: 18px; height: 18px; }
+    .dni-note p { font-size: 13px; color: var(--vox-text-muted); margin: 8px 0 10px; }
+    .dni-list { margin: 0; padding-left: 18px; font-size: 13.5px; color: var(--vox-text); line-height: 1.9; }
+    .dni-list b { font-family: ui-monospace, monospace; color: var(--vox-brand-hover); }
+
     footer { margin-top: 72px; padding: 28px 0; border-top: 1px solid var(--vox-border-soft); color: var(--vox-text-subtle); font-size: 12px; text-align: center; }
   </style>
 </head>
@@ -128,6 +135,19 @@
         <span class="badge libre">Sin deuda</span>
         <span class="go">Entrar como María <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
       </a>
+    </div>
+
+    <div class="dni-note">
+      <div class="dni-note-title">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 9h3m-3 4h2M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2zm4-13a2 2 0 11-4 0 2 2 0 014 0zM7 16a3 3 0 016 0v.5H7V16z"/></svg>
+        DNIs de prueba (identifícate por DNI en el chat)
+      </div>
+      <p>Abre el chat sin entrar como un cliente y, cuando Ada te pida el DNI, escribe uno de estos:</p>
+      <ul class="dni-list">
+        <li><b>41785236</b> — Juan Pérez Rojas (al día)</li>
+        <li><b>09823514</b> — Carlos Huamán Flores (en mora)</li>
+        <li><b>72514893</b> — María Quispe Mamani (sin deuda)</li>
+      </ul>
     </div>
 
     <div class="section-label">Qué puede hacer Ada</div>

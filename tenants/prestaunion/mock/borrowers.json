@@ -14,6 +14,9 @@
     "ACC-PYPE-2024-00123": {
       "account_id": "ACC-PYPE-2024-00123",
       "borrower_name": "Juan Pérez Rojas",
+      "dni": "41785236",
+      "email": "juan.perez@correo.pe",
+      "phone": "+51 987654321",
       "business_name": "Bodega Don Juan E.I.R.L.",
       "business_type": "Bodega / minimarket",
       "loan_number": "PYPE-2024-00123",
@@ -43,6 +46,9 @@
     "ACC-PYPE-2024-00210": {
       "account_id": "ACC-PYPE-2024-00210",
       "borrower_name": "Carlos Huamán Flores",
+      "dni": "09823514",
+      "email": "carlos.huaman@correo.pe",
+      "phone": "+51 976321845",
       "business_name": "Ferretería El Tornillo S.A.C.",
       "business_type": "Ferretería",
       "loan_number": "PYPE-2024-00210",
@@ -71,6 +77,9 @@
     "ACC-PYPE-2023-00088": {
       "account_id": "ACC-PYPE-2023-00088",
       "borrower_name": "María Quispe Mamani",
+      "dni": "72514893",
+      "email": "maria.quispe@correo.pe",
+      "phone": "+51 998112233",
       "business_name": "Textiles María E.I.R.L.",
       "business_type": "Confección textil",
       "loan_number": "PYPE-2023-00088",

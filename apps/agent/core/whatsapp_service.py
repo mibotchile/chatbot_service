@@ -63,6 +63,11 @@ class WhatsAppService:
         if not self._enabled:
             logger.warning("WhatsAppService: not fully configured -- messages will be logged only")
 
+    @property
+    def is_configured(self) -> bool:
+        """True when Evolution is fully wired (vs demo dry-run/backlog)."""
+        return self._enabled
+
     async def _mark_as_read(self, phone: str, message_id: str | None = None) -> None:
         """Mark messages as read (blue ticks)."""
         if not self._enabled:
@@ -251,6 +256,30 @@ class WhatsAppService:
         except httpx.RequestError as exc:
             logger.error("WhatsApp media request failed to={} error={}", phone, exc)
             return False
+
+    async def send_document(
+        self,
+        phone: str,
+        customer_name: str,
+        doc_label: str,
+        media_url: str = "",
+        caption: str = "",
+    ) -> bool:
+        """Send a cobranza document (PDF) to the borrower via WhatsApp.
+
+        Uses Evolution /message/sendMedia with the PDF URL + caption. When
+        Evolution is not configured (demo default), send_media logs an honest
+        dry-run — we never fake a successful delivery.
+        """
+        cap = caption or f"Hola {customer_name}, aquí tienes tu {doc_label} de PrestaUnion."
+        if not media_url:
+            # No URL to attach yet — log honestly and report not-sent.
+            logger.info(
+                "[WA-DRY-RUN] document to={} doc={} (sin media_url, no se adjunta)",
+                normalize_phone(phone), doc_label,
+            )
+            return False
+        return await self.send_media(phone, media_url, caption=cap, media_type="document")
 
     async def send_buttons(
         self,

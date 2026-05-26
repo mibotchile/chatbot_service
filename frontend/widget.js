@@ -31,7 +31,7 @@
     "demo-juan":   ["¿Cuánto debo?", "¿Cuándo vence mi próxima cuota?", "Quiero poner un reclamo"],
     "demo-carlos": ["¿Cuál es mi saldo?", "Estoy en mora, ¿qué hago?", "¿Cómo pago?"],
     "demo-maria":  ["¿Tengo deuda pendiente?", "Quiero mi certificado de no adeudo", "Poner un reclamo"],
-    "cold":        ["¿Cómo pago mi cuota?", "¿Qué es la TCEA?", "Hablar con un asesor"],
+    "cold":        ["Consultar mi préstamo", "¿Cómo pago mi cuota?", "¿Qué es la TCEA?"],
   };
 
   // ── Styles (scoped under #pu-widget-root + #pu-fab; Vox light tokens) ──
@@ -264,7 +264,7 @@
     const p = CT && PROFILES[CT];
     const sub = p
       ? `Hola ${p.first}, soy Ada. Puedo consultar tu préstamo, registrar un reclamo o gestionar tu certificado.`
-      : "Para ver la información de tu préstamo, ingresa por tu enlace seguro. Igual puedo orientarte.";
+      : "Soy Ada, de PrestaUnion. Para ayudarte con tu préstamo, indícame tu número de DNI.";
     const wrap = document.createElement("div");
     wrap.className = "pu-welcome";
     wrap.id = "pu-welcome";
@@ -414,7 +414,7 @@
     ],
     "cold": [
       ["user", "¿Cuánto debo?"],
-      ["agent", "Para mostrarte la información de tu préstamo necesito que ingreses por el <strong>enlace seguro</strong> que te enviamos. Sin ese enlace no puedo ver datos de tu cuenta. ¿Lo tienes a mano?", ["No tengo el enlace", "Hablar con un asesor"]],
+      ["agent", "Con gusto te ayudo. Para ver la información de tu préstamo, primero necesito identificarte. ¿Me indicas tu <strong>número de DNI</strong> (8 dígitos), por favor?", ["Ingresar mi DNI", "Hablar con un asesor"]],
     ],
   };
 

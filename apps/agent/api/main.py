@@ -144,16 +144,38 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         # Meilisearch was real-estate property search — not used in cobranza.
         meili_client = None
 
+        def _persist_identity_wa(_profile: dict) -> None:
+            conv.identity_verified = True
+            conv.debt_context = _profile
+            logger.info(
+                "Identity resolved via DNI (WhatsApp): conversation={} account={}",
+                conv.conversation_id, _profile.get("account_id"),
+            )
+
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.lead,
             visitor_memory=visitor_memory,
             email_service=email_service,
             whatsapp_service=_wa_svc,
+            identity_verified=conv.identity_verified,
+            debt_context=conv.debt_context,
+            tenant_id=tenant_id,
+            on_identity_resolved=_persist_identity_wa,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry)
 
         enriched_page_context: dict = {}
+        if conv.identity_verified and conv.debt_context:
+            enriched_page_context["identity"] = {
+                "verified": True,
+                "borrower_name": conv.debt_context.get("borrower_name"),
+                "business_name": conv.debt_context.get("business_name"),
+                "loan_number": conv.debt_context.get("loan_number"),
+                "status_label": conv.debt_context.get("status_label"),
+            }
+        else:
+            enriched_page_context["identity"] = {"verified": False}
         if visitor_memory:
             visitor_profile = await visitor_memory.get_visitor(conversation_id)
             if visitor_profile:
@@ -701,6 +723,16 @@ async def chat(request: Request, body: ChatRequest):
         # Meilisearch was real-estate property search — not used in cobranza.
         meili_client = None
 
+        # Persist a mid-conversation DNI identification back to the state so the
+        # next turn starts already verified (gate stays open across turns).
+        def _persist_identity(_profile: dict) -> None:
+            conv.identity_verified = True
+            conv.debt_context = _profile
+            logger.info(
+                "Identity resolved via DNI: conversation={} account={}",
+                conv.conversation_id, _profile.get("account_id"),
+            )
+
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.lead,
@@ -710,6 +742,8 @@ async def chat(request: Request, body: ChatRequest):
             identity_verified=conv.identity_verified,
             debt_context=conv.debt_context,
             download_base_url=_download_base,
+            tenant_id=body.tenant_id or "prestaunion",
+            on_identity_resolved=_persist_identity,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry, tenant=_tenant_config)
 

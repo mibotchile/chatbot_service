@@ -69,6 +69,23 @@ TOOL_DEFINITIONS = [
             "required": ["form_type"],
         },
     },
+    # ── Identidad (NO gateada): DNI-first ──
+    {
+        "name": "identificar_cliente",
+        "description": (
+            "Identifica al cliente por su número de DNI (8 dígitos) cuando NO ingresó por su enlace. "
+            "Llama esta tool en cuanto el usuario te dé su DNI. Si el DNI es válido, queda identificado "
+            "y se habilitan las consultas de su préstamo; si no, infórmale con amabilidad y NO reveles datos. "
+            "El DNI es el que el usuario escribe; la cuenta se resuelve internamente, nunca la inventes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "dni": {"type": "string", "description": "Número de DNI que el usuario escribió (8 dígitos)"},
+            },
+            "required": ["dni"],
+        },
+    },
     # ── Cobranza domain tools (NO account_id — identity injected server-side) ──
     {
         "name": "consultar_deuda",
@@ -111,6 +128,32 @@ TOOL_DEFINITIONS = [
             "NO recibe parámetros: la cuenta se resuelve por la identidad verificada."
         ),
         "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "enviar_documento",
+        "description": (
+            "Envía al cliente identificado un documento por el canal que elija. "
+            "OFRÉCELE primero: '¿Te lo envío a tu correo o a tu WhatsApp?'. "
+            "tipo: 'certificado_no_adeudo' (solo si no tiene deuda) o 'estado_cuenta' (resumen de su deuda). "
+            "canal: 'correo' o 'whatsapp'. El correo y el teléfono salen de su cuenta verificada, "
+            "NO los pidas ni los inventes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tipo": {
+                    "type": "string",
+                    "enum": ["certificado_no_adeudo", "estado_cuenta"],
+                    "description": "Documento a enviar",
+                },
+                "canal": {
+                    "type": "string",
+                    "enum": ["correo", "whatsapp"],
+                    "description": "Canal de entrega elegido por el cliente",
+                },
+            },
+            "required": ["tipo", "canal"],
+        },
     },
     {
         "name": "escalate_to_human",
