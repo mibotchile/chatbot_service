@@ -16,9 +16,10 @@
       --vox-border-soft:#eef0f3;
       --vox-text:       #1A1A1C;
       --vox-text-muted: #4a5568;
-      --vox-text-subtle:#94a3b8;
-      --vox-brand:      #0083E0;
-      --vox-brand-hover:#0070bf;
+      /* WCAG AA: subtle text on white needs >=4.5:1; #5b6573 = 5.0:1 (was #94a3b8 = 2.6:1). */
+      --vox-text-subtle:#5b6573;
+      --vox-brand:      #0083E0;   /* fills only (FAB, user bubble, send btn) */
+      --vox-brand-hover:#0070bf;   /* text/icons/accents on white (>=4.5:1) */
       --vox-brand-soft: #C5E4F9;
       --vox-success:    #10b981;
     }
@@ -36,21 +37,22 @@
       background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
     .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
     .wordmark { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
-    .wordmark .accent { color: var(--vox-brand); }
+    .wordmark .accent { color: var(--vox-brand-hover); }
     .status-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--vox-text-muted);
       background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 9999px; padding: 6px 12px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vox-success); box-shadow: 0 0 0 3px rgba(16,185,129,0.18); }
 
     .hero { padding: 72px 0 40px; }
-    .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--vox-brand); }
+    .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--vox-brand-hover); }
     .hero h1 { font-size: 44px; line-height: 1.1; font-weight: 800; letter-spacing: -0.03em; margin: 14px 0 0; max-width: 760px; }
-    .hero h1 .accent { color: var(--vox-brand); }
+    .hero h1 .accent { color: var(--vox-brand-hover); }
     .hero p.lead { font-size: 18px; line-height: 1.6; color: var(--vox-text-muted); margin: 18px 0 0; max-width: 620px; }
     .hero .cta-hint { margin-top: 26px; display: inline-flex; align-items: center; gap: 9px; font-size: 14px; color: var(--vox-text-muted);
       background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 9999px; padding: 9px 16px; }
     .hero .cta-hint b { color: var(--vox-text); font-weight: 600; }
 
-    .section-label { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--vox-text-subtle); margin: 56px 0 18px; }
+    /* h2 used for screen-reader outline; visually it's the small section label. */
+    h2.section-label { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--vox-text-subtle); margin: 56px 0 18px; }
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } .hero h1 { font-size: 34px; } }
     .card {
@@ -69,7 +71,7 @@
     .badge.aldia { background: rgba(16,185,129,0.12); color: #059669; }
     .badge.mora  { background: rgba(239,68,68,0.12); color: #dc2626; }
     .badge.libre { background: var(--vox-brand-soft); color: var(--vox-brand-hover); }
-    .card .go { margin-top: 18px; font-size: 13px; font-weight: 600; color: var(--vox-brand); display: inline-flex; align-items: center; gap: 6px; }
+    .card .go { margin-top: 18px; font-size: 13px; font-weight: 600; color: var(--vox-brand-hover); display: inline-flex; align-items: center; gap: 6px; }
 
     .features { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-top: 24px; }
     @media (max-width: 760px) { .features { grid-template-columns: 1fr; } }
@@ -85,6 +87,15 @@
     .dni-list b { font-family: ui-monospace, monospace; color: var(--vox-brand-hover); }
 
     footer { margin-top: 72px; padding: 28px 0; border-top: 1px solid var(--vox-border-soft); color: var(--vox-text-subtle); font-size: 12px; text-align: center; }
+
+    /* Mobile: clearance so the floating chat FAB (bottom-right, ~76px incl.
+       margin) can rest over dead space, not over interactive cards. The body
+       gets extra bottom padding so the user can always scroll any card above
+       the FAB, and the footer adds a final buffer under it. */
+    @media (max-width: 480px) {
+      body { padding-bottom: 120px; }
+      footer { margin-top: 40px; padding-bottom: 24px; }
+    }
   </style>
 </head>
 <body>
@@ -101,12 +112,12 @@
       <h1>Resuelve tu préstamo con <span class="accent">Ada</span>, tu asistente de PrestaUnion.</h1>
       <p class="lead">Consulta tu saldo y cuotas, presenta un reclamo o descarga tu certificado de no adeudo. Atención clara, sin letra chica, las 24 horas.</p>
       <div class="cta-hint">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:16px;height:16px;color:var(--vox-brand)"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:16px;height:16px;color:var(--vox-brand-hover)"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
         Habla con <b>Ada</b> desde el botón de chat, abajo a la derecha.
       </div>
     </section>
 
-    <div class="section-label">Ingresa a la demo como uno de estos clientes</div>
+    <h2 class="section-label">Ingresa a la demo como uno de estos clientes</h2>
     <div class="cards">
       <a class="card" href="?ct=demo-juan">
         <div class="ico">
@@ -150,7 +161,7 @@
       </ul>
     </div>
 
-    <div class="section-label">Qué puede hacer Ada</div>
+    <h2 class="section-label">Qué puede hacer Ada</h2>
     <div class="features">
       <div class="feat"><h3>Consulta de deuda</h3><p>Saldo, cuotas pagadas y pendientes, próximo vencimiento y estado del préstamo.</p></div>
       <div class="feat"><h3>Libro de Reclamaciones</h3><p>Registra reclamos y quejas con folio y respuesta en 15 días hábiles (Indecopi).</p></div>

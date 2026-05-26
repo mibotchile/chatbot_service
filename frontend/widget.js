@@ -92,10 +92,11 @@
   }
   #pu-widget-root.pu-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
 
-  /* Header */
+  /* Header — darker brand (#0070BF ~5:1 with white) so the small header text
+     ("En línea ahora", name, icon buttons) meets WCAG AA on the fill. */
   #pu-widget-root .pu-header {
     display: flex; align-items: center; gap: 12px; padding: 14px 16px;
-    background: #0083E0; color: #fff; flex-shrink: 0;
+    background: #0070BF; color: #fff; flex-shrink: 0;
   }
   #pu-widget-root .pu-avatar {
     width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.18);
@@ -103,7 +104,7 @@
   }
   #pu-widget-root .pu-htext { flex: 1; min-width: 0; }
   #pu-widget-root .pu-hname { font-weight: 700; font-size: 15px; line-height: 1.2; }
-  #pu-widget-root .pu-hstatus { font-size: 12px; opacity: 0.92; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  #pu-widget-root .pu-hstatus { font-size: 12px; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
   #pu-widget-root .pu-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 2px rgba(255,255,255,0.35); }
   #pu-widget-root .pu-hbtns { display: flex; gap: 4px; }
   #pu-widget-root .pu-hbtn {
@@ -135,7 +136,7 @@
   #pu-widget-root .pu-welcome .pu-wava { width: 52px; height: 52px; border-radius: 15px; background: #C5E4F9; color: #0070bf;
     display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 22px; margin-bottom: 10px; }
   #pu-widget-root .pu-welcome h4 { margin: 0 0 6px; font-size: 17px; font-weight: 800; color: #1A1A1C; }
-  #pu-widget-root .pu-welcome h4 .ac { color: #0083E0; }
+  #pu-widget-root .pu-welcome h4 .ac { color: #0070BF; }
   #pu-widget-root .pu-welcome p { margin: 0; font-size: 13px; color: #4a5568; line-height: 1.5; }
 
   #pu-widget-root .pu-msg.user { display: flex; justify-content: flex-end; animation: pu-slide .25s ease-out; }
@@ -146,7 +147,7 @@
   #pu-widget-root .pu-msg.agent .pu-mbody { flex: 1; min-width: 0; }
   #pu-widget-root .pu-msg.agent .pu-reply { background: #f7f8fa; border: 1px solid #eef0f3; color: #1A1A1C;
     padding: 10px 14px; border-radius: 4px 16px 16px 16px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; }
-  #pu-widget-root .pu-msg.agent .pu-reply a { color: #0083E0; font-weight: 600; }
+  #pu-widget-root .pu-msg.agent .pu-reply a { color: #0070BF; font-weight: 600; }
   #pu-widget-root .pu-msg.agent .pu-reply strong { color: #0070bf; }
   #pu-widget-root .pu-typing { display: inline-flex; align-items: center; gap: 4px; padding: 11px 14px; background: #f7f8fa; border: 1px solid #eef0f3; border-radius: 4px 16px 16px 16px; }
   #pu-widget-root .pu-typing span { width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; animation: pu-typing 1.4s infinite ease-in-out; }
@@ -154,21 +155,23 @@
   #pu-widget-root .pu-typing span:nth-child(3) { animation-delay: .4s; }
 
   #pu-widget-root .pu-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+  /* min-height 44px = WCAG 2.5.5 touch target; visual size kept via padding. */
   #pu-widget-root .pu-chips button { background: #fff; border: 1px solid #D7D8DB; color: #4a5568; font-size: 12.5px; font-weight: 500;
-    padding: 7px 12px; border-radius: 9999px; cursor: pointer; transition: all .15s; }
-  #pu-widget-root .pu-chips button:hover { border-color: #0083E0; color: #0083E0; background: #f7fbff; }
+    padding: 10px 14px; min-height: 44px; border-radius: 9999px; cursor: pointer; transition: all .15s; }
+  #pu-widget-root .pu-chips button:hover { border-color: #0070BF; color: #0070BF; background: #f7fbff; }
 
   /* Input */
   #pu-widget-root .pu-inputbar { padding: 12px; border-top: 1px solid #eef0f3; background: #ffffff; flex-shrink: 0; }
   #pu-widget-root .pu-form { display: flex; gap: 8px; align-items: flex-end; background: #f7f8fa; border: 1px solid #D7D8DB; border-radius: 14px; padding: 6px 6px 6px 14px; transition: border-color .2s, box-shadow .2s; }
   #pu-widget-root .pu-form:focus-within { border-color: #0083E0; box-shadow: 0 0 0 3px rgba(0,131,224,0.12); background: #fff; }
   #pu-widget-root .pu-form textarea { flex: 1; background: transparent; border: 0; outline: 0; resize: none; color: #1A1A1C; font-size: 14px; line-height: 1.45; padding: 6px 0; max-height: 110px; min-height: 22px; }
-  #pu-widget-root .pu-form textarea::placeholder { color: #94a3b8; }
-  #pu-widget-root .pu-sendbtn { width: 34px; height: 34px; border-radius: 50%; background: #0083E0; border: 0; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .15s; flex-shrink: 0; }
+  #pu-widget-root .pu-form textarea::placeholder { color: #6b7480; }
+  /* 44x44 touch target (WCAG 2.5.5); the blue circle stays visually ~34px via the gradient-free fill + centered icon. */
+  #pu-widget-root .pu-sendbtn { width: 44px; height: 44px; border-radius: 50%; background: #0083E0; border: 0; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .15s; flex-shrink: 0; }
   #pu-widget-root .pu-sendbtn:hover { background: #0070bf; transform: scale(1.05); }
   #pu-widget-root .pu-sendbtn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-  #pu-widget-root .pu-sendbtn svg { width: 17px; height: 17px; }
-  #pu-widget-root .pu-footer { text-align: center; font-size: 10.5px; color: #94a3b8; margin-top: 8px; }
+  #pu-widget-root .pu-sendbtn svg { width: 18px; height: 18px; }
+  #pu-widget-root .pu-footer { text-align: center; font-size: 10.5px; color: #5b6573; margin-top: 8px; }
   #pu-widget-root .pu-footer b { color: #4a5568; font-weight: 600; }
 
   @keyframes pu-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -246,7 +249,7 @@
         </div>
       </div>
       <div class="pu-ident" id="pu-ident"></div>
-      <div class="pu-messages" id="pu-messages"></div>
+      <div class="pu-messages" id="pu-messages" role="log" aria-live="polite" aria-atomic="false" aria-label="Conversación con Ada"></div>
       <div class="pu-inputbar">
         <form class="pu-form" id="pu-form">
           <textarea id="pu-input" placeholder="Escribe tu mensaje..." rows="1"></textarea>
