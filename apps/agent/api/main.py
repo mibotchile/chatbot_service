@@ -37,6 +37,7 @@ from core.rate_limit import from_settings as _build_rate_limiter
 # needs scheduled callbacks).
 from tools import ToolRegistry
 from api.dashboard import dashboard_router
+from api.chathub import chathub_router
 
 # Store and services — initialised in lifespan with DB pool
 store = get_store()
@@ -676,6 +677,9 @@ app.add_middleware(
 )
 
 app.include_router(dashboard_router)
+# Chathub inbound (POST /{bot_path}/chat). Registered AFTER the literal API
+# routes so the path-param route never shadows them.
+app.include_router(chathub_router)
 
 # CSRF — persistent secret from settings (survives restarts)
 _CSRF_SECRET = settings.csrf_secret
