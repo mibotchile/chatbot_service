@@ -7,7 +7,8 @@
   "branding": {
     "primary_color": "#00b369",
     "logo_url": "https://d14bodb4yrsx8y.cloudfront.net/static/logo.svg",
-    "favicon_url": ""
+    "favicon_url": "",
+    "show_demo_cards": false
   },
   "content": {
     "hero_headline": "Préstamos con garantía, financiados de persona a persona, con total transparencia"

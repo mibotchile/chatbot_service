@@ -65,11 +65,22 @@ def test_branding_demo_tokens_have_truthful_labels(client):
     assert by_token["demo-1"]["status"] == "al_dia"
 
 
+def test_branding_prestamype_hides_demo_cards(client):
+    # prestamype relies on DNI-first identification in the chat: the landing
+    # "Ingresa como uno de estos clientes" cards are hidden.
+    b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
+    assert b["show_demo_cards"] is False
+    # demo_tokens still carry the DNI so the chat hint list stays truthful.
+    assert all(t.get("dni") for t in b["demo_tokens"])
+
+
 def test_branding_prestaunion_keeps_its_own_theme(client):
     b = client.get("/api/v1/tenant/prestaunion/branding").json()
     assert b["name"] == "PrestaUnion"
     assert b["primary_color"] == "#f5c518"  # NOT prestamype green
     assert b["footer"] == "Powered by Onbotgo"
+    # prestaunion keeps its demo cards (default = shown).
+    assert b["show_demo_cards"] is True
 
 
 def test_branding_unknown_tenant_404(client):

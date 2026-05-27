@@ -313,6 +313,17 @@
         $("footer-powered").textContent = b.footer || "Powered by Onbotgo";
         $("footer").firstChild.textContent = `${b.name} · Demostración con datos ficticios. `;
 
+        // Some tenants hide the "Ingresa como uno de estos clientes" cards and
+        // rely on DNI-first identification in the chat (e.g. prestamype).
+        if (b.show_demo_cards === false) {
+          hideDemoCards();
+          // Surface this tenant's real demo DNIs so the DNI-first flow stays usable.
+          if (Array.isArray(b.demo_tokens) && b.demo_tokens.length) {
+            renderDniList(b.demo_tokens);
+          }
+          return;
+        }
+
         // Demo account cards from the branding endpoint (truthful labels).
         if (Array.isArray(b.demo_tokens) && b.demo_tokens.length) {
           renderCards(b.demo_tokens, agentName);
@@ -321,6 +332,31 @@
           const note = $("dni-note");
           if (note) note.style.display = "none";
         }
+      }
+
+      // Hide the demo-account cards + their section heading. The DNI note stays
+      // (it's the identification path when cards are off).
+      function hideDemoCards() {
+        const heading = $("acceso");
+        const cards = $("cards");
+        if (heading) heading.style.display = "none";
+        if (cards) cards.style.display = "none";
+      }
+
+      // Rebuild the DNI hint list from the tenant's demo tokens (truthful DNIs).
+      function renderDniList(tokens) {
+        const list = $("dni-list");
+        if (!list) return;
+        const labeled = tokens.filter((t) => t.dni);
+        if (!labeled.length) return;
+        list.innerHTML = "";
+        labeled.forEach((t) => {
+          const li = document.createElement("li");
+          const name = _title(t.name || "Cliente");
+          const tag = t.label || t.status_label || "";
+          li.innerHTML = `<b>${t.dni}</b> · ${name}${tag ? " (" + tag.toLowerCase() + ")" : ""}`;
+          list.appendChild(li);
+        });
       }
 
       function _badgeClass(status) {

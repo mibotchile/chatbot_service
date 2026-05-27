@@ -1018,6 +1018,7 @@ def _demo_tokens_for(tenant_id: str) -> list[dict]:
         cards.append({
             "token": token,
             "name": prof.get("borrower_name", ""),
+            "dni": prof.get("dni", ""),
             "label": label,
             "status": status or "al_dia",
             "status_label": prof.get("status_label", ""),
@@ -1050,6 +1051,9 @@ async def tenant_branding(tenant_id: str):
         "currency": soul.get("currency", "soles (S/)"),
         "footer": "Powered by Onbotgo",
         "demo_tokens": _demo_tokens_for(tenant_id),
+        # Some tenants (e.g. prestamype) hide the demo-account cards and rely on
+        # DNI-first identification in the chat. Defaults to shown.
+        "show_demo_cards": branding.get("show_demo_cards", True),
     }
 
 
