@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     # URLs and /docs works under the prefix. Env: COBRANZA_ROOT_PATH.
     root_path: str = ""
 
+    # Public base URL for building externally-downloadable links (e.g. the
+    # certificate PDF attached over WhatsApp, where there's no inbound request
+    # to derive base_url from). In prod: https://demos.mibot.cl/pubot-gj5w2a0p
+    # Env: COBRANZA_PUBLIC_BASE_URL.
+    public_base_url: str = ""
+
     cors_origins: list[str] = [
         "http://localhost:4321",
         "http://localhost:4322",

@@ -160,6 +160,9 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
             whatsapp_service=_wa_svc,
             identity_verified=conv.identity_verified,
             debt_context=conv.debt_context,
+            # No inbound request here — use the configured public base URL so the
+            # certificate PDF link is externally downloadable from WhatsApp.
+            download_base_url=settings.public_base_url,
             tenant_id=tenant_id,
             on_identity_resolved=_persist_identity_wa,
         )
@@ -724,7 +727,9 @@ async def chat(request: Request, body: ChatRequest):
         else:
             logger.info("Campaign token did not resolve: conversation={}", conv.conversation_id)
 
-    _download_base = str(request.base_url).rstrip("/")
+    # Prefer the explicit public base URL (correct behind Traefik strip-prefix);
+    # fall back to the request's base_url in local dev where it's unset.
+    _download_base = settings.public_base_url.rstrip("/") or str(request.base_url).rstrip("/")
 
     try:
         provider = build_llm_provider(settings, api_key_override=_api_key)

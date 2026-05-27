@@ -180,6 +180,71 @@ async def test_certificate_tool_gates_by_balance():
     assert (await reg.execute("emitir_certificado_no_adeudo", {}))["issued"] is True
 
 
+# ── WhatsApp delivery: estado as TEXT, certificate as PDF (media_url) ──────
+
+
+class _SpyWhatsApp:
+    """Records send_text/send_document calls; reports as configured."""
+
+    def __init__(self):
+        self.is_configured = True
+        self.text_calls: list[tuple[str, str]] = []
+        self.document_calls: list[dict] = []
+
+    async def send_text(self, phone, message, incoming_id=None):
+        self.text_calls.append((phone, message))
+        return True
+
+    async def send_document(self, phone, customer_name, doc_label, media_url="", caption=""):
+        self.document_calls.append(
+            {"phone": phone, "name": customer_name, "label": doc_label, "media_url": media_url}
+        )
+        return bool(media_url)
+
+
+async def test_estado_cuenta_whatsapp_sends_text_summary():
+    """estado_cuenta over WhatsApp → send_text with the plain-text summary,
+    NOT an empty send_document."""
+    spy = _SpyWhatsApp()
+    carlos = resolve_dni(CARLOS_DNI)  # en mora → tiene recargo
+    reg = ToolRegistry(identity_verified=True, debt_context=carlos, whatsapp_service=spy)
+    r = await reg.execute(
+        "enviar_documento", {"tipo": "estado_cuenta", "destino": "999111222"}
+    )
+    assert r["canal"] == "whatsapp"
+    assert r["delivered"] is True
+    assert len(spy.text_calls) == 1
+    assert len(spy.document_calls) == 0  # never tried to send an empty PDF
+    _, body = spy.text_calls[0]
+    assert "Estado de cuenta" in body
+    assert carlos["status_label"] in body
+    assert "Saldo pendiente" in body
+    assert "Recargo por mora" in body  # Carlos está en mora
+
+
+async def test_certificate_whatsapp_builds_media_url_with_public_base():
+    """certificado over WhatsApp → send_document with media_url built from the
+    public base URL passed as download_base_url."""
+    spy = _SpyWhatsApp()
+    maria = resolve_dni(MARIA_DNI)  # sin deuda → certificado procede
+    reg = ToolRegistry(
+        identity_verified=True,
+        debt_context=maria,
+        whatsapp_service=spy,
+        download_base_url="https://demos.mibot.cl/pubot-gj5w2a0p",
+    )
+    r = await reg.execute(
+        "enviar_documento", {"tipo": "certificado_no_adeudo", "destino": "999111222"}
+    )
+    assert r["canal"] == "whatsapp"
+    assert len(spy.document_calls) == 1
+    assert len(spy.text_calls) == 0
+    media_url = spy.document_calls[0]["media_url"]
+    assert media_url.startswith("https://demos.mibot.cl/pubot-gj5w2a0p/api/v1/cobranza/certificate/")
+    assert media_url.endswith(".pdf")
+    assert r["delivered"] is True  # spy returns True when media_url present
+
+
 # ── Token still works (pre-identified) alongside DNI ───────────────────────
 
 def test_token_still_resolves():

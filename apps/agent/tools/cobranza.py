@@ -249,6 +249,36 @@ def _estado_cuenta_html(profile: dict) -> str:
     return f'<table style="border-collapse:collapse;width:100%;">{cells}</table>'
 
 
+def _estado_cuenta_text(profile: dict) -> str:
+    """Plain-text account-statement summary for WhatsApp (no HTML).
+
+    Mirrors ``_estado_cuenta_html`` but renders a WhatsApp-legible message
+    using line breaks and the platform's *bold* markers.
+    """
+    sym = profile.get("currency_symbol", "S/")
+    lines = [
+        "*Estado de cuenta — PrestaUnion*",
+        "",
+        f"Negocio: {profile.get('business_name', '')}",
+        f"Préstamo: {profile.get('loan_number', '')}",
+        f"Estado: {profile.get('status_label', '')}",
+        f"Saldo pendiente: {_fmt(profile.get('balance', 0.0), sym)}",
+        f"Cuotas pagadas: {profile.get('installments_paid', 0)} de {profile.get('installments_total', 0)}",
+        f"Cuotas pendientes: {profile.get('installments_pending', 0)}",
+    ]
+    if profile.get("next_due_date"):
+        lines.append(
+            f"Próxima cuota: {_fmt(profile.get('next_installment_amount', 0.0), sym)} "
+            f"(vence {profile['next_due_date']})"
+        )
+    if (profile.get("late_fee", 0.0) or 0.0) > 0:
+        lines.append(f"Recargo por mora: {_fmt(profile.get('late_fee', 0.0), sym)}")
+        lines.append(f"Días de atraso: {profile.get('days_overdue', 0)}")
+    if profile.get("tcea_pct") is not None:
+        lines.append(f"TCEA: {profile['tcea_pct']}%")
+    return "\n".join(lines)
+
+
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -368,15 +398,19 @@ async def enviar_documento(
             ),
         }
 
-    # canal == whatsapp (backlog: dry-run honesto si Evolution no está conectado)
-    media_url = ""
-    if pdf_path and download_base_url:
-        # certificate has a public download URL we can attach
-        media_url = f"{download_base_url.rstrip('/')}/api/v1/cobranza/certificate/{Path(pdf_path).name}"
+    # canal == whatsapp (dry-run honesto si Evolution no está conectado)
     configured = bool(whatsapp_service and getattr(whatsapp_service, "is_configured", False))
     sent = False
-    if whatsapp_service:
-        sent = await whatsapp_service.send_document(destino, name, label, media_url=media_url)
+    if tipo_norm == "estado_cuenta":
+        # No hay PDF: el estado se envía como TEXTO legible vía send_text.
+        if whatsapp_service:
+            sent = await whatsapp_service.send_text(destino, _estado_cuenta_text(profile))
+    else:  # certificado_no_adeudo → documento PDF adjunto
+        media_url = ""
+        if pdf_path and download_base_url:
+            media_url = f"{download_base_url.rstrip('/')}/api/v1/cobranza/certificate/{Path(pdf_path).name}"
+        if whatsapp_service:
+            sent = await whatsapp_service.send_document(destino, name, label, media_url=media_url)
     return {
         "delivered": bool(sent),
         "canal": "whatsapp",
