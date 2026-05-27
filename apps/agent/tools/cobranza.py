@@ -26,6 +26,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from integrations.certificate_pdf import generate_certificate
+from integrations.doris_debt_source import classify_tipo, normalize_cci
 
 # ── Reclamos persistence (mock JSON so the demo can show registered claims) ──
 _RECLAMOS_PATH = Path("/tmp/prestaunion_reclamos.json")
@@ -423,4 +424,122 @@ async def enviar_documento(
         "message": (
             f"Listo, te envío tu {label.lower()} a tu WhatsApp {destino}."
         ),
+    }
+
+
+# ── 5. Validar comprobante de pago (PrestamYpe) ────────────────────────────
+
+# Local dedup store: a comprobante's nº de operación seen once is flagged on
+# any repeat. JSON list of records so the demo can show the audit trail.
+_COMPROBANTES_PATH = Path("/tmp/prestamype_comprobantes.json")
+
+
+def _load_comprobantes() -> list[dict]:
+    if not _COMPROBANTES_PATH.exists():
+        return []
+    try:
+        return json.loads(_COMPROBANTES_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_comprobantes(items: list[dict]) -> None:
+    _COMPROBANTES_PATH.write_text(
+        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+_TIPO_LABELS = {"pago": "PAGO", "abono": "ABONO", "cancelacion": "CANCELACIÓN"}
+
+
+async def validar_comprobante(
+    profile: dict,
+    cci: str,
+    monto: float,
+    nro_operacion: str,
+) -> dict:
+    """Validate a payment voucher for the verified borrower (PrestamYpe).
+
+    Logic (against the server-injected ``profile`` = verified credit):
+      (a) ``cci`` must match the credit's CCI → ``cuenta_valida`` + ``credito``;
+          else False with "esa cuenta no corresponde a tu crédito".
+      (b) classify ``tipo`` from ``monto`` vs cuota / saldo (±2% tolerance):
+          ≈ cuota → "pago"; < cuota → "abono"; ≈ saldo total → "cancelacion".
+      (c) dedup ``nro_operacion`` against a local JSON store; if seen before →
+          ``dedup_ok = False`` (duplicate flagged), no re-registration.
+
+    Identity/credit ALWAYS come from the verified ``profile`` — only the 3
+    voucher fields (cci, monto, nro_operacion) come from the user. The result
+    is queued for human reconciliation (the comprobante is an indicio, not an
+    auto-conciliation).
+    """
+    cci_in = normalize_cci(cci)
+    if not cci_in:
+        return {
+            "cuenta_valida": False,
+            "credito": None,
+            "tipo": None,
+            "dedup_ok": None,
+            "mensaje": "Indícame el CCI de la cuenta a la que transferiste (20 dígitos).",
+        }
+
+    credito = profile.get("account_id")
+    credito_cci = normalize_cci(profile.get("cci", ""))
+
+    # (a) ¿la cuenta apunta al crédito del cliente?
+    if not credito_cci or cci_in != credito_cci:
+        return {
+            "cuenta_valida": False,
+            "credito": None,
+            "tipo": None,
+            "dedup_ok": None,
+            "mensaje": "Esa cuenta no corresponde a tu crédito.",
+        }
+
+    # (b) tipo de operación
+    cuota = float(profile.get("cuota_esperada") or profile.get("next_installment_amount") or 0.0)
+    saldo = float(profile.get("saldo_por_cancelar") or profile.get("balance") or 0.0)
+    tipo = classify_tipo(monto, cuota, saldo)
+    tipo_label = _TIPO_LABELS.get(tipo, tipo.upper())
+
+    # (c) dedup por nº de operación (por crédito)
+    nro = (nro_operacion or "").strip()
+    items = _load_comprobantes()
+    duplicate = any(
+        r.get("nro_operacion") == nro and r.get("credito") == credito
+        for r in items
+    )
+    dedup_ok = not duplicate
+
+    sym = profile.get("currency_symbol", "S/")
+    if duplicate:
+        mensaje = (
+            f"Este comprobante (operación {nro}) ya lo recibimos antes para tu "
+            f"crédito {credito}. No lo registré de nuevo para evitar duplicados."
+        )
+    else:
+        # Register for human reconciliation.
+        items.append({
+            "credito": credito,
+            "dni": profile.get("dni"),
+            "cci": cci_in,
+            "monto": float(monto or 0.0),
+            "nro_operacion": nro,
+            "tipo": tipo,
+            "estado": "en_revision",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        })
+        _save_comprobantes(items)
+        mensaje = (
+            f"Recibimos tu comprobante. Lo clasificamos como {tipo_label} sobre tu "
+            f"crédito {credito}, cuenta CCI ...{cci_in[-4:]} ({_fmt(float(monto or 0.0), sym)}). "
+            f"Queda en revisión."
+        )
+
+    return {
+        "cuenta_valida": True,
+        "credito": credito,
+        "tipo": tipo,
+        "dedup_ok": dedup_ok,
+        "mensaje": mensaje,
     }

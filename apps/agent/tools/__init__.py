@@ -20,12 +20,13 @@ google_calendar) are accepted but ignored — kept for engine compatibility.
 
 from typing import Any, Callable
 
-from integrations.mock_debt_source import resolve_dni
+from integrations.debt_source import resolve_dni
 from tools.cobranza import (
     consultar_deuda,
     emitir_certificado_no_adeudo,
     enviar_documento,
     registrar_reclamo,
+    validar_comprobante,
 )
 
 # Tools that require a verified identity before they may execute.
@@ -35,6 +36,7 @@ _GATED_TOOLS = {
     "registrar_reclamo",
     "emitir_certificado_no_adeudo",
     "enviar_documento",
+    "validar_comprobante",
 }
 
 
@@ -84,6 +86,7 @@ class ToolRegistry:
             "registrar_reclamo": self._registrar_reclamo,
             "emitir_certificado_no_adeudo": self._emitir_certificado_no_adeudo,
             "enviar_documento": self._enviar_documento,
+            "validar_comprobante": self._validar_comprobante,
             "escalate_to_human": self._escalate_to_human,
         }
 
@@ -199,6 +202,18 @@ class ToolRegistry:
             email_service=self._email_service,
             whatsapp_service=self._whatsapp_service,
             download_base_url=self._download_base_url,
+        )
+
+    async def _validar_comprobante(
+        self, cci: str, monto: float, nro_operacion: str
+    ) -> dict:
+        """Validate a payment voucher for the verified borrower (PrestamYpe).
+
+        The credit/identity come from the verified ``debt_context``; only the
+        voucher fields (cci, monto, nro_operacion) come from the user.
+        """
+        return await validar_comprobante(
+            self._debt_context, cci=cci, monto=monto, nro_operacion=nro_operacion
         )
 
     async def _escalate_to_human(self, reason: str) -> dict:

@@ -714,7 +714,8 @@ async def chat(request: Request, body: ChatRequest):
     # resolves to a verified borrower profile; account_id is NEVER from the LLM.
     _token = body.campaign_token or (body.page_context or {}).get("campaign_token")
     if _token and not conv.identity_verified:
-        from integrations.mock_debt_source import resolve_token
+        # Tenant-aware: prestaunion→mock, prestamype→doris (fixture fallback).
+        from integrations.debt_source import resolve_token
 
         _profile = resolve_token(_token, tenant_id=body.tenant_id or "prestaunion")
         if _profile:

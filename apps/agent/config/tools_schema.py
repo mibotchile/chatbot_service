@@ -161,6 +161,35 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "validar_comprobante",
+        "description": (
+            "Valida un comprobante de pago del cliente YA IDENTIFICADO (PrestamYpe). "
+            "Pídele los 3 datos del voucher ANTES de llamar la tool: el CCI de la cuenta a la que "
+            "transfirió (20 dígitos), el monto y el número de operación. La tool verifica que la cuenta "
+            "(CCI) corresponda a su crédito, clasifica la operación en pago / abono / cancelación, y evita "
+            "duplicados por número de operación. La identidad y el crédito salen de su cuenta verificada; "
+            "lo ÚNICO que viene del usuario son esos 3 datos del comprobante. No inventes ninguno."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "cci": {
+                    "type": "string",
+                    "description": "CCI (Código de Cuenta Interbancario, 20 dígitos) de la cuenta a la que el usuario transfirió",
+                },
+                "monto": {
+                    "type": "number",
+                    "description": "Monto transferido según el comprobante",
+                },
+                "nro_operacion": {
+                    "type": "string",
+                    "description": "Número de operación del comprobante (para evitar cargas duplicadas)",
+                },
+            },
+            "required": ["cci", "monto", "nro_operacion"],
+        },
+    },
+    {
         "name": "escalate_to_human",
         "description": "Deriva la conversación a un asesor humano de PrestaUnion (consultas legales, disputas formales, casos sensibles, o usuario sin enlace).",
         "parameters": {

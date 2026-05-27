@@ -1,0 +1,55 @@
+{
+  "faqs": [
+    {
+      "category": "consulta_deuda",
+      "questions": [
+        "¿Cuánto debo?",
+        "¿Cuál es mi saldo?",
+        "¿Cuándo vence mi próxima cuota?",
+        "¿Estoy al día o en mora?"
+      ],
+      "knowledge": {
+        "como": "Para ver tu deuda primero te identifico con tu DNI. Luego te muestro tu saldo pendiente, tu próxima cuota y su vencimiento, y si estás al día o en mora.",
+        "datos": "Verás: saldo por cancelar, cuota mensual, próximo vencimiento, días de mora (si los hay) y el crédito asociado.",
+        "tono": "La mora se aborda con acompañamiento, nunca con presión."
+      }
+    },
+    {
+      "category": "comprobante",
+      "questions": [
+        "¿Cómo subo mi comprobante de pago?",
+        "Ya pagué, ¿cómo lo registro?",
+        "¿Cómo valido mi transferencia?"
+      ],
+      "knowledge": {
+        "como": "Sube la imagen del comprobante e indícame 3 datos: el CCI de la cuenta a la que transferiste, el monto y el número de operación.",
+        "que_valida": "Verifico que la cuenta (CCI) corresponda a tu crédito, clasifico la operación (pago, abono o cancelación) y evito que se cargue dos veces el mismo comprobante.",
+        "resultado": "Si todo está bien, tu comprobante queda EN REVISIÓN: un asesor lo concilia luego contra el banco. El comprobante es un indicio del pago, no la conciliación final."
+      }
+    },
+    {
+      "category": "cci",
+      "questions": [
+        "¿Qué es el CCI?",
+        "¿A qué cuenta transfiero?",
+        "¿Por qué la cuenta es de otra persona?"
+      ],
+      "knowledge": {
+        "definicion": "El CCI (Código de Cuenta Interbancario) es el número de 20 dígitos que identifica una cuenta para transferencias entre bancos.",
+        "p2p": "En PrestamYpe tu préstamo lo financia un inversionista, así que el CCI de pago corresponde a la cuenta de ese inversionista. Cada crédito tiene su CCI asociado: por eso al validar tu comprobante confirmo que el CCI sea el de tu crédito."
+      }
+    },
+    {
+      "category": "tipos_operacion",
+      "questions": [
+        "¿Qué diferencia hay entre pago, abono y cancelación?",
+        "Pagué menos de mi cuota, ¿eso cuenta?"
+      ],
+      "knowledge": {
+        "pago": "Pago: el monto coincide con tu cuota del mes.",
+        "abono": "Abono: el monto es menor que tu cuota (pago parcial); reduce lo que debes pero no completa la cuota.",
+        "cancelacion": "Cancelación: el monto cubre el saldo total por cancelar de tu crédito."
+      }
+    }
+  ]
+}

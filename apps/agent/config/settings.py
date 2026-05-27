@@ -31,6 +31,16 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/6"
 
+    # ── Doris (Apache Doris / MySQL protocol) — real debt source for prestamype.
+    # On any connection/query error the doris_debt_source falls back to the
+    # seeded fixture (tenants/prestamype/mock/borrowers.json) so the demo never
+    # breaks. Env prefix COBRANZA_ (e.g. COBRANZA_DORIS_HOST).
+    doris_host: str = "127.0.0.1"
+    doris_port: int = 9030
+    doris_user: str = "root"
+    doris_password: str = ""
+    doris_db: str = "project_QUIdI0iwQY0l3pJwRKLB"
+
     csrf_secret: str = "dev-secret-change-in-prod"
 
     dashboard_key: str = ""

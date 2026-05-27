@@ -1,0 +1,17 @@
+{
+  "name": "PrestamYpe",
+  "que_es": "PrestamYpe es una fintech peruana de préstamos con garantía (hipotecaria o vehicular) bajo un modelo de financiamiento entre personas (P2P): inversionistas financian directamente el préstamo del cliente. Todo con condiciones claras y transparentes.",
+  "mision": "Conectar a personas que necesitan financiamiento con inversionistas, de forma transparente, justa y simple.",
+  "productos": [
+    "Préstamo con garantía hipotecaria",
+    "Préstamo con garantía vehicular",
+    "Cronograma de cuotas con saldo por cancelar visible en todo momento"
+  ],
+  "modelo_p2p": "El préstamo lo financia un inversionista (persona o empresa). Por eso la cuenta de pago corresponde al inversionista de tu crédito: el CCI al que transfieres está asociado a tu crédito específico.",
+  "regulacion": "Opera en Perú con trato digno al cliente y transparencia en montos y condiciones.",
+  "alcance_asistente": "Esta asistente (Ada) cubre DOS gestiones: (1) consulta de deuda por DNI y (2) carga y validación de comprobantes de pago. No realiza negociaciones, planes de pago, certificados ni reclamos; para eso deriva a un asesor.",
+  "canales_pago": [
+    "Transferencia al CCI de la cuenta del inversionista de tu crédito",
+    "El comprobante se valida y queda en revisión para conciliación"
+  ]
+}
