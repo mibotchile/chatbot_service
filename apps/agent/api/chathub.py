@@ -91,7 +91,17 @@ async def _run_chathub_engine_turn(
     # WhatsApp gate). DNI-first remains available via the engine's
     # identificar_cliente tool (same gate). ──
     if campaign_token and not conv.identity_verified:
-        profile = resolve_token(campaign_token, tenant_id=tenant_id)
+        # The deep-link marker is "CT-"; the underlying campaign token may be
+        # seeded WITH or WITHOUT that prefix. Try the raw value first, then the
+        # bare value (prefix stripped) so either seeding convention resolves.
+        candidates = [campaign_token]
+        if campaign_token.startswith("CT-"):
+            candidates.append(campaign_token[3:])
+        profile = None
+        for cand in candidates:
+            profile = resolve_token(cand, tenant_id=tenant_id)
+            if profile:
+                break
         if profile:
             conv.identity_verified = True
             conv.debt_context = profile
