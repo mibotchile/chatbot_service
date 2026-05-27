@@ -344,14 +344,15 @@
         if (cards) cards.style.display = "none";
       }
 
-      // Replace the prestaunion-specific hardcoded DNI list with a neutral
-      // instruction. The branding API no longer carries borrower DNIs/names
-      // (PII), so we don't render real numbers on the public landing.
+      // Replace the prestaunion-specific DNI note (title + sample-DNI list)
+      // with a single neutral instruction. The branding API no longer carries
+      // borrower DNIs/names (PII), so the public landing must not render any
+      // DNI — test DNIs are shared out-of-band by the demo owner.
       function neutralizeDniList() {
-        const list = $("dni-list");
-        if (list) {
-          list.innerHTML =
-            "<li>Pídele al equipo de PrestamYpe un DNI de prueba y escríbelo en el chat cuando Ada te lo solicite.</li>";
+        const note = $("dni-note");
+        if (note) {
+          note.innerHTML =
+            '<p class="dni-note-instruction"><b>Pídele al equipo de PrestamYpe un DNI de prueba y escríbelo en el chat cuando Ada te lo solicite.</b></p>';
         }
       }
 
