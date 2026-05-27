@@ -749,7 +749,7 @@
     res.style.display = "block";
   }
 
-  const _TIPO_LABEL = { pago: "PAGO", abono: "ABONO", cancelacion: "CANCELACIÓN" };
+  const _TIPO_LABEL = { pago: "Pago", abono: "Abono", cancelacion: "Cancelación" };
 
   async function submitComprobante() {
     if (_cbBusy) return;
@@ -822,9 +822,9 @@
     }
     // Success: green, with the classification.
     _cbShowResult("ok",
-      `✓ <strong>Comprobante recibido.</strong> Clasificado como <strong>${escapeHtml(tipo)}</strong> ` +
-      `sobre tu crédito ${credito}, cuenta CCI ···${escapeHtml(last4)}. Queda en revisión.`);
-    injectChatSummary(`Recibí tu comprobante. Lo clasifiqué como ${tipo} sobre tu crédito ${data.credito || ""} (cuenta ···${last4}) y queda en revisión.`);
+      `✓ <strong>Recibimos tu comprobante de pago.</strong> Lo registramos como <strong>${escapeHtml(tipo)}</strong> ` +
+      `sobre tu crédito ${credito}, cuenta CCI ···${escapeHtml(last4)}. Será validado y, de estar conforme, se aplicará a tu cuenta.`);
+    injectChatSummary(`Recibimos tu comprobante de pago. Lo registramos como ${tipo} sobre tu crédito ${data.credito || ""}, cuenta ···${last4}. Será validado y, de estar conforme, se aplicará a tu cuenta.`);
     setTimeout(closeComprobante, 2600);
   }
 

@@ -453,7 +453,7 @@ def _save_comprobantes(items: list[dict]) -> None:
     )
 
 
-_TIPO_LABELS = {"pago": "PAGO", "abono": "ABONO", "cancelacion": "CANCELACIÓN"}
+_TIPO_LABELS = {"pago": "Pago", "abono": "Abono", "cancelacion": "Cancelación"}
 
 
 async def validar_comprobante(
@@ -535,9 +535,9 @@ async def validar_comprobante(
         })
         _save_comprobantes(items)
         mensaje = (
-            f"Recibimos tu comprobante. Lo clasificamos como {tipo_label} sobre tu "
-            f"crédito {credito}, cuenta CCI ...{cci_in[-4:]} ({_fmt(float(monto or 0.0), sym)}). "
-            f"Queda en revisión."
+            f"Recibimos tu comprobante de pago. Lo registramos como {tipo_label} "
+            f"sobre tu crédito {credito}, cuenta CCI ···{cci_in[-4:]}. "
+            f"Será validado y, de estar conforme, se aplicará a tu cuenta."
         )
 
     return {
