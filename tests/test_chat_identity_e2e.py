@@ -139,3 +139,85 @@ def test_response_document_field_for_certificate(monkeypatch):
     assert doc is not None
     assert doc["filename"].endswith(".pdf")
     assert "/api/v1/cobranza/certificate/" in doc["download_url"]
+
+
+# ── Rate limiting through the real /api/v1/chat path ───────────────────────
+
+
+def test_chat_per_min_returns_429_with_retry_after(monkeypatch):
+    """A short burst over chat/min → 429 with Retry-After; message stays neutral.
+
+    Reuses _FakeProvider (proven to return 200 through the full post-processing
+    path) so the 200 turns are clean and the assertion isolates the 429.
+    """
+    import api.main as m
+
+    monkeypatch.setattr(m, "build_llm_provider", lambda *a, **k: _FakeProvider())
+    monkeypatch.setattr(m.rate_limiter.config, "chat_per_min", 2)
+    m.store = m.get_store()
+    client = TestClient(m.app)
+    csrf, session = _tokens()
+    headers = {"X-CSRF-Token": csrf, "X-Session-Token": session}
+    # campaign_token resolves identity so the post-processing (quick replies) has
+    # a populated lead — keeps the 200 turns clean and isolates the 429 assertion.
+    body = {"channel": "web", "tenant_id": "prestaunion", "text": "hola", "campaign_token": "demo-juan"}
+
+    assert client.post("/api/v1/chat", json=body, headers=headers).status_code == 200
+    assert client.post("/api/v1/chat", json=body, headers=headers).status_code == 200
+    r = client.post("/api/v1/chat", json=body, headers=headers)
+    assert r.status_code == 429
+    assert int(r.headers["Retry-After"]) >= 1
+    assert "chat_per_min" not in r.text  # internal reason not leaked
+
+
+class _IdentSweepProvider(LLMProvider):
+    """Each turn asks to identify with the DNI carried in the user text."""
+
+    async def complete(self, *, system, messages, tools, model=None, max_tokens=1024, force_tool=None):
+        # On a tool result turn, just echo it.
+        for msg in messages:
+            if msg.get("role") == "tool":
+                return LLMResponse(text="done", tool_calls=[])
+        # Otherwise pull the latest user text (a DNI) and call identificar_cliente.
+        dni = ""
+        for msg in messages:
+            if msg.get("role") == "user":
+                dni = msg.get("content", "")
+        return LLMResponse(
+            text="", tool_calls=[ToolCall(id="i1", name="identificar_cliente", input={"dni": dni})]
+        )
+
+
+def test_chat_dni_sweep_blocks_via_tool(monkeypatch):
+    """Scanning distinct DNIs through the chat tool trips the sweep block.
+
+    The block surfaces in the tool result (reason=rate_limited) — the gate
+    rejects WITHOUT resolving, and the request itself stays 200 (the LLM
+    narrates the neutral message). This proves the anti-enumeration hook fires
+    on the LLM-driven identification path.
+    """
+    import api.main as m
+
+    monkeypatch.setattr(m, "build_llm_provider", lambda *a, **k: _IdentSweepProvider())
+    monkeypatch.setattr(m.rate_limiter.config, "distinct_dni_per_hour", 2)
+    monkeypatch.setattr(m.rate_limiter.config, "ident_per_hour", 100)  # isolate diversity
+    monkeypatch.setattr(m.rate_limiter.config, "chat_per_min", 100)
+    m.store = m.get_store()
+    client = TestClient(m.app)
+    csrf, session = _tokens()
+    headers = {"X-CSRF-Token": csrf, "X-Session-Token": session}
+
+    def _try(dni: str):
+        return client.post(
+            "/api/v1/chat",
+            json={"channel": "web", "tenant_id": "prestaunion", "text": dni},
+            headers=headers,
+        )
+
+    # 2 distinct DNIs are allowed; the 3rd distinct one trips the block.
+    assert _try("11111111").status_code == 200
+    assert _try("22222222").status_code == 200
+    # Block now active: a further identification attempt is denied by the limiter.
+    decision = m.rate_limiter.check_identification("testclient", "33333333")
+    assert decision.allowed is False
+    assert decision.reason in ("dni_sweep_block", "temp_block")

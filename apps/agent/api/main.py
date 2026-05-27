@@ -31,6 +31,7 @@ from core.response_guard import guard_response
 from core.response_builder import build_quick_replies
 from core.whatsapp_formatter import format_for_whatsapp
 from core.visitor_memory import VisitorMemory
+from core.rate_limit import from_settings as _build_rate_limiter
 # NOTE: visit_manager / google_calendar were real-estate-only (property visits)
 # and are NOT ported. Their references are removed below (TODO if cobranza ever
 # needs scheduled callbacks).
@@ -531,7 +532,18 @@ def _increment_ip_daily_count(ip: str) -> None:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """In-memory per-IP rate limiter for chat endpoints."""
+    """In-memory per-IP coarse rate limiter for the message-bearing endpoints.
+
+    This is the OUTERMOST, endpoint-agnostic guard (a flat cap per IP/window) so
+    a flood on the message endpoints is shed before any app logic runs. The
+    granular, attack-shaped limits (chat/min, DNI anti-enumeration, daily LLM
+    spend, upload/hour) live in the route handlers via ``rate_limiter`` — they
+    need request-body context (the DNI, the cost) the middleware doesn't have.
+
+    Asset GETs (widget.js, /branding, favicon, …) are NOT in
+    ``_RATE_LIMITED_PATHS`` → a normal page load (many asset requests) is never
+    throttled here. Only chat / comprobante POSTs count.
+    """
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path not in _RATE_LIMITED_PATHS:
@@ -546,13 +558,44 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         _request_log[client_ip] = [t for t in timestamps if t > cutoff]
 
         if len(_request_log[client_ip]) >= _RATE_LIMIT:
-            return Response(
-                status_code=429,
-                content="Too Many Requests. Limit: 10 requests per minute.",
-            )
+            return _too_many_requests(_RATE_WINDOW)
 
         _request_log[client_ip].append(now)
         return await call_next(request)
+
+
+# --- Hardened rate limiter (granular, attack-shaped) ---
+# Singleton shared by the chat + comprobante handlers. In-memory (fine for the
+# single-container staging deploy). The design is Redis-ready (COBRANZA_REDIS_URL)
+# but in-memory is the active backend.
+rate_limiter = _build_rate_limiter(settings)
+
+# Neutral, peruvian-"tú" 429 messages. They must NOT leak which internal limit
+# tripped (that would help an attacker tune). One short copy per surface.
+_LIMIT_MSG_CHAT = (
+    "Estás enviando mensajes muy seguido. Espera un momento y vuelve a "
+    "intentarlo, o escríbenos por WhatsApp para una atención directa."
+)
+_LIMIT_MSG_COST = (
+    "Por hoy ya cubrimos bastante por aquí. Vuelve más tarde o escríbenos por "
+    "WhatsApp y un asesor te ayuda."
+)
+_LIMIT_MSG_UPLOAD = (
+    "Recibimos varios comprobantes en poco tiempo. Espera un momento e "
+    "inténtalo de nuevo."
+)
+_LIMIT_MSG_GENERIC = (
+    "Demasiadas solicitudes en poco tiempo. Espera un momento e inténtalo de nuevo."
+)
+
+
+def _too_many_requests(retry_after: int, message: str = _LIMIT_MSG_GENERIC) -> Response:
+    """Build a 429 with a ``Retry-After`` header and a neutral message."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": message},
+        headers={"Retry-After": str(max(int(retry_after), 1))},
+    )
 
 
 # Docs (/docs, /redoc, /openapi.json) are gated by COBRANZA_ENABLE_DOCS.
@@ -792,9 +835,22 @@ async def chat(request: Request, body: ChatRequest):
     if not _validate_csrf_token(token):
         return Response(status_code=403, content="Invalid CSRF token")
 
+    client_ip = _client_ip(request)
+
+    # --- Granular per-IP guards (BEFORE spending tokens) ---
+    # 1) Short chat window (anti token-burn) — cap messages/min per IP.
+    _chat_decision = rate_limiter.check_chat_per_min(client_ip)
+    if not _chat_decision.allowed:
+        logger.warning("rate-limit chat: ip={} reason={}", client_ip, _chat_decision.reason)
+        return _too_many_requests(_chat_decision.retry_after, _LIMIT_MSG_CHAT)
+    # 2) Daily LLM-spend cap per IP — cut once accumulated cost exceeds the cap.
+    _cost_decision = rate_limiter.check_daily_cost(client_ip)
+    if not _cost_decision.allowed:
+        logger.warning("rate-limit cost: ip={} reason={}", client_ip, _cost_decision.reason)
+        return _too_many_requests(_cost_decision.retry_after, _LIMIT_MSG_COST)
+
     # --- Daily message limit (check BEFORE spending tokens) ---
     _daily_limit = settings.daily_message_limit
-    client_ip = _client_ip(request)
 
     if body.visitor_id and visitor_memory:
         allowed, remaining = await visitor_memory.check_daily_limit(body.visitor_id, limit=_daily_limit)
@@ -919,6 +975,11 @@ async def chat(request: Request, body: ChatRequest):
                 conv.conversation_id, _profile.get("account_id"),
             )
 
+        # Anti-enumeration: count + check each DNI identification attempt by IP
+        # (rate + distinct-DNI sweep). Bound to the real client IP for this turn.
+        def _ident_attempt(dni: str):
+            return rate_limiter.check_identification(client_ip, dni)
+
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.lead,
@@ -930,6 +991,7 @@ async def chat(request: Request, body: ChatRequest):
             download_base_url=_download_base,
             tenant_id=body.tenant_id or "prestaunion",
             on_identity_resolved=_persist_identity,
+            on_identification_attempt=_ident_attempt,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry, tenant=_tenant_config)
 
@@ -966,6 +1028,20 @@ async def chat(request: Request, body: ChatRequest):
         ui_actions = result.get("ui_actions", {})
         tool_pairs = result.get("tool_pairs", [])
         suggested_replies = result.get("suggested_replies")
+        # Accumulate this turn's LLM cost on the IP's daily bucket (same pricing
+        # the analytics sink uses). Read by check_daily_cost on the NEXT request.
+        try:
+            from config.pricing import compute_cost_usd
+
+            _usage = result.get("usage") or {}
+            _cost = compute_cost_usd(
+                _usage.get("model", ""),
+                _usage.get("input_tokens", 0),
+                _usage.get("output_tokens", 0),
+            )
+            rate_limiter.add_cost(client_ip, _cost)
+        except Exception:  # noqa: BLE001 — cost accounting must never break chat
+            logger.opt(exception=True).warning("rate-limit cost accrual failed (ignored)")
         # Fire-and-forget analytics (non-blocking; never raises into the request).
         _spawn_analytics(
             tenant_id=body.tenant_id,
@@ -1263,10 +1339,24 @@ async def upload_comprobante(
     if not _validate_csrf_token(csrf):
         return Response(status_code=403, content="Invalid CSRF token")
 
+    # --- Per-IP upload cap (comprobantes/hour) ---
+    _ip = _client_ip(request)
+    _up_decision = rate_limiter.check_upload_per_hour(_ip)
+    if not _up_decision.allowed:
+        logger.warning("rate-limit upload: ip={} reason={}", _ip, _up_decision.reason)
+        return _too_many_requests(_up_decision.retry_after, _LIMIT_MSG_UPLOAD)
+
     # --- Validate inputs at the boundary ---
     dni_norm = re.sub(r"\D", "", dni or "")
     if not (5 <= len(dni_norm) <= 12):
         return JSONResponse(status_code=400, content={"detail": "DNI inválido."})
+
+    # --- Anti-enumeration: the upload DNI is also a resolution vector. Count +
+    # check it (rate + distinct-DNI sweep) BEFORE resolving the profile. ---
+    _ident_decision = rate_limiter.check_identification(_ip, dni_norm)
+    if not _ident_decision.allowed:
+        logger.warning("rate-limit upload-ident: ip={} reason={}", _ip, _ident_decision.reason)
+        return _too_many_requests(_ident_decision.retry_after, _LIMIT_MSG_GENERIC)
     nro = (nro_operacion or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", nro):
         return JSONResponse(status_code=400, content={"detail": "Nº de operación inválido."})

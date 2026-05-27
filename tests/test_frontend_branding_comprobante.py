@@ -210,3 +210,35 @@ def test_comprobante_rejects_bad_nro_operacion(client):
 def test_comprobante_rejects_zero_monto(client):
     r = _post(client, monto="0", nro_operacion="OP-ZERO")
     assert r.status_code == 400
+
+
+# ── Rate limiting at the upload endpoint (429 + Retry-After) ────────────────
+
+def test_comprobante_upload_per_hour_429(client, monkeypatch):
+    """Past the upload/hour cap the endpoint returns 429 with Retry-After."""
+    import api.main as m
+
+    # Squeeze the cap to 2 so the test is short (uses the real wiring).
+    monkeypatch.setattr(m.rate_limiter.config, "upload_per_hour", 2)
+    assert _post(client, nro_operacion="OP-RL1").status_code == 200
+    assert _post(client, nro_operacion="OP-RL2").status_code == 200
+    r = _post(client, nro_operacion="OP-RL3")
+    assert r.status_code == 429
+    assert int(r.headers["Retry-After"]) >= 1
+    # The neutral message must not leak the internal limit name.
+    assert "upload_per_hour" not in r.text
+
+
+def test_comprobante_dni_sweep_blocks_429(client, monkeypatch):
+    """Scanning many distinct DNIs at the upload endpoint trips the sweep block."""
+    import api.main as m
+
+    monkeypatch.setattr(m.rate_limiter.config, "distinct_dni_per_hour", 2)
+    monkeypatch.setattr(m.rate_limiter.config, "ident_per_hour", 100)  # isolate diversity
+    monkeypatch.setattr(m.rate_limiter.config, "upload_per_hour", 100)  # isolate diversity
+    # 3 distinct DNIs (all unknown → 404 normally) → the 3rd trips the block.
+    _post(client, dni="11111111", nro_operacion="OP-S1")
+    _post(client, dni="22222222", nro_operacion="OP-S2")
+    r = _post(client, dni="33333333", nro_operacion="OP-S3")
+    assert r.status_code == 429
+    assert int(r.headers["Retry-After"]) >= 1

@@ -83,6 +83,27 @@ class Settings(BaseSettings):
 
     daily_message_limit: int = 50  # per visitor/IP, resets at midnight
 
+    # ── Hardened rate limiting (anti-abuse), all env COBRANZA_RL_* / COBRANZA_* ──
+    # Defense is per *real client IP* (X-Forwarded-For first hop behind Traefik,
+    # fallback connection IP). In-memory by default (fine for the single-container
+    # staging deploy); if COBRANZA_REDIS_URL is set the design is ready to back
+    # these counters with Redis later (not required now).
+    #
+    # Anti-enumeration of DNI (the identity gate is DNI-only → the top vector):
+    #   · rate — max identification attempts per IP/hour;
+    #   · diversity — > N DISTINCT DNIs/IP/hour ⇒ sweep ⇒ temporary block.
+    rl_ident_per_hour: int = 6          # COBRANZA_RL_IDENT_PER_HOUR
+    rl_distinct_dni_per_hour: int = 5   # COBRANZA_RL_DISTINCT_DNI_PER_HOUR
+    rl_block_minutes: int = 15          # COBRANZA_RL_BLOCK_MINUTES (sweep block)
+    # Short chat window (anti token-burn), on top of daily_message_limit.
+    rl_chat_per_min: int = 12           # COBRANZA_RL_CHAT_PER_MIN
+    # Upload cap (comprobantes/hour per IP).
+    rl_upload_per_hour: int = 8         # COBRANZA_RL_UPLOAD_PER_HOUR
+    # LLM spend cap per IP/day (USD). Accumulates the same cost_usd the analytics
+    # sink records (config/pricing.compute_cost_usd). Over the cap ⇒ 429 until the
+    # daily (UTC midnight) reset.
+    daily_cost_cap_usd: float = 0.50    # COBRANZA_DAILY_COST_CAP_USD
+
     # Reverse-proxy path prefix (Traefik strip-prefix). Empty in local dev;
     # set to e.g. "/pubot-gj5w2a0p" behind the proxy so FastAPI builds correct
     # URLs and /docs works under the prefix. Env: COBRANZA_ROOT_PATH.

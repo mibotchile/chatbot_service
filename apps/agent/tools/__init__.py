@@ -59,6 +59,7 @@ class ToolRegistry:
         download_base_url: str = "",
         tenant_id: str = "prestaunion",
         on_identity_resolved: Callable[[dict], None] | None = None,
+        on_identification_attempt: Callable[[str], Any] | None = None,
     ):
         self._lead_machine = lead_machine
         self._webhook_config = webhook_config
@@ -73,6 +74,11 @@ class ToolRegistry:
         # Callback to persist a mid-conversation DNI identification back to the
         # ConversationState (so the next turn starts already verified).
         self._on_identity_resolved = on_identity_resolved
+        # Anti-enumeration hook: called with the typed DNI BEFORE resolution. If
+        # it returns a decision with allowed=False, the attempt is rejected
+        # WITHOUT touching the data source (rate / DNI-sweep protection). None in
+        # contexts without rate limiting (e.g. unit tests, WhatsApp).
+        self._on_identification_attempt = on_identification_attempt
         self._tools: dict[str, Any] = {
             # generic engine tools
             "get_lead_status": self._get_lead_status,
@@ -156,7 +162,25 @@ class ToolRegistry:
         server-side from the fixture, never dictated by the LLM. On success it
         mutates this registry's identity (so gated tools work in the same loop)
         and persists via the callback (so the next turn stays verified).
+
+        Anti-enumeration: the attempt is counted/checked BEFORE resolution. A
+        rate or DNI-sweep violation short-circuits with a neutral message
+        (no internal detail) and never queries the data source.
         """
+        # ── Anti-enumeration gate (counts + checks BEFORE touching data) ──
+        if self._on_identification_attempt is not None:
+            decision = self._on_identification_attempt(dni)
+            if decision is not None and not getattr(decision, "allowed", True):
+                return {
+                    "identified": False,
+                    "reason": "rate_limited",
+                    "retry_after": getattr(decision, "retry_after", 0),
+                    "message": (
+                        "Por seguridad, hiciste varios intentos en poco tiempo. "
+                        "Espera un momento e inténtalo de nuevo, o escríbenos por "
+                        "WhatsApp y un asesor te ayuda."
+                    ),
+                }
         profile = resolve_dni(dni, tenant_id=self._tenant_id)
         if not profile:
             return {
