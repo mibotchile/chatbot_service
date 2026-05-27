@@ -17,10 +17,10 @@ from tools import ToolRegistry
 
 TENANT = "prestamype"
 
-# Fixture borrowers (real sample). DNIs are 8-digit.
-LUIS = "10052986"   # P02137, al día, cuota 462.14, saldo 23800, CCI 00389801338381007048
-SILVIA = "72884356"  # P03250, al día, cuota 856.30, saldo 34237.50
-ELMER = "04065803"  # P03650, en mora, USD, cuota 1397.71, saldo 96250
+# Fixture borrowers (synthetic demo data). DNIs are 8-digit and fictitious.
+LUIS = "44218903"   # P02137, al día, cuota 462.14, saldo 23800, CCI 00389801338381007048
+SILVIA = "76310582"  # P03250, al día, cuota 856.30, saldo 34237.50
+ELMER = "08642195"  # P03650, en mora, USD, cuota 1397.71, saldo 96250
 
 
 def _fixture() -> dict:

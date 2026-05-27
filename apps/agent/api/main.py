@@ -406,8 +406,23 @@ async def lifespan(app: FastAPI):
 
 _RATE_LIMIT = 10  # max requests per window
 _RATE_WINDOW = 60  # seconds
-_RATE_LIMITED_PATHS = {"/api/v1/chat", "/api/v1/conversations/messages"}
+_RATE_LIMITED_PATHS = {
+    "/api/v1/chat",
+    "/api/v1/conversations/messages",
+    "/api/v1/comprobante",
+}
 _request_log: dict[str, list[float]] = defaultdict(list)
+
+
+def _client_ip(request: Request) -> str:
+    """Real client IP. Behind Traefik the connection IP is the proxy, so prefer
+    the first hop of X-Forwarded-For; fall back to the connection IP."""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "unknown"
 
 
 # --- Daily limit for visitors without visitor_id (IP fallback) ---
@@ -441,7 +456,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path not in _RATE_LIMITED_PATHS:
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _client_ip(request)
         now = time.time()
         cutoff = now - _RATE_WINDOW
 
@@ -459,6 +474,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+# Docs (/docs, /redoc, /openapi.json) are gated by COBRANZA_ENABLE_DOCS.
+# Disabled in prod to avoid API-surface enumeration (MED-02).
+_docs_kwargs = (
+    {}
+    if settings.enable_docs
+    else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+)
+
 app = FastAPI(
     title="Sorelia API",
     version="0.1.0",
@@ -468,6 +491,7 @@ app = FastAPI(
     # respect the prefix. uvicorn --root-path sets the same; this is the
     # belt-and-suspenders so it works even without the CLI flag.
     root_path=settings.root_path,
+    **_docs_kwargs,
 )
 
 @app.exception_handler(Exception)
@@ -479,6 +503,43 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# Content-Security-Policy for the landing + widget. Google Fonts + the tenant
+# cloudfront logo are allowed. Inline <style>/<script> in index.html still need
+# 'unsafe-inline' (the landing has substantial inline CSS/JS); everything else
+# is locked to 'self'. connect-src 'self' covers the same-origin API.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data: https://d14bodb4yrsx8y.cloudfront.net; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": _CSP,
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+}
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Attach baseline security headers to every response (MED-01)."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        for key, value in _SECURITY_HEADERS.items():
+            response.headers.setdefault(key, value)
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
@@ -652,7 +713,7 @@ async def chat(request: Request, body: ChatRequest):
 
     # --- Daily message limit (check BEFORE spending tokens) ---
     _daily_limit = settings.daily_message_limit
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_ip(request)
 
     if body.visitor_id and visitor_memory:
         allowed, remaining = await visitor_memory.check_daily_limit(body.visitor_id, limit=_daily_limit)
@@ -990,8 +1051,10 @@ async def download_certificate(filename: str):
 def _demo_tokens_for(tenant_id: str) -> list[dict]:
     """Build demo account cards from the tenant's borrowers fixture.
 
-    Returns [{token, name, label, status}] for each demo token. Labels are
-    derived from the borrower status so cards stay truthful to the data.
+    Returns [{token, label, status, status_label, currency}] for each demo
+    token. NO PII (name/DNI/email/phone) is ever included — the public
+    /branding endpoint must not disclose borrower identity. Labels are derived
+    from the borrower status so cards stay truthful to the data.
     """
     import json as _j
 
@@ -1017,8 +1080,6 @@ def _demo_tokens_for(tenant_id: str) -> list[dict]:
             label = "Crédito al día"
         cards.append({
             "token": token,
-            "name": prof.get("borrower_name", ""),
-            "dni": prof.get("dni", ""),
             "label": label,
             "status": status or "al_dia",
             "status_label": prof.get("status_label", ""),
@@ -1065,9 +1126,26 @@ _COMPROBANTE_EXT = {
 }
 _COMPROBANTE_MAX_BYTES = 8 * 1024 * 1024  # 8 MB
 
+# Magic-byte signatures per allowed extension. The file's real content must
+# start with one of these — content-type alone is attacker-controlled.
+_COMPROBANTE_MAGIC = {
+    "jpg": (b"\xff\xd8\xff",),
+    "png": (b"\x89PNG\r\n\x1a\n",),
+    "pdf": (b"%PDF",),
+}
+
+
+def _sniff_comprobante_ext(payload: bytes) -> str | None:
+    """Return the allowed extension whose magic bytes match, else None."""
+    for ext, signatures in _COMPROBANTE_MAGIC.items():
+        if any(payload.startswith(sig) for sig in signatures):
+            return ext
+    return None
+
 
 @app.post("/api/v1/comprobante")
 async def upload_comprobante(
+    request: Request,
     tenant_id: str = Form(...),
     dni: str = Form(...),
     cci: str = Form(...),
@@ -1087,6 +1165,15 @@ async def upload_comprobante(
     """
     from pathlib import Path as _CP
 
+    # --- Same session + CSRF gate as /api/v1/chat (HIGH-02) ---
+    session_token = request.headers.get("X-Session-Token", "")
+    valid, _token_visitor = _verify_session_token(session_token)
+    if not valid:
+        return Response(status_code=401, content="Invalid or expired session token")
+    csrf = request.headers.get("X-CSRF-Token", "")
+    if not _validate_csrf_token(csrf):
+        return Response(status_code=403, content="Invalid CSRF token")
+
     # --- Validate inputs at the boundary ---
     dni_norm = re.sub(r"\D", "", dni or "")
     if not (5 <= len(dni_norm) <= 12):
@@ -1097,8 +1184,8 @@ async def upload_comprobante(
     if monto <= 0:
         return JSONResponse(status_code=400, content={"detail": "Monto inválido."})
 
-    ext = _COMPROBANTE_EXT.get((file.content_type or "").lower())
-    if ext is None:
+    declared_ext = _COMPROBANTE_EXT.get((file.content_type or "").lower())
+    if declared_ext is None:
         return JSONResponse(
             status_code=400,
             content={"detail": "Formato no soportado. Sube una imagen JPG/PNG o un PDF."},
@@ -1109,6 +1196,16 @@ async def upload_comprobante(
         return JSONResponse(status_code=413, content={"detail": "El archivo supera 8 MB."})
     if not payload:
         return JSONResponse(status_code=400, content={"detail": "El archivo está vacío."})
+
+    # --- Validate by magic bytes, not just content-type (HIGH-02) ---
+    # The real signature must match an allowed type; otherwise reject. The
+    # extension we store is derived from the SNIFFED type (server-trusted).
+    ext = _sniff_comprobante_ext(payload)
+    if ext is None:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "El archivo no es una imagen JPG/PNG ni un PDF válido."},
+        )
 
     # --- Identity gate: the DNI must resolve to a borrower for this tenant ---
     from integrations import debt_source

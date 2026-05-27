@@ -75,7 +75,7 @@
   // PrestamYpe demo tokens → DNI (from the seeded fixture). Used to prefill the
   // comprobante upload DNI when entering via a demo card. Other tenants resolve
   // the DNI server-side on the first chat turn.
-  const PRESTAMYPE_TOKEN_DNI = { "demo-1": "10052986", "demo-2": "04065803", "demo-3": "10061867" };
+  const PRESTAMYPE_TOKEN_DNI = { "demo-1": "44218903", "demo-2": "08642195", "demo-3": "45893017" };
 
   // ── Styles (scoped under #pu-widget-root + #pu-fab; Vox light tokens) ──
   // Brand colors live in CSS vars so a tenant fetch can re-skin the widget by

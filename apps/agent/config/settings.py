@@ -83,11 +83,11 @@ class Settings(BaseSettings):
     # Env: COBRANZA_PUBLIC_BASE_URL.
     public_base_url: str = ""
 
+    # Expose /docs, /redoc, /openapi.json. Default ON for local dev; set
+    # COBRANZA_ENABLE_DOCS=false in prod to disable API surface enumeration.
+    enable_docs: bool = True
+
     cors_origins: list[str] = [
-        "http://localhost:4321",
-        "http://localhost:4322",
-        "http://localhost:3000",
-        "http://localhost:8099",
         "https://demos.mibot.cl",
     ]
 

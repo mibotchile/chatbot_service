@@ -37,10 +37,12 @@ ENV HOME=/home/appuser
 EXPOSE 8000
 
 # HEALTHCHECK uses 127.0.0.1 (NOT localhost — some minimal images don't resolve it).
-# Hits /docs WITHOUT the root_path prefix: FastAPI serves routes internally at root;
-# the slug prefix is stripped by Traefik, so the container never sees it directly.
+# Hits the landing page "/" WITHOUT the root_path prefix: FastAPI serves routes
+# internally at root; the slug prefix is stripped by Traefik, so the container
+# never sees it directly. Note: /docs is gated by COBRANZA_ENABLE_DOCS (off in
+# prod), so the healthcheck must NOT depend on it — "/" is always served.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:8000/docs" || exit 1
+    CMD curl -fsS "http://127.0.0.1:8000/" || exit 1
 
 # uvicorn --root-path mirrors COBRANZA_ROOT_PATH so generated URLs respect the
 # Traefik strip-prefix. FastAPI(root_path=...) also reads the env (belt+suspenders).

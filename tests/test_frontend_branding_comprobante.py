@@ -13,8 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 TENANT = "prestamype"
-# Fixture borrower P02137 (al día). CCI is 100% clean in Doris/fixture.
-LUIS_DNI = "10052986"
+# Fixture borrower P02137 (al día). Synthetic demo DNI.
+LUIS_DNI = "44218903"
 LUIS_CCI = "00389801338381007048"
 LUIS_CUOTA = 462.14
 LUIS_SALDO = 23800.00
@@ -28,8 +28,21 @@ def client(monkeypatch, tmp_path):
     # Isolate image storage + dedup store per test (off /tmp, off real volume).
     monkeypatch.setattr(m.settings, "comprobante_dir", str(tmp_path / "comprobantes"))
     monkeypatch.setattr(cobranza, "_COMPROBANTES_PATH", tmp_path / "comprobantes.json")
+    # Reset the in-memory rate-limit log so the shared 10/min window doesn't
+    # bleed across tests (the limiter now also covers /comprobante).
+    m._request_log.clear()
     m.store = m.get_store()
     return TestClient(m.app)
+
+
+def _security_headers():
+    """Valid session + CSRF tokens, same gate as /chat (HIGH-02)."""
+    import api.main as m
+
+    return {
+        "X-Session-Token": m._generate_session_token("test-visitor"),
+        "X-CSRF-Token": m._generate_csrf_token(),
+    }
 
 
 _PNG = b"\x89PNG\r\n\x1a\n_fake_image_bytes"
@@ -70,8 +83,16 @@ def test_branding_prestamype_hides_demo_cards(client):
     # "Ingresa como uno de estos clientes" cards are hidden.
     b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
     assert b["show_demo_cards"] is False
-    # demo_tokens still carry the DNI so the chat hint list stays truthful.
-    assert all(t.get("dni") for t in b["demo_tokens"])
+
+
+def test_branding_demo_tokens_carry_no_pii(client):
+    # CRIT-01: the public /branding endpoint must NEVER expose borrower PII.
+    b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
+    for t in b["demo_tokens"]:
+        for pii_field in ("dni", "name", "borrower_name", "email", "phone"):
+            assert pii_field not in t, f"PII field {pii_field!r} leaked in /branding"
+        # only safe presentational fields are allowed
+        assert set(t).issubset({"token", "label", "status", "status_label", "currency"})
 
 
 def test_branding_prestaunion_keeps_its_own_theme(client):
@@ -102,9 +123,10 @@ def _post(client, **overrides):
         "monto": str(LUIS_CUOTA),
         "nro_operacion": "OP-001",
     }
-    data.update({k: v for k, v in overrides.items() if k != "files"})
+    data.update({k: v for k, v in overrides.items() if k not in ("files", "headers")})
     files = overrides.get("files", _file())
-    return client.post("/api/v1/comprobante", data=data, files=files)
+    headers = overrides.get("headers", _security_headers())
+    return client.post("/api/v1/comprobante", data=data, files=files, headers=headers)
 
 
 def test_comprobante_pago_classified_and_stored(client, tmp_path):
@@ -157,6 +179,27 @@ def test_comprobante_rejects_bad_filetype(client):
     bad = {"file": ("evil.exe", io.BytesIO(b"MZ..."), "application/octet-stream")}
     r = _post(client, files=bad)
     assert r.status_code == 400
+
+
+def test_comprobante_requires_session_and_csrf(client):
+    # HIGH-02: no session/CSRF token → rejected (401 session checked first).
+    r = _post(client, nro_operacion="OP-NOAUTH", headers={})
+    assert r.status_code == 401
+
+
+def test_comprobante_rejects_html_disguised_as_png(client):
+    # HIGH-02: content-type says image/png but the bytes are HTML → magic-byte
+    # sniff rejects it (400).
+    html = {"file": ("x.png", io.BytesIO(b"<html><script>alert(1)</script></html>"), "image/png")}
+    r = _post(client, files=html, nro_operacion="OP-HTML")
+    assert r.status_code == 400
+
+
+def test_comprobante_accepts_real_pdf(client):
+    pdf = {"file": ("c.pdf", io.BytesIO(b"%PDF-1.4\n%fake pdf body"), "application/pdf")}
+    r = _post(client, files=pdf, nro_operacion="OP-PDF")
+    assert r.status_code == 200
+    assert r.json()["cuenta_valida"] is True
 
 
 def test_comprobante_rejects_bad_nro_operacion(client):
