@@ -102,3 +102,29 @@ def test_index_no_emdash_in_dni_list():
     for line in html.splitlines():
         if "Pérez Rojas (al día)" in line or "Huamán Flores (en mora)" in line:
             assert "—" not in line
+
+
+# ── Bloque 4: final polish guards ──────────────────────────────────────────
+
+def test_widget_header_btn_touch_target():
+    """Header reset/minimize buttons get a >=44px tap area via ::before."""
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert ".pu-hbtn::before" in js
+    assert "width: 44px; height: 44px" in js
+
+
+def test_widget_system_error_style():
+    """Errors render as a neutral SYSTEM message, not in Ada's voice (no avatar)."""
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert "showSystemError" in js
+    assert "pu-msg system" in js and "pu-sysmsg" in js
+    assert "alert:" in js  # alert icon in ICONS
+    # the three error states route through the system-error renderer
+    assert js.count("showSystemError(typingEl") >= 2
+
+
+def test_widget_dni_hint_natural_language():
+    """Hint detects a digit run ANYWHERE (e.g. 'Mi DNI es 417'), not only leading."""
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert "match(/\\d+/g)" in js
+    assert "longest >= 1 && longest <= 7" in js

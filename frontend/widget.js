@@ -107,12 +107,16 @@
   #pu-widget-root .pu-hstatus { font-size: 12px; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
   #pu-widget-root .pu-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 2px rgba(255,255,255,0.35); }
   #pu-widget-root .pu-hbtns { display: flex; gap: 4px; }
+  /* Visual ~30px chip, but a transparent ::before extends the tap target to
+     >=44px (WCAG 2.5.5) without changing the dense header layout. */
   #pu-widget-root .pu-hbtn {
-    width: 30px; height: 30px; border-radius: 8px; border: 0; cursor: pointer;
+    position: relative; width: 30px; height: 30px; border-radius: 8px; border: 0; cursor: pointer;
     background: rgba(255,255,255,0.12); color: #fff; display: flex; align-items: center; justify-content: center; transition: background .15s;
   }
+  #pu-widget-root .pu-hbtn::before { content: ""; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); width: 44px; height: 44px; }
   #pu-widget-root .pu-hbtn:hover { background: rgba(255,255,255,0.26); }
-  #pu-widget-root .pu-hbtn svg { width: 16px; height: 16px; }
+  #pu-widget-root .pu-hbtn svg { width: 16px; height: 16px; position: relative; }
 
   /* Identity strip */
   #pu-widget-root .pu-ident {
@@ -149,6 +153,12 @@
     padding: 10px 14px; border-radius: 4px 16px 16px 16px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; }
   #pu-widget-root .pu-msg.agent .pu-reply a { color: #0070BF; font-weight: 600; }
   #pu-widget-root .pu-msg.agent .pu-reply strong { color: #0070bf; }
+  /* System / error notice: neutral, centered, NO Ada avatar (not her voice). */
+  #pu-widget-root .pu-msg.system { justify-content: center; }
+  #pu-widget-root .pu-sysmsg { display: inline-flex; align-items: center; gap: 8px; max-width: 88%;
+    background: #f3f4f6; border: 1px solid #e3e5e9; border-radius: 12px; padding: 9px 13px;
+    color: #5b6573; font-size: 12.5px; line-height: 1.4; text-align: left; }
+  #pu-widget-root .pu-sys-ico { width: 16px; height: 16px; flex-shrink: 0; color: #b45309; }
   /* Certificate / document download chip — reads as a downloadable file. */
   #pu-widget-root .pu-doc-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px;
     padding: 8px 12px; border: 1px solid #bfe0f7; background: #C5E4F9; border-radius: 10px;
@@ -234,6 +244,7 @@
     reset: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M5 9a7 7 0 0111-3.5M19 15a7 7 0 01-11 3.5"/></svg>',
     send: '<svg fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg>',
     download: '<svg class="pu-dl-ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>',
+    alert: '<svg class="pu-sys-ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.3 3.86l-8.1 14A1 1 0 003 19.5h18a1 1 0 00.86-1.5l-8.1-14a1 1 0 00-1.72 0z"/></svg>',
   };
 
   let fab, root, $messages, $form, $input, $send;
@@ -382,9 +393,13 @@
   // that looks like a DNI attempt but isn't 8 digits.
   function maybeDniHint() {
     if (CT) return;  // pre-identified by token → no hint needed
-    const v = $input.value.trim();
-    const digits = v.replace(/\D/g, "");
-    const looksLikeDni = /^\d[\d\s.\-]*$/.test(v) && digits.length > 0 && digits.length !== 8;
+    const v = $input.value;
+    // Natural language friendly: find the LONGEST run of digits anywhere in the
+    // text ("Mi DNI es 417..." → "417"). Hint when that run is 1-7 digits; if a
+    // full 8-digit run is present, don't nag.
+    const runs = v.match(/\d+/g) || [];
+    const longest = runs.reduce((m, r) => Math.max(m, r.length), 0);
+    const looksLikeDni = longest >= 1 && longest <= 7;
     const bar = root.querySelector(".pu-inputbar");
     let hint = root.querySelector("#pu-dni-hint");
     if (looksLikeDni) {
@@ -510,9 +525,10 @@
         credentials: "include",
         body: JSON.stringify(body),
       });
-      // Distinct, clear error states (Peruvian Spanish, "tú").
+      // Distinct, clear error states (Peruvian Spanish, "tú"). System styling,
+      // NOT Ada's voice — a network/rate-limit failure isn't something she said.
       if (!r.ok) {
-        fillAgent(typingEl, errorMessageForStatus(r.status), []);
+        showSystemError(typingEl, errorMessageForStatus(r.status));
         return;
       }
       const data = await r.json();
@@ -527,7 +543,7 @@
       fillAgent(typingEl, msg.content || "Disculpa, no pude procesar eso.", chips, msg.document);
     } catch (e) {
       console.error("[pu-widget] send failed", e);
-      fillAgent(typingEl, "Tuve un problema de conexión con el servicio. Inténtalo de nuevo.", []);
+      showSystemError(typingEl, "Tuve un problema de conexión con el servicio. Inténtalo de nuevo.");
     } finally {
       busy = false; $send.disabled = false; $input.focus();
     }
@@ -537,6 +553,15 @@
     if (status === 429) return "Estás yendo muy rápido, espera un momento e intenta de nuevo.";
     if (status === 401 || status === 403) return "Tu sesión expiró, recarga la página para seguir.";
     return "Tuve un problema de conexión con el servicio. Inténtalo de nuevo.";
+  }
+
+  // System/error notice: neutral style, NO Ada avatar (not her voice). Replaces
+  // the pending agent typing bubble in place.
+  function showSystemError(typingEl, text) {
+    typingEl.className = "pu-msg system";
+    typingEl.innerHTML = `<div class="pu-sysmsg">${ICONS.alert}<span></span></div>`;
+    typingEl.querySelector("span").textContent = text;
+    scroll();
   }
 
   // ── Demo seeding (?demo=open) — opens the panel with sample messages so the
