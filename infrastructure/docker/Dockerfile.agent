@@ -22,10 +22,14 @@ ENV PYTHONPATH=/app/apps/agent
 # Reverse-proxy prefix; empty by default, overridden by .env in prod.
 ENV COBRANZA_ROOT_PATH=""
 
-# Run as non-root user
+# Run as non-root user.
+# /app/data/comprobantes is a mount point for a named volume (uploaded vouchers +
+# dedup/audit JSON). Creating + chowning it in the image makes a FRESH named
+# volume inherit appuser ownership on first init, so the non-root process can
+# mkdir/write under it. Without this the volume initializes root-owned → EACCES.
 RUN addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 --home /home/appuser --ingroup appgroup appuser && \
-    mkdir -p /home/appuser/.cache/uv && \
+    mkdir -p /home/appuser/.cache/uv /app/data/comprobantes && \
     chown -R appuser:appgroup /app /home/appuser
 USER appuser
 ENV HOME=/home/appuser
