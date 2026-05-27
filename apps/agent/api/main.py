@@ -98,6 +98,79 @@ def _load_tenant_config(tenant_id: str) -> dict | None:
         return None
 
 
+def _tenant_project_uid(tenant_id: str | None) -> str | None:
+    """Resolve the tenant's project_uid (None if tenant/key missing)."""
+    if not tenant_id:
+        return None
+    cfg = _load_tenant_config(tenant_id)
+    return cfg.get("project_uid") if cfg else None
+
+
+async def _emit_analytics(
+    *,
+    tenant_id: str | None,
+    session_id: str,
+    channel: str,
+    user_text: str,
+    result: dict,
+) -> None:
+    """Fire the analytics sink for one completed turn (fire-and-forget).
+
+    Records the interaction (user + assistant) and the LLM usage row, linked by a
+    shared interaction_id. Wrapped in try/except — analytics must NEVER break the
+    chat response. No-op when the sink is not configured.
+    """
+    import uuid as _uuid
+
+    from integrations import analytics_sink
+
+    try:
+        if not analytics_sink.analytics_enabled():
+            return
+        project_uid = _tenant_project_uid(tenant_id)
+        interaction_id = str(_uuid.uuid4())
+        usage = result.get("usage") or {}
+        await analytics_sink.record_interaction(
+            project_uid=project_uid,
+            tenant_id=tenant_id or "",
+            session_id=session_id,
+            channel=channel,
+            interaction_id=interaction_id,
+            user_text=user_text,
+            assistant_text=result.get("content", ""),
+            tools_called=result.get("tools_called") or [],
+            latency_ms=result.get("latency_ms"),
+        )
+        await analytics_sink.record_llm_usage(
+            project_uid=project_uid,
+            tenant_id=tenant_id or "",
+            session_id=session_id,
+            interaction_id=interaction_id,
+            provider=usage.get("provider", ""),
+            model=usage.get("model", ""),
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+        )
+    except Exception:  # noqa: BLE001 — analytics must never break chat
+        logger.opt(exception=True).warning("analytics emit failed (ignored)")
+
+
+_analytics_tasks: set = set()
+
+
+def _spawn_analytics(**kwargs) -> None:
+    """Schedule _emit_analytics as a background task (keeps a ref to avoid GC)."""
+    import asyncio as _asyncio
+
+    try:
+        task = _asyncio.create_task(_emit_analytics(**kwargs))
+        _analytics_tasks.add(task)
+        task.add_done_callback(_analytics_tasks.discard)
+    except RuntimeError:
+        # No running loop (shouldn't happen inside a request) — skip silently.
+        pass
+
+
 async def _register_whatsapp_webhook() -> None:
     """Register Sorelia's webhook URL with Evolution API on startup."""
     if not settings.whatsapp_api_url or not settings.whatsapp_instance:
@@ -230,6 +303,14 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         content = result["content"]
         wa_ui_actions = result.get("ui_actions", {})
         wa_tool_pairs = result.get("tool_pairs", [])
+        # Fire-and-forget analytics for the WhatsApp turn (non-blocking).
+        _spawn_analytics(
+            tenant_id=tenant_id,
+            session_id=conv.conversation_id,
+            channel="whatsapp",
+            user_text=text,
+            result=result,
+        )
     except Exception:
         logger.opt(exception=True).error("WhatsApp agent error for phone={}", phone)
         content = (
@@ -885,6 +966,14 @@ async def chat(request: Request, body: ChatRequest):
         ui_actions = result.get("ui_actions", {})
         tool_pairs = result.get("tool_pairs", [])
         suggested_replies = result.get("suggested_replies")
+        # Fire-and-forget analytics (non-blocking; never raises into the request).
+        _spawn_analytics(
+            tenant_id=body.tenant_id,
+            session_id=conv.conversation_id,
+            channel=body.channel,
+            user_text=body.text,
+            result=result,
+        )
     except (KeyError, ValueError, TypeError, LLMError) as exc:
         logger.exception("Agent processing error (recoverable)")
         content = _fallback_response(body.text, conv)

@@ -4,6 +4,7 @@
   "name": "PrestamYpe",
   "domain": "prestamype.com",
   "data_source": "doris",
+  "project_uid": "QUIdI0iwQY0l3pJwRKLB",
   "branding": {
     "primary_color": "#00b369",
     "logo_url": "https://d14bodb4yrsx8y.cloudfront.net/static/logo.svg",

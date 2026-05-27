@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     doris_password: str = ""
     doris_db: str = "project_QUIdI0iwQY0l3pJwRKLB"
 
+    # ── Doris analytics (WRITE) — bot interactions + LLM usage land here via the
+    # pydoris Stream Load HTTP API. SEPARATE credentials (cobranza_rw) and the FE
+    # *HTTP* port (8030, NOT the 9030 MySQL wire port the read path uses). If the
+    # host is empty the analytics sink is a no-op (fire-and-forget never breaks
+    # the chat). Env prefix COBRANZA_ (e.g. COBRANZA_ANALYTICS_HOST).
+    analytics_host: str = ""
+    analytics_port: int = 8030
+    analytics_user: str = "cobranza_rw"
+    analytics_password: str = ""
+    analytics_db: str = "cobranza_analytics"
+
     csrf_secret: str = "dev-secret-change-in-prod"
 
     # Comprobante (payment voucher) storage. Uploaded images land under

@@ -18,6 +18,8 @@ from core.llm.base import LLMError, LLMProvider, LLMResponse, ToolCall
 class AnthropicProvider(LLMProvider):
     """LLMProvider backed by Anthropic's Messages API (with prompt caching)."""
 
+    name = "anthropic"
+
     def __init__(self, api_key: str, model: str):
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self.model = model

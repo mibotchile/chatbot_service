@@ -7,12 +7,14 @@ loop runs unchanged on Anthropic (with prompt caching) or OpenAI.
 """
 
 import json
+import time
 from typing import Any
 
 from loguru import logger
 from prompts.system import build_system_prompt
 from config.tools_schema import TOOL_DEFINITIONS
 from core.llm import LLMProvider, ToolCall
+from core.llm.base import usage_from_raw
 from tools import ToolRegistry
 from core.response_builder import build_ui_actions
 from core.prospect_profile import build_prospect_profile, truncate_history
@@ -56,6 +58,20 @@ class SoreliaAgent:
         token_savings = len(history) - len(recent)
         logger.info(f"Agent call | conv={conversation_id[:12]} | msg='{text[:50]}' | lead={lead_state.get('level', '?')} | history={len(history)} truncated={token_savings}")
 
+        # Per-turn usage accumulator (summed across every LLM call this turn) and
+        # LLM wall-clock latency, surfaced in the result for the analytics sink.
+        usage_acc = {"input_tokens": 0, "output_tokens": 0}
+        latency_acc = {"ms": 0.0}
+
+        async def _complete(**kwargs):
+            _t0 = time.perf_counter()
+            _resp = await self.provider.complete(**kwargs)
+            latency_acc["ms"] += (time.perf_counter() - _t0) * 1000.0
+            _in, _out = usage_from_raw(_resp.raw)
+            usage_acc["input_tokens"] += _in
+            usage_acc["output_tokens"] += _out
+            return _resp
+
         # Filter tools per tenant config (agent.excluded_tools in tenant.config.json)
         _excluded_tools = set()
         _tenant = getattr(self, "tenant", None)
@@ -64,7 +80,7 @@ class SoreliaAgent:
         tools = [t for t in TOOL_DEFINITIONS if t["name"] not in _excluded_tools] if _excluded_tools else TOOL_DEFINITIONS
 
         # First LLM call with tools (neutral request → neutral response)
-        response = await self.provider.complete(
+        response = await _complete(
             system=system_prompt, messages=messages, tools=tools, max_tokens=1024,
         )
 
@@ -106,7 +122,7 @@ class SoreliaAgent:
                     "content": json.dumps(chip_result, ensure_ascii=False),
                 })
 
-            final = await self.provider.complete(
+            final = await _complete(
                 system=system_prompt, messages=messages, tools=TOOL_DEFINITIONS, max_tokens=1024,
             )
             content = final.text
@@ -122,7 +138,9 @@ class SoreliaAgent:
 
         # Force chip generation if the model didn't call suggest_quick_replies
         if not suggested_replies and content:
-            suggested_replies = await self._force_chip_generation(content, lead_state, tool_pairs)
+            suggested_replies = await self._force_chip_generation(
+                content, lead_state, tool_pairs, _complete=_complete,
+            )
 
         return {
             "content": content or "",
@@ -132,6 +150,15 @@ class SoreliaAgent:
             "ui_actions": ui_actions,
             "tool_pairs": tool_pairs,
             "suggested_replies": suggested_replies,
+            # Per-turn telemetry for the analytics sink (summed across LLM calls).
+            "usage": {
+                "input_tokens": usage_acc["input_tokens"],
+                "output_tokens": usage_acc["output_tokens"],
+                "model": self.provider.model,
+                "provider": getattr(self.provider, "name", ""),
+            },
+            "latency_ms": int(latency_acc["ms"]),
+            "tools_called": [name for name, _ in tool_pairs],
         }
 
     async def _force_chip_generation(
@@ -139,8 +166,15 @@ class SoreliaAgent:
         content: str,
         lead_state: dict,
         tool_pairs: list[tuple[str, dict]],
+        _complete=None,
     ) -> list[str] | None:
-        """Lightweight forced call to produce quick replies when the main flow didn't."""
+        """Lightweight forced call to produce quick replies when the main flow didn't.
+
+        ``_complete`` (when passed) is the per-turn wrapper that accumulates token
+        usage + latency, so this auxiliary call is counted in analytics too. Falls
+        back to ``self.provider.complete`` for callers that don't pass it.
+        """
+        _call = _complete or self.provider.complete
         chip_tool = next((t for t in TOOL_DEFINITIONS if t["name"] == "suggest_quick_replies"), None)
         if not chip_tool:
             return None
@@ -158,7 +192,7 @@ class SoreliaAgent:
             f"Datos del lead: {json.dumps(collected, ensure_ascii=False)}"
         )}]
         try:
-            chip_response = await self.provider.complete(
+            chip_response = await _call(
                 system=system, messages=messages, tools=[chip_tool],
                 max_tokens=256, force_tool="suggest_quick_replies",
             )

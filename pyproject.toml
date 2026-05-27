@@ -19,6 +19,22 @@ dependencies = [
     "reportlab>=4.5.1",
     "openai>=2.38.0",
     "pymysql>=1.1.0",
+    "requests>=2.31.0",
+    "pydoris>=1.2.0",
+]
+
+# pydoris (Apache Doris client) declares mysqlclient + sqlalchemy as deps for its
+# SQLAlchemy dialect, which we do NOT use — we only use DorisClient.write (Stream
+# Load over HTTP via `requests`). mysqlclient needs a C toolchain + libmariadb
+# headers to build, which we refuse to drag into a slim image. We override those
+# transitive deps to a no-op marker so uv never builds them. `requests` (the only
+# real runtime dep of DorisClient) is declared explicitly above.
+[tool.uv]
+package = false
+override-dependencies = [
+    "mysqlclient; sys_platform == 'never'",
+    "sqlalchemy; sys_platform == 'never'",
+    "sqlalchemy-utils; sys_platform == 'never'",
 ]
 
 [dependency-groups]
@@ -28,10 +44,6 @@ dev = [
     "pytest-httpx>=0.35.0",
     "ruff>=0.11.0",
 ]
-
-# Not a packaged library — it's an app run from source. Avoid build backend.
-[tool.uv]
-package = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

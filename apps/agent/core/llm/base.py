@@ -38,11 +38,33 @@ class LLMError(Exception):
     """
 
 
+def usage_from_raw(raw: Any) -> tuple[int, int]:
+    """Extract (input_tokens, output_tokens) from a provider's raw SDK response.
+
+    Handles Anthropic (``usage.input_tokens`` / ``output_tokens``) and OpenAI
+    (``usage.prompt_tokens`` / ``completion_tokens``). Returns (0, 0) when usage
+    is absent — analytics is best-effort and must never raise here.
+    """
+    usage = getattr(raw, "usage", None)
+    if usage is None:
+        return 0, 0
+    in_tok = getattr(usage, "input_tokens", None)
+    if in_tok is None:
+        in_tok = getattr(usage, "prompt_tokens", 0)
+    out_tok = getattr(usage, "output_tokens", None)
+    if out_tok is None:
+        out_tok = getattr(usage, "completion_tokens", 0)
+    return int(in_tok or 0), int(out_tok or 0)
+
+
 class LLMProvider(ABC):
     """Strategy interface. One concrete subclass per backend."""
 
     #: Default model for this provider (used when `model` is not passed).
     model: str = ""
+
+    #: Provider name recorded in analytics ("anthropic" | "openai").
+    name: str = ""
 
     @abstractmethod
     async def complete(

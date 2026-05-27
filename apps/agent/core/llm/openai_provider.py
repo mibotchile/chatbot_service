@@ -26,6 +26,8 @@ from core.llm.base import LLMError, LLMProvider, LLMResponse, ToolCall
 class OpenAIProvider(LLMProvider):
     """LLMProvider backed by OpenAI's Chat Completions API."""
 
+    name = "openai"
+
     def __init__(self, api_key: str, model: str):
         # AsyncOpenAI raises at construction if api_key is empty. Use a
         # placeholder so the provider builds without a key; a real call then

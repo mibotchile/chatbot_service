@@ -19,6 +19,7 @@ class TenantConfig:
 
     slug: str
     soul: AgentSoul
+    project_uid: str | None = None
     skills: list[str] | None = None
     excluded_tools: list[str] | None = None
     faq: list[dict] = field(default_factory=list)
@@ -73,6 +74,7 @@ class TenantConfig:
         return cls(
             slug=config.get("slug", tenant_dir.name),
             soul=soul,
+            project_uid=config.get("project_uid"),
             skills=skills,
             excluded_tools=excluded_tools,
             faq=faq if isinstance(faq, list) else [],
