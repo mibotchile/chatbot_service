@@ -43,6 +43,12 @@ class Settings(BaseSettings):
 
     csrf_secret: str = "dev-secret-change-in-prod"
 
+    # Comprobante (payment voucher) storage. Uploaded images land under
+    # <comprobante_dir>/<dni>/<nro_operacion>.<ext>; the dedup/audit JSON lives
+    # here too (off /tmp so it persists in the mounted volume). In prod this
+    # MUST be a mounted docker volume. Env: COBRANZA_COMPROBANTE_DIR.
+    comprobante_dir: str = "/app/data/comprobantes"
+
     dashboard_key: str = ""
 
     webhook_lead_url: str = ""

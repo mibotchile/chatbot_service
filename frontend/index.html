@@ -36,8 +36,9 @@
     header { border-bottom: 1px solid var(--vox-border-soft); position: sticky; top: 0; z-index: 20;
       background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
     .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
-    .wordmark { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
+    .wordmark { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
     .wordmark .accent { color: var(--vox-brand-hover); }
+    .wordmark img.logo { height: 28px; width: auto; display: block; }
     .status-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--vox-text-muted);
       background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 9999px; padding: 6px 12px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vox-success); box-shadow: 0 0 0 3px rgba(16,185,129,0.18); }
@@ -151,17 +152,17 @@
 <body>
   <header>
     <div class="wrap header-inner">
-      <div class="wordmark">Presta<span class="accent">Union</span></div>
-      <span class="status-chip"><span class="dot"></span> Asistente Ada · en línea</span>
+      <div class="wordmark" id="wordmark">Presta<span class="accent">Union</span></div>
+      <span class="status-chip"><span class="dot"></span> Asistente <span id="agent-name">Ada</span> · en línea</span>
     </div>
   </header>
 
   <main class="wrap">
     <section class="hero">
       <div class="hero-copy">
-        <span class="kicker"><span class="dot"></span> Ada responde al instante, las 24 horas</span>
-        <h1>Resuelve tu préstamo hablando con <span class="accent">Ada</span>.</h1>
-        <p class="lead">Consulta tu saldo, regulariza una cuota, presenta un reclamo o pide tu certificado de no adeudo. Atención clara y en tu idioma, sin letra chica.</p>
+        <span class="kicker"><span class="dot"></span> <span id="kicker-name">Ada</span> responde al instante, las 24 horas</span>
+        <h1 id="hero-h1">Resuelve tu préstamo hablando con <span class="accent">Ada</span>.</h1>
+        <p class="lead" id="hero-lead">Consulta tu saldo, regulariza una cuota, presenta un reclamo o pide tu certificado de no adeudo. Atención clara y en tu idioma, sin letra chica.</p>
         <div class="hero-cta">
           <a class="btn-primary" href="#acceso">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
@@ -208,7 +209,7 @@
     </section>
 
     <h2 class="section-label" id="acceso">Ingresa a la demo como uno de estos clientes</h2>
-    <div class="cards">
+    <div class="cards" id="cards">
       <a class="card" href="?ct=demo-juan">
         <div class="ico">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21V7a2 2 0 012-2h14a2 2 0 012 2v14M3 21h18M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"/></svg>
@@ -238,13 +239,13 @@
       </a>
     </div>
 
-    <div class="dni-note">
+    <div class="dni-note" id="dni-note">
       <div class="dni-note-title">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 9h3m-3 4h2M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2zm4-13a2 2 0 11-4 0 2 2 0 014 0zM7 16a3 3 0 016 0v.5H7V16z"/></svg>
         DNIs de prueba (identifícate por DNI en el chat)
       </div>
       <p>Abre el chat sin entrar como un cliente y, cuando Ada te pida el DNI, escribe uno de estos:</p>
-      <ul class="dni-list">
+      <ul class="dni-list" id="dni-list">
         <li><b>41785236</b> · Juan Pérez Rojas (al día)</li>
         <li><b>09823514</b> · Carlos Huamán Flores (en mora)</li>
         <li><b>72514893</b> · María Quispe Mamani (sin deuda)</li>
@@ -259,11 +260,119 @@
     </div>
   </main>
 
-  <footer class="wrap">
-    PrestaUnion · Demostración con datos 100% ficticios. No corresponde a personas ni empresas reales.
+  <footer class="wrap" id="footer">
+    PrestaUnion · Demostración con datos ficticios. <span id="footer-powered">Powered by Onbotgo</span>.
   </footer>
 
-  <!-- Floating chat widget. Reads ?ct= from the URL (set by the access cards). -->
+  <!-- Tenant-aware branding. Default tenant = "prestaunion" (Vox theme, unchanged).
+       ?tenant=<slug> fetches /branding and re-skins the page (color, logo, name,
+       hero, demo cards) without touching the static prestaunion markup above. -->
+  <script>
+    (() => {
+      "use strict";
+      const qs = new URLSearchParams(location.search);
+      const TENANT = (qs.get("tenant") || "prestaunion").replace(/[^a-z0-9_-]/gi, "");
+      const CT = qs.get("ct");
+
+      // Derive the API base from this page's own path (works under a proxy prefix).
+      const API = (() => {
+        const path = location.pathname.replace(/\/[^/]*$/, ""); // strip /index.html
+        return (location.origin + path).replace(/\/$/, "");
+      })();
+
+      // prestaunion = the page's native look; no fetch, no override needed.
+      if (TENANT === "prestaunion") return;
+
+      const $ = (id) => document.getElementById(id);
+
+      function applyBrand(b) {
+        const color = b.primary_color || "#0083E0";
+        const root = document.documentElement.style;
+        // The whole page reads brand color from these CSS vars. Map the tenant
+        // color onto fills + accents (hover/accent kept = primary for simplicity).
+        root.setProperty("--vox-brand", color);
+        root.setProperty("--vox-brand-hover", color);
+        root.setProperty("--vox-brand-soft", _tint(color, 0.12));
+
+        document.title = `${b.name} · Portal de clientes`;
+
+        // Header: logo image if provided, else the tenant name wordmark.
+        const wm = $("wordmark");
+        if (b.logo_url) {
+          wm.innerHTML = `<img class="logo" src="${b.logo_url}" alt="${b.name}" />`;
+        } else {
+          wm.textContent = b.name;
+        }
+        const agentName = b.agent_name || "Ada";
+        $("agent-name").textContent = agentName;
+        $("kicker-name").textContent = agentName;
+
+        if (b.hero_headline) {
+          $("hero-h1").textContent = b.hero_headline;
+        }
+        $("footer-powered").textContent = b.footer || "Powered by Onbotgo";
+        $("footer").firstChild.textContent = `${b.name} · Demostración con datos ficticios. `;
+
+        // Demo account cards from the branding endpoint (truthful labels).
+        if (Array.isArray(b.demo_tokens) && b.demo_tokens.length) {
+          renderCards(b.demo_tokens, agentName);
+          // prestamype demo DNIs live in the fixture; hide the prestaunion-specific
+          // hardcoded DNI list to avoid showing the wrong numbers.
+          const note = $("dni-note");
+          if (note) note.style.display = "none";
+        }
+      }
+
+      function _badgeClass(status) {
+        if (status === "en_mora") return "mora";
+        if (status === "sin_deuda" || status === "cancelado") return "libre";
+        return "aldia";
+      }
+
+      function renderCards(tokens, agentName) {
+        const wrap = $("cards");
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        const arrow = '<svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg>';
+        const ico = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21V7a2 2 0 012-2h14a2 2 0 012 2v14M3 21h18M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"/></svg>';
+        tokens.forEach((t) => {
+          const a = document.createElement("a");
+          a.className = "card";
+          a.href = `?tenant=${TENANT}&ct=${encodeURIComponent(t.token)}`;
+          const firstName = (t.name || "Cliente").split(/\s+/)[0];
+          a.innerHTML = `
+            <div class="ico">${ico}</div>
+            <div class="who">${_title(t.name || "Cliente")}</div>
+            <div class="biz">DNI verificado · ${t.currency === "USD" ? "Dólares" : "Soles"}</div>
+            <span class="badge ${_badgeClass(t.status)}">${t.label || t.status_label || ""}</span>
+            <span class="go">Entrar como ${_title(firstName)} ${arrow}</span>`;
+          wrap.appendChild(a);
+        });
+      }
+
+      // Title-case a possibly ALL-CAPS fixture name.
+      function _title(s) {
+        return String(s || "").toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+      }
+
+      // Light mint tint of a hex color for soft backgrounds (icon chips, badges).
+      function _tint(hex, alphaToWhite) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+        if (!m) return "#e7fff3";
+        const n = parseInt(m[1], 16);
+        const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        const mix = (c) => Math.round(c + (255 - c) * (1 - alphaToWhite));
+        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+      }
+
+      fetch(`${API}/api/v1/tenant/${TENANT}/branding`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => { if (b) applyBrand(b); })
+        .catch((e) => console.error("[branding] fetch failed", e));
+    })();
+  </script>
+
+  <!-- Floating chat widget. Reads ?tenant= and ?ct= from the URL. -->
   <script src="widget.js"></script>
 </body>
 </html>

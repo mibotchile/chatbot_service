@@ -25,6 +25,7 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from config.settings import settings
 from integrations.certificate_pdf import generate_certificate
 from integrations.doris_debt_source import classify_tipo, normalize_cci
 
@@ -430,8 +431,10 @@ async def enviar_documento(
 # ── 5. Validar comprobante de pago (PrestamYpe) ────────────────────────────
 
 # Local dedup store: a comprobante's nº de operación seen once is flagged on
-# any repeat. JSON list of records so the demo can show the audit trail.
-_COMPROBANTES_PATH = Path("/tmp/prestamype_comprobantes.json")
+# any repeat. JSON list of records so the demo can show the audit trail. Lives
+# under COBRANZA_COMPROBANTE_DIR (mounted volume), NOT /tmp, so it persists with
+# the uploaded images. Tests override _COMPROBANTES_PATH via monkeypatch.
+_COMPROBANTES_PATH = Path(settings.comprobante_dir) / "comprobantes.json"
 
 
 def _load_comprobantes() -> list[dict]:
@@ -444,6 +447,7 @@ def _load_comprobantes() -> list[dict]:
 
 
 def _save_comprobantes(items: list[dict]) -> None:
+    _COMPROBANTES_PATH.parent.mkdir(parents=True, exist_ok=True)
     _COMPROBANTES_PATH.write_text(
         json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
     )

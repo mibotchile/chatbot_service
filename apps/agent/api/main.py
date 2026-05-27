@@ -12,7 +12,7 @@ from datetime import date
 import re
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, Request, Response
+from fastapi import BackgroundTasks, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -67,6 +67,35 @@ def get_tenant_contact_phone(tenant_id: str | None = None) -> str:
                 return _phone.replace("+", "")
     # TODO Fase 1: no domain default — return empty if tenant has no phone configured.
     return settings.soul.whatsapp.replace("+", "") if hasattr(settings, "soul") else ""
+
+
+def _tenant_dir(tenant_id: str):
+    """Locate a tenant directory in both Docker (/app/tenants) and dev layouts."""
+    from pathlib import Path as _P
+
+    d = _P("/app/tenants") / tenant_id
+    if not d.exists():
+        # apps/agent/api/main.py -> repo root is 4 levels up.
+        d = _P(__file__).resolve().parent.parent.parent.parent / "tenants" / tenant_id
+    return d
+
+
+def _load_tenant_config(tenant_id: str) -> dict | None:
+    """Read the raw tenant.config.json for a tenant. None if missing/invalid.
+
+    tenant_id is sanitized to a safe slug so it can't escape the tenants dir.
+    """
+    import json as _j
+
+    if not re.fullmatch(r"[a-z0-9_\-]{1,64}", tenant_id or ""):
+        return None
+    cfg_path = _tenant_dir(tenant_id) / "tenant.config.json"
+    if not cfg_path.exists():
+        return None
+    try:
+        return _j.loads(cfg_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
 
 
 async def _register_whatsapp_webhook() -> None:
@@ -903,6 +932,9 @@ async def chat(request: Request, body: ChatRequest):
             "display_name": conv.debt_context.get("borrower_name", ""),
             "business_name": conv.debt_context.get("business_name", ""),
             "status_label": conv.debt_context.get("status_label", ""),
+            # The user's own (already verified) DNI — lets the widget enable the
+            # comprobante upload after a mid-chat DNI identification.
+            "dni": conv.debt_context.get("dni", ""),
         })
 
     # Downloadable document produced this turn (certificate). Surfaced as a
@@ -952,6 +984,153 @@ async def download_certificate(filename: str):
     if not path.exists():
         return Response(status_code=404, content="Certificate not found")
     return FileResponse(path, media_type="application/pdf", filename=filename)
+
+
+# ── Tenant branding (drives the tenant-aware frontend) ──
+def _demo_tokens_for(tenant_id: str) -> list[dict]:
+    """Build demo account cards from the tenant's borrowers fixture.
+
+    Returns [{token, name, label, status}] for each demo token. Labels are
+    derived from the borrower status so cards stay truthful to the data.
+    """
+    import json as _j
+
+    fixture_path = _tenant_dir(tenant_id) / "mock" / "borrowers.json"
+    if not fixture_path.exists():
+        return []
+    try:
+        data = _j.loads(fixture_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return []
+    tokens = data.get("tokens") or {}
+    borrowers = data.get("borrowers") or {}
+    cards: list[dict] = []
+    for token, account_id in tokens.items():
+        prof = borrowers.get(account_id) or {}
+        currency = prof.get("currency", "PEN")
+        status = prof.get("status", "")
+        if status == "en_mora":
+            label = "Crédito en dólares" if currency == "USD" else "Cliente en mora"
+        elif (prof.get("balance") or 0) == 0:
+            label = "Sin deuda"
+        else:
+            label = "Crédito al día"
+        cards.append({
+            "token": token,
+            "name": prof.get("borrower_name", ""),
+            "label": label,
+            "status": status or "al_dia",
+            "status_label": prof.get("status_label", ""),
+            "currency": currency,
+        })
+    return cards
+
+
+@app.get("/api/v1/tenant/{tenant_id}/branding")
+async def tenant_branding(tenant_id: str):
+    """Return the public branding bundle for a tenant (drives index.html + widget).
+
+    Reads the tenant.config.json (no secrets). 404 if the tenant doesn't exist.
+    """
+    cfg = _load_tenant_config(tenant_id)
+    if cfg is None:
+        return JSONResponse(status_code=404, content={"detail": "Tenant not found"})
+
+    branding = cfg.get("branding", {}) or {}
+    content = cfg.get("content", {}) or {}
+    soul = cfg.get("soul", {}) or {}
+    return {
+        "tenant_id": cfg.get("id", tenant_id),
+        "name": cfg.get("name", tenant_id),
+        "primary_color": branding.get("primary_color", "#0083E0"),
+        "logo_url": branding.get("logo_url", ""),
+        "favicon_url": branding.get("favicon_url", ""),
+        "hero_headline": content.get("hero_headline", ""),
+        "agent_name": soul.get("name", "Ada"),
+        "currency": soul.get("currency", "soles (S/)"),
+        "footer": "Powered by Onbotgo",
+        "demo_tokens": _demo_tokens_for(tenant_id),
+    }
+
+
+# ── Cobranza: comprobante upload (deterministic form, NOT LLM-orchestrated) ──
+_COMPROBANTE_EXT = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "application/pdf": "pdf",
+}
+_COMPROBANTE_MAX_BYTES = 8 * 1024 * 1024  # 8 MB
+
+
+@app.post("/api/v1/comprobante")
+async def upload_comprobante(
+    tenant_id: str = Form(...),
+    dni: str = Form(...),
+    cci: str = Form(...),
+    monto: float = Form(...),
+    nro_operacion: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """Accept a payment voucher: verify the DNI, store the image, validate + classify.
+
+    The DNI MUST resolve to a borrower for the tenant (identity gate). The file
+    is validated (type + size) and stored under
+    COBRANZA_COMPROBANTE_DIR/<dni>/<nro_operacion>.<ext>. Then the existing
+    validate_comprobante() runs (CCI match + tipo classification + dedup) and an
+    audit record is appended. Returns the validation payload for the widget.
+    """
+    from pathlib import Path as _CP
+
+    # --- Validate inputs at the boundary ---
+    dni_norm = re.sub(r"\D", "", dni or "")
+    if not (5 <= len(dni_norm) <= 12):
+        return JSONResponse(status_code=400, content={"detail": "DNI inválido."})
+    nro = (nro_operacion or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", nro):
+        return JSONResponse(status_code=400, content={"detail": "Nº de operación inválido."})
+    if monto <= 0:
+        return JSONResponse(status_code=400, content={"detail": "Monto inválido."})
+
+    ext = _COMPROBANTE_EXT.get((file.content_type or "").lower())
+    if ext is None:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Formato no soportado. Sube una imagen JPG/PNG o un PDF."},
+        )
+
+    payload = await file.read(_COMPROBANTE_MAX_BYTES + 1)
+    if len(payload) > _COMPROBANTE_MAX_BYTES:
+        return JSONResponse(status_code=413, content={"detail": "El archivo supera 8 MB."})
+    if not payload:
+        return JSONResponse(status_code=400, content={"detail": "El archivo está vacío."})
+
+    # --- Identity gate: the DNI must resolve to a borrower for this tenant ---
+    from integrations import debt_source
+
+    profile = debt_source.resolve_dni(dni_norm, tenant_id=tenant_id)
+    if not profile:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "No encontré créditos asociados a ese DNI."},
+        )
+
+    # --- Store the image (sanitized path; dni + nro_operacion already safe) ---
+    dest_dir = _CP(settings.comprobante_dir) / dni_norm
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    (dest_dir / f"{nro}.{ext}").write_bytes(payload)
+
+    # --- Validate + classify against the verified profile ---
+    from tools.cobranza import validar_comprobante
+
+    result = await validar_comprobante(
+        profile, cci=cci, monto=monto, nro_operacion=nro,
+    )
+    logger.info(
+        "Comprobante uploaded: tenant={} dni={} op={} valida={} tipo={} dedup_ok={}",
+        tenant_id, dni_norm, nro, result.get("cuenta_valida"),
+        result.get("tipo"), result.get("dedup_ok"),
+    )
+    return result
 
 
 # ── Cobranza: list registered reclamos (demo visibility) ──
