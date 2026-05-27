@@ -176,14 +176,18 @@ class RateLimiter:
     def check_identification(self, ip: str, dni: str) -> RateLimitDecision:
         """Anti-enumeration check for one DNI identification attempt.
 
-        Records the attempt, then enforces two signals over the trailing hour:
+        Both signals are about NEW identities, not repetition of a legitimate
+        one. Re-submitting the SAME DNI already seen this hour (a real borrower
+        uploading several vouchers) does NOT consume the identification budget
+        and never trips a 429 here — only the diversity of DISTINCT DNIs (a
+        sweep) and the rate of NEW identities do. Over the trailing hour:
           1. distinct-DNI diversity → sweep → temporary block (checked FIRST so a
              scan trips the longer block rather than the soft per-hour rate);
-          2. attempt rate (``ident_per_hour``).
+          2. NEW-identity rate (``ident_per_hour``) — counts distinct DNIs plus
+             empty/garbage probes, NOT repeats of an already-seen DNI.
 
-        ``dni`` should be the normalized digits; an empty/garbage value still
-        counts as an attempt (it's an enumeration probe) but adds no distinct
-        DNI.
+        ``dni`` should be the normalized digits; an empty/garbage value counts as
+        a new-identity probe (enumeration) but adds no distinct DNI.
         """
         now = self._time()
         with self._lock:
@@ -197,13 +201,19 @@ class RateLimiter:
             self._prune(attempts, cutoff)
             self._prune_pairs(dnis, cutoff)
 
-            # Record this attempt.
-            attempts.append(now)
             dni_norm = (dni or "").strip()
+            # A repeat of a DNI already seen this hour is a legitimate borrower,
+            # NOT a new identification attempt — it must not consume the budget.
+            is_repeat = bool(dni_norm) and any(d == dni_norm for _, d in dnis)
+
+            # Record the attempt against the NEW-identity rate only when it's a
+            # genuinely new identity (a distinct DNI) or an empty probe.
+            if not is_repeat:
+                attempts.append(now)
             if dni_norm:
                 dnis.append((now, dni_norm))
 
-            # 1) Diversity / sweep → temporary block.
+            # 1) Diversity / sweep → temporary block (distinct DNIs only).
             distinct_limit = self._cfg.distinct_dni_per_hour
             if distinct_limit > 0:
                 distinct = {d for _, d in dnis}
@@ -212,9 +222,10 @@ class RateLimiter:
                     self._blocked_until[ip] = now + block_secs
                     return RateLimitDecision(False, block_secs, "dni_sweep_block")
 
-            # 2) Attempt rate.
+            # 2) NEW-identity rate. Repeats of the same DNI were not counted, so
+            # a legitimate borrower re-submitting never trips this.
             rate_limit = self._cfg.ident_per_hour
-            if rate_limit > 0 and len(attempts) > rate_limit:
+            if rate_limit > 0 and not is_repeat and len(attempts) > rate_limit:
                 retry = max(int(attempts[0] + 3600 - now), 1)
                 return RateLimitDecision(False, retry, "ident_per_hour")
 

@@ -81,12 +81,14 @@ def test_limit_zero_disables_check():
 
 def test_identification_rate_per_hour():
     clock = FakeClock()
-    # distinct disabled so we isolate the rate signal (same DNI repeated).
+    # distinct disabled so we isolate the rate signal. The rate now counts NEW
+    # identities, so we feed DISTINCT DNIs (repeats wouldn't count — see
+    # test_repeated_same_dni_does_not_consume_ident_budget).
     rl = _limiter(clock, ident_per_hour=3, distinct_dni_per_hour=0)
     ip = "2.2.2.1"
-    for _ in range(3):
-        assert rl.check_identification(ip, "41785236").allowed is True
-    denied = rl.check_identification(ip, "41785236")
+    for n in range(3):
+        assert rl.check_identification(ip, f"4178523{n}").allowed is True
+    denied = rl.check_identification(ip, "41785239")
     assert denied.allowed is False
     assert denied.reason == "ident_per_hour"
     assert denied.retry_after >= 1
@@ -96,11 +98,11 @@ def test_identification_rate_window_slides():
     clock = FakeClock()
     rl = _limiter(clock, ident_per_hour=2, distinct_dni_per_hour=0)
     ip = "2.2.2.2"
-    assert rl.check_identification(ip, "1").allowed
-    assert rl.check_identification(ip, "1").allowed
-    assert not rl.check_identification(ip, "1").allowed
+    assert rl.check_identification(ip, "100").allowed
+    assert rl.check_identification(ip, "200").allowed
+    assert not rl.check_identification(ip, "300").allowed
     clock.advance(3601)
-    assert rl.check_identification(ip, "1").allowed
+    assert rl.check_identification(ip, "400").allowed
 
 
 # ── DNI anti-enumeration: diversity (sweep) → temporary block ─────────────
@@ -151,6 +153,44 @@ def test_repeated_same_dni_is_not_a_sweep():
     for _ in range(10):
         d = rl.check_identification(ip, "same-dni")
         assert d.reason != "dni_sweep_block"
+
+
+def test_repeated_same_dni_does_not_consume_ident_budget():
+    """A legitimate borrower re-submitting the SAME DNI never trips ident_per_hour.
+
+    Anti-enum counts NEW identities, not repeats. Hammering one verified DNI 20×
+    (e.g. uploading many vouchers) stays allowed even with a tiny rate limit;
+    only DISTINCT DNIs consume the budget.
+    """
+    clock = FakeClock()
+    rl = _limiter(clock, ident_per_hour=2, distinct_dni_per_hour=10)
+    ip = "2.2.2.9"
+    for _ in range(20):
+        d = rl.check_identification(ip, "44218903")
+        assert d.allowed is True
+        assert d.reason != "ident_per_hour"
+
+
+def test_distinct_dnis_still_trip_ident_rate_after_repeats():
+    """Repeats are free, but NEW DNIs still consume the rate budget.
+
+    After hammering one DNI (free), introducing distinct DNIs beyond the rate
+    limit must still 429 with ident_per_hour (distinct sweep disabled to isolate
+    the rate signal).
+    """
+    clock = FakeClock()
+    rl = _limiter(clock, ident_per_hour=2, distinct_dni_per_hour=0)
+    ip = "2.2.2.10"
+    # Repeats of the same DNI: free, never count.
+    for _ in range(5):
+        assert rl.check_identification(ip, "11111111").allowed
+    # 2 NEW distinct DNIs: allowed (budget = 2). NOTE the first DNI already
+    # consumed 1 (it was new the first time), so the budget is the # of distinct.
+    assert rl.check_identification(ip, "22222222").allowed
+    # 3rd distinct DNI exceeds ident_per_hour=2 → 429.
+    denied = rl.check_identification(ip, "33333333")
+    assert denied.allowed is False
+    assert denied.reason == "ident_per_hour"
 
 
 def test_empty_dni_counts_as_attempt_not_distinct():

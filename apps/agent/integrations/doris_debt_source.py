@@ -1,59 +1,148 @@
-"""Doris debt source for the PrestamYpe tenant (REAL data, fixture fallback).
+"""Generic Doris debt source — schema comes from the tenant config.
 
 Same interface as ``mock_debt_source`` (``resolve_token`` / ``resolve_dni``)
 returning the standard borrower *profile dict*, so the existing
-``consultar_deuda`` tool works unchanged. Adds the PrestamYpe-specific extra
-fields (``cci``, ``banco``, ``inversionista``, ``cuota_esperada``,
-``saldo_por_cancelar``) and a ``validate_comprobante`` helper used by the
-``validar_comprobante`` tool.
+``consultar_deuda`` tool works unchanged. Adds whatever extra profile fields the
+tenant declares (e.g. PrestamYpe's ``cci``, ``banco``, ``inversionista``,
+``cuota_esperada``, ``saldo_por_cancelar``) and a ``validate_comprobante``
+helper used by the ``validar_comprobante`` tool.
 
-Data lives in Apache Doris (MySQL wire protocol) at
-``project_QUIdI0iwQY0l3pJwRKLB`` (bronze layer):
-  - debt    : ``batch_asignacion_review_bronze``
-  - payments : ``batch_pagos_v2_bronze`` (join ``codigo_contrato = id_credito``)
+The module is TENANT-AGNOSTIC: the SQL and the row→profile mapping are built at
+runtime from a ``doris_schema`` block in the tenant's ``tenant.config.json``.
+See ``_load_schema`` for the expected format.
 
-FALLBACK CONTRACT (non-negotiable for the demo): on ANY connection/query error
-this module falls back to the seeded fixture
-(``tenants/prestamype/mock/borrowers.json``) so the demo never breaks. The
-fixture is a real sample taken from Doris on 2026-05-27.
+Data lives in Apache Doris (MySQL wire protocol). On ANY connection/query error
+this module falls back to the tenant's seeded fixture
+(``tenants/<tenant_id>/mock/borrowers.json``) so the demo never breaks
+(FALLBACK CONTRACT — non-negotiable).
 
-SCHEMA NOTES (verified, see CLAUDE.md / engram prestamype/build-backend):
-  - ``monto_total`` is the MONTHLY INSTALLMENT (cuota), NOT the full debt.
-  - the real outstanding balance is ``saldo_por_cancelar`` (payments table).
-  - ``codigo_de_cuenta_cci`` is 100% clean; ``numero_de_cuenta`` is ~10%
-    corrupt (E+12) and is NEVER used.
-  - the pagos join is 1:many — aggregate (MAX) per credit.
+SECURITY: table/column identifiers come from the (trusted) config but are
+whitelist-sanitized (``^[A-Za-z0-9_]+$``) before interpolation, so a corrupt
+config can never inject SQL. The DNI *value* is always bound as a parameter
+(``%s``), never interpolated.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from functools import lru_cache
+from pathlib import Path
 
 from config.settings import settings
 from integrations import mock_debt_source
 
-_TENANT = "prestamype"
+# Profile fields that must be coerced to float when mapped from Doris.
+_NUMERIC_FIELDS = frozenset(
+    {
+        "principal_original",
+        "balance",
+        "next_installment_amount",
+        "cuota_esperada",
+        "saldo_por_cancelar",
+        "monto_pagado",
+    }
+)
+_IDENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
-# Single representative row per credit (cuota/saldo aggregated), enriched with
-# the asignacion columns. DNI is bound as a parameter (never string-formatted).
-_PROFILE_SQL = """
-SELECT
-  a.id_credito, a.dni_ruc, a.nombre_completo, a.correo_electronico, a.telefono,
-  a.capital, a.dias_mora, a.fecha_vencimiento, a.moneda, a.banco,
-  a.codigo_de_cuenta_cci, a.inversionista,
-  MAX(p.cuota_esperada_actualizada) AS cuota_esperada,
-  MAX(p.saldo_por_cancelar)         AS saldo_por_cancelar,
-  MAX(p.monto_total_pagado_al_credito) AS monto_pagado
-FROM {db}.batch_asignacion_review_bronze a
-JOIN {db}.batch_pagos_v2_bronze p
-  ON p.codigo_contrato = a.id_credito
-WHERE a.dni_ruc = %s
-GROUP BY a.id_credito, a.dni_ruc, a.nombre_completo, a.correo_electronico,
-  a.telefono, a.capital, a.dias_mora, a.fecha_vencimiento, a.moneda, a.banco,
-  a.codigo_de_cuenta_cci, a.inversionista
-ORDER BY a.dias_mora DESC
-"""
+
+# ── Schema loading + SQL build ──────────────────────────────────────────────
+
+
+def _tenants_root() -> Path:
+    """Locate the tenants/ directory in both Docker and local-dev layouts."""
+    docker_path = Path("/app/tenants")
+    if docker_path.exists():
+        return docker_path
+    # apps/agent/integrations/ -> repo root -> tenants/
+    return Path(__file__).resolve().parent.parent.parent.parent / "tenants"
+
+
+def _safe_ident(value: str, *, what: str) -> str:
+    """Whitelist-validate a SQL identifier from config. Raise on anything weird."""
+    if not isinstance(value, str) or not _IDENT_RE.match(value):
+        raise ValueError(
+            f"doris_schema: invalid {what} identifier {value!r} "
+            "(must match ^[A-Za-z0-9_]+$)"
+        )
+    return value
+
+
+@lru_cache(maxsize=16)
+def _load_schema(tenant_id: str) -> dict:
+    """Read + validate the ``doris_schema`` block for a tenant.
+
+    Raises a clear error when the tenant declares ``data_source: "doris"`` but
+    has no ``doris_schema`` (or it's malformed). The result is cached per tenant.
+    """
+    path = _tenants_root() / tenant_id / "tenant.config.json"
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"doris_debt_source: cannot read tenant config for {tenant_id!r}: {exc}"
+        ) from exc
+
+    schema = config.get("doris_schema")
+    if not isinstance(schema, dict) or not schema:
+        raise ValueError(
+            f"doris_debt_source: tenant {tenant_id!r} has data_source 'doris' but "
+            "no 'doris_schema' block in tenant.config.json"
+        )
+    return schema
+
+
+def _build_sql(schema: dict) -> tuple[str, str]:
+    """Build the (parameterized) profile SQL + the DB name from a schema dict.
+
+    Returns ``(sql, db)``. All identifiers are whitelist-sanitized. The DNI value
+    is a ``%s`` placeholder — never interpolated.
+    """
+    db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
+    debt = _safe_ident(schema["debt_table"], what="debt_table")
+    pagos = _safe_ident(schema["pagos_table"], what="pagos_table")
+    join = schema["join"]
+    debt_key = _safe_ident(join["debt_key"], what="join.debt_key")
+    pagos_key = _safe_ident(join["pagos_key"], what="join.pagos_key")
+    dni_col = _safe_ident(schema["dni_column"], what="dni_column")
+
+    column_map: dict = schema["column_map"]
+    if not isinstance(column_map, dict) or not column_map:
+        raise ValueError("doris_schema: 'column_map' must be a non-empty object")
+
+    select_parts: list[str] = []
+    group_parts: list[str] = []
+    for field, spec in column_map.items():
+        _safe_ident(field, what=f"column_map key {field!r}")
+        source = spec.get("source", "debt")
+        col = _safe_ident(spec["column"], what=f"column_map[{field}].column")
+        alias = "a" if source == "debt" else "p"
+        agg = spec.get("agg")
+        if agg:
+            agg = _safe_ident(agg, what=f"column_map[{field}].agg").upper()
+            select_parts.append(f"{agg}({alias}.{col}) AS {field}")
+        else:
+            select_parts.append(f"{alias}.{col} AS {field}")
+            group_parts.append(f"{alias}.{col}")
+
+    if not group_parts:
+        raise ValueError(
+            "doris_schema: at least one non-aggregated column is required "
+            "(GROUP BY would be empty)"
+        )
+
+    select_clause = ",\n  ".join(select_parts)
+    group_clause = ", ".join(group_parts)
+    sql = (
+        f"SELECT\n  {select_clause}\n"
+        f"FROM {db}.{debt} a\n"
+        f"JOIN {db}.{pagos} p\n"
+        f"  ON p.{pagos_key} = a.{debt_key}\n"
+        f"WHERE a.{dni_col} = %s\n"
+        f"GROUP BY {group_clause}\n"
+        f"ORDER BY days_overdue DESC"
+    )
+    return sql, db
 
 
 def _normalize_dni(dni: str) -> str:
@@ -82,38 +171,31 @@ def _currency(moneda: str) -> tuple[str, str]:
 
 
 def _row_to_profile(row: dict) -> dict:
-    """Map a Doris result row to the standard borrower profile dict.
+    """Map a Doris result row (keyed by profile field) to a borrower profile.
 
-    balance ← saldo_por_cancelar (real outstanding), next_installment_amount ←
-    monto_total/cuota, status from dias_mora. Keeps the PrestamYpe extras.
+    The query already aliases every column to its profile field name, so this is
+    a thin coercion + derivation layer: currency code/symbol, status from
+    ``days_overdue``, numeric coercion. Any extra mapped fields pass through.
     """
-    code, sym = _currency(row.get("moneda"))
-    dias_mora = int(row.get("dias_mora") or 0)
-    saldo = _to_float(row.get("saldo_por_cancelar"))
-    cuota = _to_float(row.get("cuota_esperada"))
-    return {
-        "account_id": row.get("id_credito"),
-        "borrower_name": row.get("nombre_completo"),
-        "dni": row.get("dni_ruc"),
-        "email": row.get("correo_electronico") or "",
-        "phone": str(row.get("telefono") or ""),
-        "loan_number": row.get("id_credito"),
-        "currency": code,
-        "currency_symbol": sym,
-        "principal_original": _to_float(row.get("capital")),
-        "balance": saldo,
-        "next_due_date": str(row.get("fecha_vencimiento") or "") or None,
-        "next_installment_amount": cuota,
-        "days_overdue": dias_mora,
-        "status": "al_dia" if dias_mora == 0 else "en_mora",
-        "status_label": "Al día" if dias_mora == 0 else "En mora",
-        # ── PrestamYpe extras ──
-        "cci": row.get("codigo_de_cuenta_cci") or "",
-        "banco": row.get("banco") or "",
-        "inversionista": row.get("inversionista") or "",
-        "cuota_esperada": cuota,
-        "saldo_por_cancelar": saldo,
-    }
+    code, sym = _currency(row.get("currency"))
+    dias_mora = int(_to_float(row.get("days_overdue")))
+
+    profile: dict = {}
+    for key, value in row.items():
+        if key in _NUMERIC_FIELDS:
+            profile[key] = _to_float(value)
+        else:
+            profile[key] = value
+
+    profile["currency"] = code
+    profile["currency_symbol"] = sym
+    profile["days_overdue"] = dias_mora
+    profile["next_due_date"] = str(row.get("next_due_date") or "") or None
+    profile["phone"] = str(row.get("phone") or "")
+    profile["email"] = row.get("email") or ""
+    profile["status"] = "al_dia" if dias_mora == 0 else "en_mora"
+    profile["status_label"] = "Al día" if dias_mora == 0 else "En mora"
+    return profile
 
 
 @lru_cache(maxsize=1)
@@ -124,7 +206,7 @@ def _import_pymysql():
     return pymysql
 
 
-def _connect():
+def _connect(db: str):
     """Open a short-lived Doris connection. Raises on failure (caller falls back)."""
     pymysql = _import_pymysql()
     return pymysql.connect(
@@ -132,7 +214,7 @@ def _connect():
         port=int(settings.doris_port),
         user=settings.doris_user,
         password=settings.doris_password,
-        database=settings.doris_db,
+        database=db,
         connect_timeout=5,
         read_timeout=10,
         charset="utf8mb4",
@@ -140,10 +222,11 @@ def _connect():
     )
 
 
-def _query_dni(dni: str) -> list[dict]:
+def _query_dni(dni: str, tenant_id: str) -> list[dict]:
     """Run the profile query for a DNI against Doris. May raise — caller catches."""
-    sql = _PROFILE_SQL.format(db=settings.doris_db)
-    conn = _connect()
+    schema = _load_schema(tenant_id)
+    sql, db = _build_sql(schema)
+    conn = _connect(db)
     try:
         with conn.cursor() as cur:
             cur.execute(sql, (dni,))
@@ -152,7 +235,7 @@ def _query_dni(dni: str) -> list[dict]:
         conn.close()
 
 
-def _resolve_dni_credits(dni: str, tenant_id: str = _TENANT) -> list[dict]:
+def _resolve_dni_credits(dni: str, tenant_id: str) -> list[dict]:
     """Return ALL credit profiles for a DNI (Doris first, fixture fallback).
 
     Handles multicrédito (a DNI with >1 credit). On any Doris error falls back
@@ -162,7 +245,7 @@ def _resolve_dni_credits(dni: str, tenant_id: str = _TENANT) -> list[dict]:
     if not norm:
         return []
     try:
-        rows = _query_dni(norm)
+        rows = _query_dni(norm, tenant_id)
         if rows:
             return [_row_to_profile(r) for r in rows]
         # No rows in Doris for this DNI → fall through to fixture.
@@ -176,7 +259,7 @@ def _resolve_dni_credits(dni: str, tenant_id: str = _TENANT) -> list[dict]:
 # ── Public interface (mirrors mock_debt_source) ────────────────────────────
 
 
-def resolve_token(token: str, tenant_id: str = _TENANT) -> dict | None:
+def resolve_token(token: str, tenant_id: str) -> dict | None:
     """Resolve a demo campaign token to a borrower profile.
 
     Tokens are a DEMO affordance only — they live in the fixture. We resolve the
@@ -199,7 +282,7 @@ def resolve_token(token: str, tenant_id: str = _TENANT) -> dict | None:
     return fixture_profile
 
 
-def resolve_dni(dni: str, tenant_id: str = _TENANT) -> dict | None:
+def resolve_dni(dni: str, tenant_id: str) -> dict | None:
     """Resolve a DNI/RUC to a single borrower profile (first credit).
 
     For multicrédito the first (highest mora) credit is returned to keep the
@@ -213,7 +296,7 @@ def resolve_dni(dni: str, tenant_id: str = _TENANT) -> dict | None:
 # ── Comprobante validation (used by the validar_comprobante tool) ───────────
 
 
-def pick_credit_for_dni(dni: str, tenant_id: str = _TENANT) -> dict | None:
+def pick_credit_for_dni(dni: str, tenant_id: str) -> dict | None:
     """Pick the credit to classify a voucher against for a DNI (Doris/fixture).
 
     Normal case is 1 DNI → 1 credit (returned directly). For the marginal
@@ -237,7 +320,7 @@ def validate_comprobante(
     cci: str,
     monto: float,
     nro_operacion: str,
-    tenant_id: str = _TENANT,
+    tenant_id: str,
 ) -> dict:
     """Classify a payment voucher against the DNI's credit in Doris/fixture.
 
