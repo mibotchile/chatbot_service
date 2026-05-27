@@ -177,6 +177,54 @@ async def test_validar_comprobante_cci_with_spaces_matches(tmp_path, monkeypatch
     assert r["tipo"] == "pago"
 
 
+# ── scope: prestamype acotado a 2 capacidades (consulta + comprobante) ──────
+
+def _tenant_config():
+    from core.tenant_loader import TenantConfig
+
+    root = Path(__file__).resolve().parent.parent / "tenants" / TENANT
+    return TenantConfig.from_directory(root)
+
+
+def test_prestamype_excludes_out_of_scope_tools():
+    """No refi/negociación/plan/certificado/reclamo: those tools are excluded.
+
+    The engine has no negociación/refi/plan tools, so the only out-of-scope
+    tools that EXIST are reclamo, certificado and enviar_documento — all three
+    must be excluded for prestamype.
+    """
+    excluded = set(_tenant_config().excluded_tools or [])
+    assert {"registrar_reclamo", "emitir_certificado_no_adeudo", "enviar_documento"} <= excluded
+
+
+def test_prestamype_active_tools_only_in_scope():
+    """After filtering, the tool set is limited to the 2 capabilities + plumbing.
+
+    Allowed: identity (identificar_cliente), debt query (consultar_deuda),
+    voucher (validar_comprobante), escalation, and generic engine plumbing.
+    Forbidden: any reclamo/certificado/documento tool.
+    """
+    from config.tools_schema import TOOL_DEFINITIONS
+
+    excluded = set(_tenant_config().excluded_tools or [])
+    active = {t["name"] for t in TOOL_DEFINITIONS if t["name"] not in excluded}
+    assert "registrar_reclamo" not in active
+    assert "emitir_certificado_no_adeudo" not in active
+    assert "enviar_documento" not in active
+    # the 2 real capabilities + identity remain available
+    assert {"identificar_cliente", "consultar_deuda", "validar_comprobante"} <= active
+
+
+def test_prestamype_guardrails_forbid_refi_and_keep_two_capabilities():
+    g = _tenant_config().guardrails.lower()
+    # explicitly scoped to debt query + voucher
+    assert "consulta de deuda" in g
+    assert "comprobante" in g
+    # explicitly forbids refi / negotiation / plan / cert / reclamo
+    for term in ("refinanciamiento", "negociación", "plan", "certificado", "reclamo"):
+        assert term in g
+
+
 # ── helper ──────────────────────────────────────────────────────────────────
 
 def _isolate_dedup(monkeypatch, tmp_path) -> None:

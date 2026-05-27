@@ -64,6 +64,13 @@
     "demo-maria":  ["¿Tengo deuda pendiente?", "Quiero mi certificado de no adeudo", "Poner un reclamo"],
     "cold":        ["Consultar mi préstamo", "¿Cómo pago mi cuota?", "¿Qué es la TCEA?"],
   };
+  // PrestamYpe is scoped to TWO capabilities only: debt query + payment-voucher
+  // upload. Its chips never offer negociación/refi/plan/certificado/reclamo.
+  // Tenant-aware: split by identity state (verified vs cold).
+  const PRESTAMYPE_CHIPS = {
+    identified: ["Ver mi deuda", "Subir comprobante de pago", "¿A qué cuenta pago?"],
+    cold:       ["Consultar mi deuda", "Subir comprobante de pago"],
+  };
 
   // PrestamYpe demo tokens → DNI (from the seeded fixture). Used to prefill the
   // comprobante upload DNI when entering via a demo card. Other tenants resolve
@@ -500,8 +507,11 @@
     const chips = document.createElement("div");
     chips.className = "pu-chips";
     chips.style.justifyContent = "center";
-    const welcomeChips = CHIPS[CT]
-      || (TENANT === "prestamype" ? ["¿Cuánto debo?", "¿Cuándo vence mi cuota?", "Validar un comprobante"] : CHIPS.cold);
+    // PrestamYpe: acotado a sus 2 capacidades, tenant-aware por identidad.
+    // (CT o verifiedDni = identificado). NUNCA usa CHIPS[CT] de prestaunion.
+    const welcomeChips = TENANT === "prestamype"
+      ? ((CT || verifiedDni) ? PRESTAMYPE_CHIPS.identified : PRESTAMYPE_CHIPS.cold)
+      : (CHIPS[CT] || CHIPS.cold);
     welcomeChips.forEach((c) => {
       const b = document.createElement("button");
       b.textContent = c;
