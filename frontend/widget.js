@@ -149,6 +149,12 @@
     padding: 10px 14px; border-radius: 4px 16px 16px 16px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; }
   #pu-widget-root .pu-msg.agent .pu-reply a { color: #0070BF; font-weight: 600; }
   #pu-widget-root .pu-msg.agent .pu-reply strong { color: #0070bf; }
+  /* Certificate / document download chip — reads as a downloadable file. */
+  #pu-widget-root .pu-doc-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px;
+    padding: 8px 12px; border: 1px solid #bfe0f7; background: #C5E4F9; border-radius: 10px;
+    color: #0070BF; font-weight: 600; font-size: 13px; text-decoration: none; min-height: 40px; box-sizing: border-box; }
+  #pu-widget-root .pu-doc-link:hover { border-color: #0070BF; }
+  #pu-widget-root .pu-dl-ico { width: 16px; height: 16px; flex-shrink: 0; }
   #pu-widget-root .pu-typing { display: inline-flex; align-items: center; gap: 4px; padding: 11px 14px; background: #f7f8fa; border: 1px solid #eef0f3; border-radius: 4px 16px 16px 16px; }
   #pu-widget-root .pu-typing span { width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; animation: pu-typing 1.4s infinite ease-in-out; }
   #pu-widget-root .pu-typing span:nth-child(2) { animation-delay: .2s; }
@@ -162,6 +168,15 @@
 
   /* Input */
   #pu-widget-root .pu-inputbar { padding: 12px; border-top: 1px solid #eef0f3; background: #ffffff; flex-shrink: 0; }
+  /* Reset confirmation bar (mid-claim misclick protection). */
+  #pu-widget-root .pu-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: var(--vox-surface-2, #f7f8fa); border: 1px solid #eef0f3; border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; font-size: 12.5px; color: #1A1A1C; }
+  #pu-widget-root .pu-confirm span { flex: 1; min-width: 120px; }
+  #pu-widget-root .pu-confirm button { border: 1px solid #D7D8DB; background: #fff; border-radius: 8px; padding: 6px 12px; min-height: 36px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  #pu-widget-root .pu-confirm .yes { color: #b91c1c; border-color: rgba(239,68,68,0.4); }
+  #pu-widget-root .pu-confirm .no { color: #0070BF; border-color: #bfe0f7; }
+  /* Soft DNI-format hint (cold/unverified). */
+  #pu-widget-root .pu-hint { font-size: 11.5px; color: #5b6573; margin-bottom: 8px; padding-left: 4px; }
   #pu-widget-root .pu-form { display: flex; gap: 8px; align-items: flex-end; background: #f7f8fa; border: 1px solid #D7D8DB; border-radius: 14px; padding: 6px 6px 6px 14px; transition: border-color .2s, box-shadow .2s; }
   #pu-widget-root .pu-form:focus-within { border-color: #0083E0; box-shadow: 0 0 0 3px rgba(0,131,224,0.12); background: #fff; }
   #pu-widget-root .pu-form textarea { flex: 1; background: transparent; border: 0; outline: 0; resize: none; color: #1A1A1C; font-size: 14px; line-height: 1.45; padding: 6px 0; max-height: 110px; min-height: 22px; }
@@ -218,6 +233,7 @@
     minimize: '<svg fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14"/></svg>',
     reset: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M5 9a7 7 0 0111-3.5M19 15a7 7 0 01-11 3.5"/></svg>',
     send: '<svg fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg>',
+    download: '<svg class="pu-dl-ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>',
   };
 
   let fab, root, $messages, $form, $input, $send;
@@ -265,10 +281,15 @@
     $send = root.querySelector("#pu-send");
 
     root.querySelector("#pu-min").addEventListener("click", () => setOpen(false));
-    root.querySelector("#pu-reset").addEventListener("click", resetConversation);
+    root.querySelector("#pu-reset").addEventListener("click", requestReset);
     $form.addEventListener("submit", (e) => { e.preventDefault(); submit(); });
     $input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
-    $input.addEventListener("input", () => { $input.style.height = "auto"; $input.style.height = Math.min($input.scrollHeight, 110) + "px"; });
+    $input.addEventListener("input", () => {
+      $input.style.height = "auto"; $input.style.height = Math.min($input.scrollHeight, 110) + "px";
+      maybeDniHint();
+    });
+    // Esc closes the panel (keyboard-discoverable, not mouse-only).
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) setOpen(false); });
 
     renderIdentity();
     renderWelcome();
@@ -301,9 +322,14 @@
   }
 
   // Refresh the strip from the backend identity state (after DNI verification).
+  // Shows business name as subline, consistent with the token (pre-verified) strip.
   function updateIdentityFromResponse(identity) {
     if (identity && identity.verified) {
-      _renderIdentified(identity.display_name || "Cliente verificado", identity.status_label || "");
+      _renderIdentified(
+        identity.display_name || "Cliente verificado",
+        identity.status_label || "",
+        identity.business_name || "",
+      );
     }
   }
 
@@ -331,10 +357,47 @@
     $messages.appendChild(wrap);
   }
 
+  // Reset needs confirmation: a misclick mid-claim shouldn't wipe the context.
+  let _resetBar = null;
+  function requestReset() {
+    if (_resetBar) return;  // already asking
+    _resetBar = document.createElement("div");
+    _resetBar.className = "pu-confirm";
+    _resetBar.innerHTML = `<span>¿Seguro? Se borrará esta conversación.</span>
+      <button type="button" class="yes">Sí, reiniciar</button>
+      <button type="button" class="no">No</button>`;
+    const dismiss = () => { if (_resetBar) { _resetBar.remove(); _resetBar = null; } };
+    _resetBar.querySelector(".yes").onclick = () => { dismiss(); resetConversation(); };
+    _resetBar.querySelector(".no").onclick = dismiss;
+    root.querySelector(".pu-inputbar").prepend(_resetBar);
+  }
+
   function resetConversation() {
     conversationId = null;
     renderWelcome();
     $input.focus();
+  }
+
+  // Soft DNI-format hint while cold (unverified) and the user types something
+  // that looks like a DNI attempt but isn't 8 digits.
+  function maybeDniHint() {
+    if (CT) return;  // pre-identified by token → no hint needed
+    const v = $input.value.trim();
+    const digits = v.replace(/\D/g, "");
+    const looksLikeDni = /^\d[\d\s.\-]*$/.test(v) && digits.length > 0 && digits.length !== 8;
+    const bar = root.querySelector(".pu-inputbar");
+    let hint = root.querySelector("#pu-dni-hint");
+    if (looksLikeDni) {
+      if (!hint) {
+        hint = document.createElement("div");
+        hint.id = "pu-dni-hint";
+        hint.className = "pu-hint";
+        hint.textContent = "Tu DNI son 8 dígitos.";
+        bar.insertBefore(hint, bar.firstChild);
+      }
+    } else if (hint) {
+      hint.remove();
+    }
   }
 
   // ── Open / close ──
@@ -385,14 +448,31 @@
     let html = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     html = html.replace(/(https?:\/\/[^\s)]+|\/api\/v1\/cobranza\/certificate\/[A-Za-z0-9_\-]+\.pdf)/g, (m) => {
       const href = m.startsWith("http") ? m : `${API}${m}`;
-      return `<a href="${href}" target="_blank" rel="noopener">${m.split("/").pop()}</a>`;
+      const file = m.split("/").pop();
+      // Certificate PDFs render as a clear "downloadable document" chip.
+      if (/\.pdf$/i.test(file)) {
+        return `<a class="pu-doc-link" href="${href}" target="_blank" rel="noopener" download>${ICONS.download}<span>Descargar documento (${file})</span></a>`;
+      }
+      return `<a href="${href}" target="_blank" rel="noopener">${file}</a>`;
     });
     return html.replace(/\n/g, "<br>");
   }
 
-  function fillAgent(el, text, chips) {
+  function _docChip(doc) {
+    const href = doc.download_url.startsWith("http") ? doc.download_url : `${API}${doc.download_url}`;
+    return `<a class="pu-doc-link" href="${href}" target="_blank" rel="noopener" download>${ICONS.download}<span>Descargar documento (${doc.filename})</span></a>`;
+  }
+
+  function fillAgent(el, text, chips, doc) {
     const body = el.querySelector(".pu-mbody");
-    body.innerHTML = `<div class="pu-reply">${linkify(text)}</div>`;
+    let inner = `<div class="pu-reply">${linkify(text)}`;
+    // Render the download chip from the structured `document` field when the
+    // reply text didn't already include the link (don't depend on LLM wording).
+    if (doc && doc.download_url && !/pu-doc-link/.test(inner)) {
+      inner += _docChip(doc);
+    }
+    inner += `</div>`;
+    body.innerHTML = inner;
     if (chips && chips.length) {
       const c = document.createElement("div");
       c.className = "pu-chips";
@@ -430,6 +510,11 @@
         credentials: "include",
         body: JSON.stringify(body),
       });
+      // Distinct, clear error states (Peruvian Spanish, "tú").
+      if (!r.ok) {
+        fillAgent(typingEl, errorMessageForStatus(r.status), []);
+        return;
+      }
       const data = await r.json();
       const msg = data.message || {};
       conversationId = msg.conversation_id || conversationId;
@@ -439,13 +524,19 @@
       const chips = (msg.quick_replies && msg.quick_replies.buttons)
         ? msg.quick_replies.buttons.map((b) => b.label)
         : (Array.isArray(msg.suggested_replies) ? msg.suggested_replies : []);
-      fillAgent(typingEl, msg.content || "Disculpa, no pude procesar eso.", chips);
+      fillAgent(typingEl, msg.content || "Disculpa, no pude procesar eso.", chips, msg.document);
     } catch (e) {
       console.error("[pu-widget] send failed", e);
       fillAgent(typingEl, "Tuve un problema de conexión con el servicio. Inténtalo de nuevo.", []);
     } finally {
       busy = false; $send.disabled = false; $input.focus();
     }
+  }
+
+  function errorMessageForStatus(status) {
+    if (status === 429) return "Estás yendo muy rápido, espera un momento e intenta de nuevo.";
+    if (status === 401 || status === 403) return "Tu sesión expiró, recarga la página para seguir.";
+    return "Tuve un problema de conexión con el servicio. Inténtalo de nuevo.";
   }
 
   // ── Demo seeding (?demo=open) — opens the panel with sample messages so the

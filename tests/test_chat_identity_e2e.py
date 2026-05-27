@@ -89,3 +89,53 @@ def test_chat_without_token_keeps_gate_closed(client):
     )
     assert r.status_code == 200, r.text
     assert "verdict=BLOCKED" in r.json()["message"]["content"]
+
+
+def test_response_identity_includes_business_name(client):
+    """Bloque 3: the chat response exposes identity.business_name so the widget
+    strip can show the business as subline (consistent with the token strip)."""
+    csrf, session = _tokens()
+    r = client.post(
+        "/api/v1/chat",
+        json={"channel": "web", "tenant_id": "prestaunion", "text": "hola", "campaign_token": "demo-juan"},
+        headers={"X-CSRF-Token": csrf, "X-Session-Token": session},
+    )
+    assert r.status_code == 200, r.text
+    ident = r.json()["message"]["identity"]
+    assert ident["verified"] is True
+    assert ident["display_name"] == "Juan Pérez Rojas"
+    assert ident["business_name"] == "Bodega Don Juan E.I.R.L."
+
+
+class _CertProvider(LLMProvider):
+    """Turn 1 → emitir_certificado_no_adeudo; turn 2 → plain text."""
+
+    def __init__(self):
+        self._calls = 0
+
+    async def complete(self, *, system, messages, tools, model=None, max_tokens=1024, force_tool=None):
+        self._calls += 1
+        if self._calls == 1:
+            return LLMResponse(text="", tool_calls=[ToolCall(id="c1", name="emitir_certificado_no_adeudo", input={})])
+        return LLMResponse(text="Tu certificado está listo.", tool_calls=[])
+
+
+def test_response_document_field_for_certificate(monkeypatch):
+    """Bloque 3: when the certificate tool runs, the response carries a structured
+    `document` field so the widget renders the download chip regardless of LLM wording."""
+    import api.main as m
+
+    monkeypatch.setattr(m, "build_llm_provider", lambda *a, **k: _CertProvider())
+    m.store = m.get_store()
+    client = TestClient(m.app)
+    csrf, session = _tokens()
+    r = client.post(
+        "/api/v1/chat",
+        json={"channel": "web", "tenant_id": "prestaunion", "text": "mi certificado", "campaign_token": "demo-maria"},
+        headers={"X-CSRF-Token": csrf, "X-Session-Token": session},
+    )
+    assert r.status_code == 200, r.text
+    doc = r.json()["message"]["document"]
+    assert doc is not None
+    assert doc["filename"].endswith(".pdf")
+    assert "/api/v1/cobranza/certificate/" in doc["download_url"]

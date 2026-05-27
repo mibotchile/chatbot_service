@@ -895,8 +895,17 @@ async def chat(request: Request, body: ChatRequest):
     if conv.identity_verified and conv.debt_context:
         _identity_state.update({
             "display_name": conv.debt_context.get("borrower_name", ""),
+            "business_name": conv.debt_context.get("business_name", ""),
             "status_label": conv.debt_context.get("status_label", ""),
         })
+
+    # Downloadable document produced this turn (certificate). Surfaced as a
+    # structured field so the widget can render a download chip regardless of
+    # how the LLM phrased its reply (don't tie UI affordance to LLM wording).
+    _document = None
+    for _tname, _tres in tool_pairs:
+        if isinstance(_tres, dict) and _tres.get("download_url") and _tres.get("filename"):
+            _document = {"download_url": _tres["download_url"], "filename": _tres["filename"]}
 
     return {
         "message": {
@@ -908,6 +917,7 @@ async def chat(request: Request, body: ChatRequest):
             "form_data": ui_actions.get("form_data"),
             "ui_actions": ui_actions,
             "identity": _identity_state,
+            "document": _document,
         },
         "context": {},
         "context_updated": True,

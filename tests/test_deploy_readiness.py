@@ -55,3 +55,50 @@ def test_widget_derives_base_from_script_url():
 def test_widget_has_no_hardcoded_localhost():
     js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
     assert "http://localhost" not in js and "127.0.0.1" not in js
+
+
+# ── Bloque 3: hardening guards (presence in widget.js) ─────────────────────
+
+def test_widget_esc_to_close():
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert 'e.key === "Escape"' in js and "setOpen(false)" in js
+
+
+def test_widget_distinct_error_states():
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert "errorMessageForStatus" in js
+    assert "=== 429" in js          # rate-limit branch
+    assert "401" in js and "403" in js   # session/CSRF branch
+    assert "Tu sesión expiró" in js and "muy rápido" in js
+
+
+def test_widget_reset_confirmation():
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert "requestReset" in js and "pu-confirm" in js
+    assert "¿Seguro?" in js
+
+
+def test_widget_document_download_chip():
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert "pu-doc-link" in js and "pu-dl-ico" in js
+    assert "Descargar documento" in js
+    assert "_docChip" in js   # renders from structured `document` field
+
+
+def test_widget_dni_format_hint():
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert "maybeDniHint" in js and "8 dígitos" in js
+
+
+def test_widget_strip_shows_business_name():
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    assert "identity.business_name" in js
+
+
+def test_index_no_emdash_in_dni_list():
+    """Visible product copy uses '·' as separator, not em-dash."""
+    html = (_FRONTEND / "index.html").read_text(encoding="utf-8")
+    # the DNI list lines must not carry an em-dash separator
+    for line in html.splitlines():
+        if "Pérez Rojas (al día)" in line or "Huamán Flores (en mora)" in line:
+            assert "—" not in line
