@@ -12,23 +12,27 @@
 http:
   routers:
     # ── HTTPS (primary) ──
+    # priority 100 beats the demos.mibot.cl catch-all (dynamic-web.yml, priority 1
+    # → inmobilia-web/Nova). Without this our slug falls through to Nova's landing.
     pubot-gj5w2a0p-secure:
       rule: "Host(`demos.mibot.cl`) && PathPrefix(`/pubot-gj5w2a0p`)"
+      priority: 100
       entryPoints:
         - websecure
       middlewares:
         - pubot-gj5w2a0p-strip
       service: pubot-gj5w2a0p
       tls:
-        certResolver: letsencrypt
+        certResolver: le
 
-    # ── HTTP (redirect / fallback) ──
+    # ── HTTP → redirect to HTTPS (same pattern as numen.yml) ──
     pubot-gj5w2a0p-web:
       rule: "Host(`demos.mibot.cl`) && PathPrefix(`/pubot-gj5w2a0p`)"
+      priority: 100
       entryPoints:
         - web
       middlewares:
-        - pubot-gj5w2a0p-strip
+        - pubot-gj5w2a0p-redirect-https
       service: pubot-gj5w2a0p
 
   middlewares:
@@ -37,6 +41,10 @@ http:
       stripPrefix:
         prefixes:
           - "/pubot-gj5w2a0p"
+    pubot-gj5w2a0p-redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
 
   services:
     pubot-gj5w2a0p:
