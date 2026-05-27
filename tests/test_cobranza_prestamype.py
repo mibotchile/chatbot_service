@@ -143,15 +143,20 @@ async def test_validar_comprobante_cancelacion(tmp_path, monkeypatch):
     assert r["tipo"] == "cancelacion"
 
 
-async def test_validar_comprobante_wrong_cci(tmp_path, monkeypatch):
+async def test_validar_comprobante_arbitrary_cci_accepted(tmp_path, monkeypatch):
+    # CCI pertenencia is NO LONGER validated: any CCI is accepted and stored
+    # as-is. Classification is done against the DNI's credit, not the CCI.
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
         {"cci": "99999999999999999999", "monto": 462.14, "nro_operacion": "OP-004"},
     )
-    assert r["cuenta_valida"] is False
-    assert "no corresponde" in r["mensaje"].lower()
+    assert r["cuenta_valida"] is True
+    assert r["credito"] == "P02137"
+    assert r["tipo"] == "pago"  # classified vs the credit's cuota, not the CCI
+    assert r["dedup_ok"] is True
+    assert "no corresponde" not in r["mensaje"].lower()
 
 
 async def test_validar_comprobante_dedup(tmp_path, monkeypatch):
@@ -165,8 +170,9 @@ async def test_validar_comprobante_dedup(tmp_path, monkeypatch):
     assert "duplicad" in second["mensaje"].lower() or "ya lo recibimos" in second["mensaje"].lower()
 
 
-async def test_validar_comprobante_cci_with_spaces_matches(tmp_path, monkeypatch):
-    # Doris stores some CCIs with spaces; the tool normalizes to digits.
+async def test_validar_comprobante_cci_with_spaces_accepted(tmp_path, monkeypatch):
+    # CCIs with spaces are accepted (normalized to digits for storage); the
+    # voucher is still classified against the DNI's credit.
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(

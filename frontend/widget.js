@@ -265,6 +265,11 @@
   #pu-widget-root .pu-btn-ghost { min-height: 44px; padding: 0 16px; border: 1px solid #d5d7da; border-radius: 8px;
     background: #fff; color: #414651; font-size: 14px; font-weight: 600; cursor: pointer; }
   #pu-widget-root .pu-cb-err { font-size: 12px; color: #d92d20; margin: 4px 0 8px; min-height: 0; }
+  /* Inline per-field format hints (turn red on invalid, green when valid). */
+  #pu-widget-root .pu-cb-fieldhint { font-size: 11.5px; margin-top: 4px; min-height: 0; color: #535862; }
+  #pu-widget-root .pu-cb-fieldhint.err { color: #d92d20; }
+  #pu-widget-root .pu-cb-fieldhint.ok  { color: #079455; }
+  #pu-widget-root .pu-field input.pu-invalid { border-color: #f04438; box-shadow: 0 0 0 3px rgba(240,68,56,.12); }
   /* Inline result chips (success / warn / error) shown inside the panel. */
   #pu-widget-root .pu-cb-result { font-size: 13px; line-height: 1.5; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
   #pu-widget-root .pu-cb-result.ok   { background: #ecfff6; border: 1px solid #b3ffdf; color: #079455; }
@@ -378,22 +383,23 @@
             </div>
             <div class="pu-field">
               <label for="pu-cb-cci">CCI destino (20 dígitos)</label>
-              <input type="text" id="pu-cb-cci" inputmode="numeric" autocomplete="off" placeholder="00000000000000000000" required />
+              <input type="text" id="pu-cb-cci" inputmode="numeric" autocomplete="off" maxlength="20" pattern="\d{20}" placeholder="00000000000000000000" required aria-describedby="pu-cb-cci-hint" />
+              <div class="pu-cb-fieldhint" id="pu-cb-cci-hint"></div>
             </div>
             <div class="pu-field">
               <div class="pu-row2">
                 <div>
-                  <label for="pu-cb-monto">Monto</label>
-                  <input type="number" id="pu-cb-monto" step="0.01" min="0.01" placeholder="0.00" required />
+                  <label for="pu-cb-monto" id="pu-cb-monto-lbl">Monto</label>
+                  <input type="number" id="pu-cb-monto" inputmode="decimal" step="0.01" min="0.01" placeholder="0.00" required />
                 </div>
                 <div>
                   <label for="pu-cb-op">Nº de operación</label>
-                  <input type="text" id="pu-cb-op" autocomplete="off" placeholder="Ej. 0012345" required />
+                  <input type="text" id="pu-cb-op" inputmode="text" autocomplete="off" maxlength="30" placeholder="Ej. 0012345" required />
                 </div>
               </div>
             </div>
             <div class="pu-field">
-              <label for="pu-cb-fecha">Fecha (opcional)</label>
+              <label for="pu-cb-fecha">Fecha de operación (opcional)</label>
               <input type="date" id="pu-cb-fecha" />
             </div>
             <div class="pu-cb-err" id="pu-cb-err"></div>
@@ -416,6 +422,11 @@
     root.querySelector("#pu-comprobante-btn").addEventListener("click", openComprobante);
     root.querySelector("#pu-cb-cancel").addEventListener("click", closeComprobante);
     root.querySelector("#pu-cb-form").addEventListener("submit", (e) => { e.preventDefault(); submitComprobante(); });
+    // Live FORMAT validation: re-evaluate on every keystroke / file pick.
+    ["#pu-cb-cci", "#pu-cb-monto", "#pu-cb-op", "#pu-cb-file"].forEach((sel) => {
+      root.querySelector(sel).addEventListener("input", _cbValidate);
+      root.querySelector(sel).addEventListener("change", _cbValidate);
+    });
     root.querySelector("#pu-modal-ov").addEventListener("click", (e) => { if (e.target.id === "pu-modal-ov") closeComprobante(); });
     $form.addEventListener("submit", (e) => { e.preventDefault(); submit(); });
     $input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
@@ -730,12 +741,58 @@
     root.querySelector("#pu-cb-err").textContent = "";
     const res = root.querySelector("#pu-cb-result");
     res.style.display = "none"; res.textContent = "";
+    root.querySelector("#pu-cb-form").reset();
+    _cbValidate();
     ov.classList.add("show");
     setTimeout(() => root.querySelector("#pu-cb-file").focus(), 80);
   }
 
   function closeComprobante() {
     root.querySelector("#pu-modal-ov").classList.remove("show");
+  }
+
+  // ── Live FORMAT validation (no business logic): toggles the submit button
+  // and renders inline format hints in PrestamYpe green/red. ──
+  function _cbDigits20(el) {
+    // Keep only digits, cap at 20 (CCI estándar Perú).
+    const cleaned = el.value.replace(/\D/g, "").slice(0, 20);
+    if (cleaned !== el.value) el.value = cleaned;
+    return cleaned;
+  }
+
+  function _cbValidate() {
+    const cciEl = root.querySelector("#pu-cb-cci");
+    const montoEl = root.querySelector("#pu-cb-monto");
+    const opEl = root.querySelector("#pu-cb-op");
+    const fileEl = root.querySelector("#pu-cb-file");
+    const submitBtn = root.querySelector("#pu-cb-submit");
+    const cciHint = root.querySelector("#pu-cb-cci-hint");
+
+    const cci = _cbDigits20(cciEl);
+    const monto = Number(montoEl.value);
+    const op = opEl.value.trim();
+    const file = fileEl.files && fileEl.files[0];
+
+    const cciOk = cci.length === 20;
+    const montoOk = montoEl.value !== "" && monto > 0;
+    const opOk = op.length > 0 && op.length <= 30;
+    const fileOk = !!file && file.size <= 8 * 1024 * 1024;
+
+    // CCI inline hint: only nag once the user has typed something.
+    if (cci.length === 0) {
+      cciHint.textContent = ""; cciHint.className = "pu-cb-fieldhint";
+      cciEl.classList.remove("pu-invalid");
+    } else if (cciOk) {
+      cciHint.textContent = "Listo, 20 dígitos."; cciHint.className = "pu-cb-fieldhint ok";
+      cciEl.classList.remove("pu-invalid");
+    } else {
+      cciHint.textContent = `Faltan dígitos (${cci.length}/20).`;
+      cciHint.className = "pu-cb-fieldhint err";
+      cciEl.classList.add("pu-invalid");
+    }
+
+    submitBtn.disabled = !(cciOk && montoOk && opOk && fileOk);
+    return cciOk && montoOk && opOk && fileOk;
   }
 
   function _cbError(text) {
@@ -764,9 +821,10 @@
 
     if (!file) { _cbError("Adjunta la imagen o PDF del comprobante."); return; }
     if (file.size > 8 * 1024 * 1024) { _cbError("El archivo supera 8 MB."); return; }
-    if (cci.length < 10) { _cbError("El CCI debe tener 20 dígitos."); return; }
+    if (cci.length !== 20) { _cbError("El CCI debe tener exactamente 20 dígitos."); return; }
     if (!monto || Number(monto) <= 0) { _cbError("Indica el monto transferido."); return; }
     if (!op) { _cbError("Indica el número de operación."); return; }
+    if (op.length > 30) { _cbError("El número de operación es demasiado largo."); return; }
 
     const fd = new FormData();
     fd.append("tenant_id", TENANT);
@@ -806,12 +864,6 @@
 
   function renderComprobanteResult(data, cci) {
     const last4 = cci.slice(-4);
-    if (data.cuenta_valida === false) {
-      // Wrong CCI (or no credit): red error with the backend message.
-      _cbShowResult("err", `<strong>Cuenta no válida.</strong> ${escapeHtml(data.mensaje || "Esa cuenta no corresponde a tu crédito.")}`);
-      injectChatSummary(`No pude validar tu comprobante: ${data.mensaje || "la cuenta no corresponde a tu crédito."}`);
-      return;
-    }
     const tipo = _TIPO_LABEL[data.tipo] || (data.tipo || "").toUpperCase();
     const credito = escapeHtml(data.credito || "");
     if (data.dedup_ok === false) {

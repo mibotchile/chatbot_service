@@ -127,12 +127,17 @@ def test_comprobante_abono_and_cancelacion(client):
     assert canc["tipo"] == "cancelacion"
 
 
-def test_comprobante_wrong_cci_rejected(client):
-    r = _post(client, cci="99999999999999999999", nro_operacion="OP-BAD")
+def test_comprobante_arbitrary_cci_accepted(client):
+    # CCI pertenencia is no longer validated: any CCI is accepted and stored
+    # as-is; the voucher is classified against the DNI's credit.
+    r = _post(client, cci="00000000000000000000", nro_operacion="OP-ANYCCI")
     assert r.status_code == 200
     body = r.json()
-    assert body["cuenta_valida"] is False
-    assert "no corresponde" in body["mensaje"].lower()
+    assert body["cuenta_valida"] is True
+    assert body["credito"] == "P02137"
+    assert body["tipo"] == "pago"
+    assert body["dedup_ok"] is True
+    assert "no corresponde" not in body["mensaje"].lower()
 
 
 def test_comprobante_duplicate_detected(client):

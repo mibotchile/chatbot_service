@@ -462,51 +462,35 @@ async def validar_comprobante(
     monto: float,
     nro_operacion: str,
 ) -> dict:
-    """Validate a payment voucher for the verified borrower (PrestamYpe).
+    """Register a payment voucher for the verified borrower (PrestamYpe).
+
+    The CCI is NO LONGER validated for pertenencia: it is stored as-is as a
+    voucher attribute (the real bank reconciliation is done later by a human).
+    We never reject by CCI.
 
     Logic (against the server-injected ``profile`` = verified credit):
-      (a) ``cci`` must match the credit's CCI → ``cuenta_valida`` + ``credito``;
-          else False with "esa cuenta no corresponde a tu crédito".
-      (b) classify ``tipo`` from ``monto`` vs cuota / saldo (±2% tolerance):
-          ≈ cuota → "pago"; < cuota → "abono"; ≈ saldo total → "cancelacion".
-      (c) dedup ``nro_operacion`` against a local JSON store; if seen before →
+      (a) classify ``tipo`` from ``monto`` vs the DNI's credit cuota / saldo
+          (±2% tolerance): ≈ cuota → "pago"; < cuota → "abono"; ≈ saldo total
+          → "cancelacion". The classification does NOT depend on the CCI.
+      (b) dedup ``nro_operacion`` against a local JSON store; if seen before →
           ``dedup_ok = False`` (duplicate flagged), no re-registration.
 
     Identity/credit ALWAYS come from the verified ``profile`` — only the 3
     voucher fields (cci, monto, nro_operacion) come from the user. The result
     is queued for human reconciliation (the comprobante is an indicio, not an
-    auto-conciliation).
+    auto-conciliation). ``cuenta_valida`` is always ``True`` (kept for the
+    widget contract); the only soft failure is a duplicate ``nro_operacion``.
     """
     cci_in = normalize_cci(cci)
-    if not cci_in:
-        return {
-            "cuenta_valida": False,
-            "credito": None,
-            "tipo": None,
-            "dedup_ok": None,
-            "mensaje": "Indícame el CCI de la cuenta a la que transferiste (20 dígitos).",
-        }
-
     credito = profile.get("account_id")
-    credito_cci = normalize_cci(profile.get("cci", ""))
 
-    # (a) ¿la cuenta apunta al crédito del cliente?
-    if not credito_cci or cci_in != credito_cci:
-        return {
-            "cuenta_valida": False,
-            "credito": None,
-            "tipo": None,
-            "dedup_ok": None,
-            "mensaje": "Esa cuenta no corresponde a tu crédito.",
-        }
-
-    # (b) tipo de operación
+    # (a) tipo de operación — contra el crédito del DNI (NO depende de la CCI)
     cuota = float(profile.get("cuota_esperada") or profile.get("next_installment_amount") or 0.0)
     saldo = float(profile.get("saldo_por_cancelar") or profile.get("balance") or 0.0)
     tipo = classify_tipo(monto, cuota, saldo)
     tipo_label = _TIPO_LABELS.get(tipo, tipo.upper())
 
-    # (c) dedup por nº de operación (por crédito)
+    # (b) dedup por nº de operación (por crédito)
     nro = (nro_operacion or "").strip()
     items = _load_comprobantes()
     duplicate = any(
@@ -515,7 +499,6 @@ async def validar_comprobante(
     )
     dedup_ok = not duplicate
 
-    sym = profile.get("currency_symbol", "S/")
     if duplicate:
         mensaje = (
             f"Este comprobante (operación {nro}) ya lo recibimos antes para tu "

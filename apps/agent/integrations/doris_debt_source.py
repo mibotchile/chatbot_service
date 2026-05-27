@@ -213,6 +213,25 @@ def resolve_dni(dni: str, tenant_id: str = _TENANT) -> dict | None:
 # ── Comprobante validation (used by the validar_comprobante tool) ───────────
 
 
+def pick_credit_for_dni(dni: str, tenant_id: str = _TENANT) -> dict | None:
+    """Pick the credit to classify a voucher against for a DNI (Doris/fixture).
+
+    Normal case is 1 DNI → 1 credit (returned directly). For the marginal
+    multicrédito case we choose DETERMINISTICALLY the credit with the largest
+    ``saldo_por_cancelar`` (ties broken by ``account_id``) — we never fail.
+    The CCI is NOT used to select the credit; it is a voucher attribute only.
+    """
+    credits = _resolve_dni_credits(dni, tenant_id=tenant_id)
+    if not credits:
+        return None
+    if len(credits) == 1:
+        return credits[0]
+    return max(
+        credits,
+        key=lambda c: (_to_float(c.get("saldo_por_cancelar")), str(c.get("account_id") or "")),
+    )
+
+
 def validate_comprobante(
     dni: str,
     cci: str,
@@ -220,29 +239,25 @@ def validate_comprobante(
     nro_operacion: str,
     tenant_id: str = _TENANT,
 ) -> dict:
-    """Validate a payment voucher against the DNI's credit(s) in Doris/fixture.
+    """Classify a payment voucher against the DNI's credit in Doris/fixture.
 
-    Returns a raw validation payload (no dedup — the tool layer owns the local
-    dedup store). Keys: ``cuenta_valida``, ``credito``, ``tipo``,
-    ``cuota_esperada``, ``saldo_por_cancelar``, ``mensaje``.
+    The CCI is NO LONGER validated for pertenencia — it is a voucher attribute
+    stored as-is (bank reconciliation is done later by a human). We never reject
+    by CCI. Classification (pago/abono/cancelación) is done against the DNI's
+    credit (max ``saldo_por_cancelar`` for the marginal multicrédito case).
+
+    Returns a raw payload (no dedup — the tool layer owns the local dedup
+    store). Keys: ``cuenta_valida`` (always ``True`` when the DNI resolves),
+    ``credito``, ``tipo``, ``cuota_esperada``, ``saldo_por_cancelar``,
+    ``mensaje``.
     """
-    credits = _resolve_dni_credits(dni, tenant_id=tenant_id)
-    if not credits:
-        return {
-            "cuenta_valida": False,
-            "credito": None,
-            "tipo": None,
-            "mensaje": "No encontré créditos asociados a ese DNI.",
-        }
-
-    cci_norm = normalize_cci(cci)
-    match = next((c for c in credits if normalize_cci(c.get("cci", "")) == cci_norm), None)
+    match = pick_credit_for_dni(dni, tenant_id=tenant_id)
     if not match:
         return {
             "cuenta_valida": False,
             "credito": None,
             "tipo": None,
-            "mensaje": "Esa cuenta no corresponde a tu crédito.",
+            "mensaje": "No encontré créditos asociados a ese DNI.",
         }
 
     cuota = _to_float(match.get("cuota_esperada"))
@@ -254,7 +269,7 @@ def validate_comprobante(
         "tipo": tipo,
         "cuota_esperada": cuota,
         "saldo_por_cancelar": saldo,
-        "mensaje": "Cuenta válida.",
+        "mensaje": "Comprobante recibido.",
     }
 
 

@@ -1079,9 +1079,11 @@ async def upload_comprobante(
 
     The DNI MUST resolve to a borrower for the tenant (identity gate). The file
     is validated (type + size) and stored under
-    COBRANZA_COMPROBANTE_DIR/<dni>/<nro_operacion>.<ext>. Then the existing
-    validate_comprobante() runs (CCI match + tipo classification + dedup) and an
-    audit record is appended. Returns the validation payload for the widget.
+    COBRANZA_COMPROBANTE_DIR/<dni>/<nro_operacion>.<ext>. Then validar_comprobante()
+    runs (tipo classification against the DNI's credit + dedup) and an audit
+    record is appended. The CCI is stored as-is, NOT validated for pertenencia
+    (bank reconciliation is done later by a human). Returns the payload for the
+    widget.
     """
     from pathlib import Path as _CP
 
