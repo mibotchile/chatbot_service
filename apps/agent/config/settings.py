@@ -123,6 +123,17 @@ class Settings(BaseSettings):
         "https://demos.mibot.cl",
     ]
 
+    # ── ChatHub web publisher (camino C, Movistar pattern) — on web handoff Ada
+    # pushes the visitor's last message into ChatHub's public incomingMessage
+    # webhook so the asesor sees it in the panel. Fire-and-forget; DISABLED until
+    # chathub_web_channel_id is set (the channel is registered in ChatHub apart).
+    # Env prefix COBRANZA_ (e.g. COBRANZA_CHATHUB_WEB_CHANNEL_ID).
+    chathub_webhook_url: str = "https://hook-whatsapp-prod.mibot.cl:5050/olimpo/incomingMessage"
+    chathub_web_channel_id: str = ""   # empty ⇒ publisher is a no-op
+    chathub_web_group: str = "1"       # destination queue/group identifier
+    chathub_web_timeout: float = 10.0
+    chathub_web_verify_ssl: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="COBRANZA_",

@@ -180,7 +180,7 @@ def resolve_handoff_receiver(tenant_cfg: dict | None) -> dict:
 # ── Response building ────────────────────────────────────────────────────────
 
 
-def _was_escalated(tool_pairs: list[tuple[str, dict]]) -> bool:
+def was_escalated(tool_pairs: list[tuple[str, dict]]) -> bool:
     """True when the engine ran ``escalate_to_human`` (handoff signal)."""
     for name, result in tool_pairs or []:
         if name == "escalate_to_human" and isinstance(result, dict) and result.get("escalated"):
@@ -219,7 +219,7 @@ def build_chathub_response(
     ui_actions = engine_result.get("ui_actions") or {}
 
     # 1) Handoff → redirect.
-    if _was_escalated(tool_pairs):
+    if was_escalated(tool_pairs):
         receiver = resolve_handoff_receiver(tenant_cfg)
         farewell = content or "Te derivo con un asesor. Aguarda un momento, por favor."
         return {

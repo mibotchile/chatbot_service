@@ -38,6 +38,7 @@ from core.rate_limit import from_settings as _build_rate_limiter
 from tools import ToolRegistry
 from api.dashboard import dashboard_router
 from api.chathub import chathub_router
+from integrations.chathub_adapter import was_escalated
 
 # Store and services — initialised in lifespan with DB pool
 store = get_store()
@@ -1144,6 +1145,26 @@ async def chat(request: Request, body: ChatRequest):
             logger.info("Lead captured: conversation={} actions={}", conv.conversation_id, actions)
         except Exception:
             logger.opt(exception=True).warning("Lead capture hook failed (non-blocking)")
+
+    # ── Camino C (Movistar): on WEB handoff, publish the visitor's last message
+    # into ChatHub so an asesor picks it up in the panel. Web-only, handoff-only,
+    # best-effort (the publisher swallows all errors and has its own timeout, so
+    # it never blocks/breaks the web response). NO-OP if no channel_id configured.
+    if body.channel == "web" and was_escalated(tool_pairs):
+        from integrations.chathub_web_publisher import publish_to_chathub
+
+        _contact_name = (
+            (conv.debt_context or {}).get("borrower_name")
+            if conv.identity_verified and conv.debt_context
+            else None
+        ) or conv.conversation_id
+        await publish_to_chathub(
+            settings.chathub_web_channel_id,
+            conv.conversation_id,
+            _contact_name,
+            body.text,
+            {"type": "group", "identifier": settings.chathub_web_group},
+        )
 
     # Use LLM-generated chips (validated by tool), fallback to heuristic
     quick_replies = None
