@@ -36,7 +36,7 @@ def _arm_llm_flow(session_state: dict | None, intent: str) -> None:
     if session_state is None:
         return
     session_state[_LLM_FLOW_KEY] = {"intent": intent, "turns": 0}
-    logger.info("llm_flow armed (intent=%s)", intent)
+    logger.info("llm_flow armed (intent={})", intent)
 
 
 def _clear_llm_flow(session_state: dict | None) -> None:
@@ -265,11 +265,11 @@ class SoreliaAgent:
             flow["turns"] = int(flow.get("turns", 0)) + 1
             if flow["turns"] > _LLM_FLOW_MAX_TURNS:
                 # Anti-stuck cap: release the flow, resume normal routing.
-                logger.info("llm_flow cap reached (intent=%s) → releasing", flow.get("intent"))
+                logger.info("llm_flow cap reached (intent={}) → releasing", flow.get("intent"))
                 _clear_llm_flow(session_state)
             else:
                 logger.info(
-                    "llm_flow active (intent=%s turn=%s) → router bypass",
+                    "llm_flow active (intent={} turn={}) → router bypass",
                     flow.get("intent"), flow["turns"],
                 )
                 return None
