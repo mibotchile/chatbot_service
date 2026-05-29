@@ -232,6 +232,35 @@ def test_comprobante_resultado_not_in_classifier_menu():
     assert "comprobante_resultado" in spec.intents
 
 
+def test_comprobante_reportar_is_classifiable_and_passes_through_to_llm():
+    """Camino A routing (deterministic, no LLM): the 'report a payment' intent is
+    in the classifier menu, but it has NO template on purpose — when the verified
+    user is classified into it, the router renders empty and HANDS OFF to the LLM
+    agent (handled=False), which gathers fields and runs validar_comprobante."""
+    spec = _spec()
+    menu = R.classifier_menu(spec)
+    assert "comprobante_reportar" in menu
+    # Verified user → no canned text → fall through to the agent tool-loop.
+    out = R.resolve_classified_intent(
+        "comprobante_reportar", spec, _profile(LUIS),
+        session_state={}, identity_verified=True,
+    )
+    assert out.handled is False
+    assert out.source == R.SOURCE_LLM
+
+
+def test_comprobante_reportar_unverified_asks_dni():
+    """An unverified user reporting a payment is gated to DNI first (data-driven
+    requires_identity), never a false acuse."""
+    spec = _spec()
+    out = R.resolve_classified_intent(
+        "comprobante_reportar", spec, {},
+        session_state={}, identity_verified=False,
+    )
+    assert out.handled is True
+    assert out.intent == "identidad_requerida"
+
+
 def test_classifiable_flag_defaults_true_and_can_opt_out():
     """``classifiable`` is data-driven: absent → in menu; false → excluded."""
     spec = ResponsesSpec(

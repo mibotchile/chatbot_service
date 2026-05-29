@@ -162,6 +162,13 @@
     "template": "Puedes pagar tu crédito {loan} a la cuenta CCI {cci} del banco {banco}. Cuando pagues, envíame el comprobante (CCI, monto y número de operación) y lo registro."
   },
 
+  "comprobante_reportar": {
+    "mode": "verbatim",
+    "doc": "El usuario REPORTA un pago que ya hizo (da/dará monto, número de operación y/o cuenta de destino). SIN template a propósito: clasifica pero renderiza vacío → el turno cae al agente LLM, que pide los datos faltantes y ejecuta la tool validar_comprobante. Este es el camino A (tipeado) del flujo 'subir pago'.",
+    "description": "El usuario avisa o reporta que YA hizo/realizó un pago, transferencia o depósito de su crédito (menciona monto, número de operación o a qué cuenta pagó). NO es preguntar dónde pagar; es informar un pago ya hecho.",
+    "requires_identity": true
+  },
+
   "comprobante_resultado": {
     "mode": "verbatim",
     "requires_identity": true,
