@@ -5,6 +5,12 @@
     "redaccion": "Español peruano, trato de tú, sin voseo, copy breve. El cliente real reemplaza estos textos por los suyos."
   },
 
+  "_chips": {
+    "_doc": "Quick-reply chips data-driven (CORE). El BACKEND los devuelve según el intent resuelto (chips por intent) o el estado de la conversación (este bloque). El LLM NO inventa chips. Estado: cold = sin identificar, identified = DNI verificado. Acotados a las capacidades reales del bot (consultar deuda, subir comprobante, datos de pago, asesor). Máx 4. Formato: docs/responses-format.md.",
+    "cold": ["Consultar mi deuda", "Subir comprobante"],
+    "identified": ["Ver mi deuda", "Subir comprobante", "Datos de pago"]
+  },
+
   "_deliverables": {
     "_doc": "Envío de info bajo demanda (CORE, data-driven). Cada tipo declara su copy por canal: correo (subject + body, soporta single {template}/list {header,item,footer}) y whatsapp (text). El backend rellena {variables} desde el crédito verificado y envía al correo/teléfono REGISTRADO del cliente (enmascarado). En demo (data_source=mock) el envío es SIMULADO; en prod (doris) es real (SendGrid / ChatHub). Formato completo: docs/deliverables-format.md.",
     "estado_cuenta": {
@@ -53,6 +59,7 @@
     "requires_identity": false,
     "keywords": ["hola", "buenas", "buenos dias", "buenas tardes", "buenas noches", "que tal", "saludos"],
     "patterns": ["^\\s*(hola|buen[oa]s|hey)\\b"],
+    "chips": ["Consultar mi deuda", "Subir comprobante"],
     "variants": [
       "Hola, soy Ada de PrestamYpe. Puedo ayudarte a consultar tu deuda o validar un comprobante de pago. ¿Qué necesitas?",
       "Hola, qué gusto. Soy Ada de PrestamYpe. Te ayudo con la consulta de tu préstamo o a registrar tu comprobante. ¿En qué empezamos?",
@@ -76,6 +83,7 @@
     "mode": "variant",
     "description": "El mensaje no encaja en ninguna intención conocida (fallback).",
     "requires_identity": false,
+    "chips": ["Consultar mi deuda", "Subir comprobante", "Hablar con un asesor"],
     "variants": [
       "Disculpa, no te entendí bien. Puedo ayudarte con dos cosas: consultar tu deuda o validar un comprobante de pago. ¿Cuál necesitas?",
       "No estoy segura de haber entendido. ¿Quieres revisar el saldo de tu préstamo o registrar un comprobante de pago?",
@@ -97,6 +105,7 @@
     "tool": "identificar_cliente",
     "capture": "dni",
     "patterns": ["\\b(?P<dni>\\d{8})\\b"],
+    "chips": ["Ver mi deuda", "Subir comprobante", "Datos de pago"],
     "template": "Listo, {nombre}. Verifiqué tu identidad. ¿Quieres ver tu deuda o validar un comprobante de pago?",
     "not_found": "No encontré una cuenta con ese DNI. Verifica el número (son 8 dígitos) o, si prefieres, te derivo con un asesor."
   },
@@ -108,6 +117,7 @@
     "tool": "consultar_deuda",
     "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
     "patterns": ["cu[aá]nt[oa].*(debo|pago|deuda|cuota)", "(saldo|deuda).*(pendiente|actual|tengo)"],
+    "chips": ["Subir comprobante", "Datos de pago", "Hablar con un asesor"],
     "template": "Tu crédito {loan} tiene un saldo de {saldo}. La próxima cuota es de {cuota} y vence el {fecha_venc}. Estado: {estado}.",
     "list": {
       "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
@@ -138,6 +148,7 @@
     "requires_identity": false,
     "keywords": ["plan de pago", "fraccionar", "pagar en cuotas", "refinanciar", "refinanciamiento", "negociar", "descuento", "rebaja"],
     "patterns": ["(plan|acuerdo).*(pago|cuotas)", "refinanci\\w*"],
+    "chips": ["Hablar con un asesor", "Ver mi deuda", "Subir comprobante"],
     "template": "Por este canal solo puedo ayudarte a consultar tu deuda y a validar comprobantes de pago. Los acuerdos de pago o refinanciamiento los ve un asesor; si quieres, te derivo con uno."
   },
 
@@ -147,6 +158,7 @@
     "requires_identity": true,
     "keywords": ["donde pago", "dónde pago", "como pago", "cómo pago", "a que cuenta", "a qué cuenta", "numero de cuenta", "cuenta para pagar", "cci"],
     "patterns": ["(d[oó]nde|c[oó]mo|qu[eé] cuenta).*(pag|abon|deposit)"],
+    "chips": ["Subir comprobante", "Ver mi deuda", "Hablar con un asesor"],
     "template": "Puedes pagar tu crédito {loan} a la cuenta CCI {cci} del banco {banco}. Cuando pagues, envíame el comprobante (CCI, monto y número de operación) y lo registro."
   },
 
@@ -154,6 +166,7 @@
     "mode": "verbatim",
     "description": "El usuario ya envió los datos del comprobante (CCI, monto, número de operación) para registrarlo.",
     "requires_identity": true,
+    "chips": ["Ver mi deuda", "Datos de pago", "Hablar con un asesor"],
     "template": "Recibí tu comprobante sobre el crédito {loan}. Quedó registrado y EN REVISIÓN: un asesor lo concilia contra el banco y, de estar conforme, se aplica a tu cuenta."
   },
 
@@ -163,6 +176,7 @@
     "requires_identity": false,
     "tool": "escalate_to_human",
     "keywords": ["asesor", "hablar con alguien", "agente", "persona", "humano", "reclamo", "queja"],
+    "chips": ["Ver mi deuda", "Subir comprobante"],
     "template": "Te derivo con un asesor de PrestamYpe para que te ayude con eso. En breve se comunican contigo."
   },
 

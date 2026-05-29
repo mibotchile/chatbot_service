@@ -241,6 +241,20 @@
   </style>
 </head>
 <body>
+  <!-- FOUC guard: apply the tenant theme class SYNCHRONOUSLY (before first paint),
+       so ?tenant=prestamype never flashes the prestaunion (Vox) branding while the
+       async /branding fetch is still in flight. The prestamype CSS is already inline
+       in <head> (scoped to body.tenant-prestamype); this just toggles the class up
+       front. applyBrand() re-adds it later (idempotent) for logo/text/cards.
+       No ?tenant or ?tenant=prestaunion → no class → native Vox theme (unchanged). -->
+  <script>
+    (() => {
+      try {
+        var t = new URLSearchParams(location.search).get("tenant");
+        if (t === "prestamype") document.body.classList.add("tenant-prestamype");
+      } catch (e) {}
+    })();
+  </script>
   <header>
     <div class="wrap header-inner">
       <div class="wordmark" id="wordmark">Presta<span class="accent">Union</span></div>

@@ -508,3 +508,78 @@ def test_tenant_without_identificar_intent_unchanged():
     assert R.identity_opening_intents(stripped) == set()
     out = R.route_layer1("cuánto debo", stripped, {}, session_state={}, identity_verified=False)
     assert out.intent == "identidad_requerida"
+
+
+# ── Quick-reply chips (data-driven, CORE) ────────────────────────────────────
+# The tenant OWNS the chips in its responses.json (per-intent + per-state); the
+# LLM never authors them. These assert the engine resolves them correctly and
+# that a tenant WITHOUT chips returns None (legacy behavior, no break).
+
+
+def test_prestamype_declares_chips():
+    spec = _spec()
+    assert spec.has_chips is True
+    # State block parsed from the reserved _chips key.
+    assert spec.chips.get("cold")
+    assert spec.chips.get("identified")
+
+
+def test_chips_per_intent_take_precedence():
+    # A resolved intent with its own chips → those chips (contextual), regardless
+    # of the conversation state.
+    spec = _spec()
+    chips = R.resolve_chips(spec, intent="consulta_deuda", identity_verified=True)
+    assert chips == ["Subir comprobante", "Datos de pago", "Hablar con un asesor"]
+
+
+def test_chips_fall_back_to_state_when_intent_has_none():
+    # No intent (or an intent without chips) → state default. Cold = unidentified.
+    spec = _spec()
+    assert R.resolve_chips(spec, intent=None, identity_verified=False) == [
+        "Consultar mi deuda",
+        "Subir comprobante",
+    ]
+    # identified state when verified.
+    assert R.resolve_chips(spec, intent=None, identity_verified=True) == [
+        "Ver mi deuda",
+        "Subir comprobante",
+        "Datos de pago",
+    ]
+
+
+def test_chips_unknown_intent_falls_back_to_state():
+    spec = _spec()
+    chips = R.resolve_chips(spec, intent="intent_inexistente", identity_verified=False)
+    assert chips == ["Consultar mi deuda", "Subir comprobante"]
+
+
+def test_chips_truncated_to_max():
+    spec = _spec()
+    chips = R.resolve_chips(spec, intent="consulta_deuda", max_chips=2)
+    assert len(chips) == 2
+
+
+def test_chips_no_ver_proyectos_anywhere():
+    # Regression: the off-domain real-estate chip must NEVER appear for prestamype.
+    spec = _spec()
+    all_chips: list[str] = []
+    for vals in spec.chips.values():
+        if isinstance(vals, list):
+            all_chips.extend(vals)
+    for cfg in spec.intents.values():
+        all_chips.extend(cfg.get("chips") or [])
+    joined = " ".join(all_chips).lower()
+    assert "proyecto" not in joined
+    assert "ver proyectos" not in joined
+
+
+def test_tenant_without_chips_returns_none():
+    # A spec with neither _chips nor per-intent chips → has_chips False, no chips
+    # (legacy LLM/heuristic path stays intact; nothing breaks for that tenant).
+    spec = ResponsesSpec(
+        intents={"saludo": {"mode": "verbatim", "template": "Hola"}},
+        response_mode="hybrid",
+    )
+    assert spec.has_chips is False
+    assert R.resolve_chips(spec, intent="saludo", identity_verified=False) is None
+    assert R.resolve_chips(spec, intent=None, identity_verified=True) is None

@@ -151,8 +151,14 @@ class SoreliaAgent:
                 chip_result = await self.tool_registry.execute(tc.name, tc.input)
                 suggested_replies = chip_result.get("options", [])
 
-        # Force chip generation if the model didn't call suggest_quick_replies
-        if not suggested_replies and content:
+        # Force chip generation if the model didn't call suggest_quick_replies.
+        # Skipped when the tenant OWNS chips (data-driven in responses.json): the
+        # backend resolves chips from the JSON, so spending an LLM call on chips
+        # the API will ignore is pure waste (and the source of off-domain
+        # hallucinations like "Ver proyectos").
+        spec = self._responses_spec()
+        tenant_owns_chips = bool(spec and getattr(spec, "has_chips", False))
+        if not suggested_replies and content and not tenant_owns_chips:
             suggested_replies = await self._force_chip_generation(
                 content, lead_state, tool_pairs, _complete=_complete,
             )

@@ -243,6 +243,23 @@ class ResponsesSpec:
     # responses.json under the reserved ``_deliverables`` key (ignored as an
     # intent). Empty for tenants that don't ship it. See docs/deliverables-format.md.
     deliverables: dict[str, dict] = field(default_factory=dict)
+    # Data-driven quick-reply CHIPS by conversation state. Keyed by state name
+    # (e.g. ``cold`` = unidentified, ``identified`` = verified). Lives in
+    # responses.json under the reserved ``_chips`` key. Per-intent chips live on
+    # each intent under ``chips``. Empty → no tenant chips (LLM/heuristic chips,
+    # backward compatible). See docs/responses-format.md.
+    chips: dict[str, list[str]] = field(default_factory=dict)
+
+    @property
+    def has_chips(self) -> bool:
+        """True when the tenant declares chips (per-state or per-intent).
+
+        When True, the BACKEND owns the quick-replies (data-driven, zero LLM
+        hallucination) and any LLM-suggested chips are ignored. When False, the
+        tenant keeps the legacy LLM/heuristic chip behavior (no break)."""
+        if self.chips:
+            return True
+        return any((cfg or {}).get("chips") for cfg in self.intents.values())
 
     @property
     def enabled(self) -> bool:
@@ -271,11 +288,13 @@ class ResponsesSpec:
         # when provided (passed in), else the file's own, else llm.
         file_mode = data.pop("_response_mode", None)
         deliverables = data.get("_deliverables") or {}
+        chips = data.get("_chips") or {}
         intents = {k: v for k, v in data.items() if not k.startswith("_")}
         return cls(
             intents=intents,
             response_mode=(response_mode or file_mode or "llm"),
             deliverables=deliverables if isinstance(deliverables, dict) else {},
+            chips=chips if isinstance(chips, dict) else {},
         )
 
 
@@ -616,6 +635,41 @@ def _emit_intent(
         tool_args=tool_args,
         rerender_with_result=bool(cfg.get("rerender_with_result")),
     )
+
+
+def resolve_chips(
+    spec: ResponsesSpec,
+    *,
+    intent: str | None = None,
+    identity_verified: bool = False,
+    max_chips: int = 4,
+) -> list[str] | None:
+    """Resolve the quick-reply chips for a turn, 100% data-driven (zero LLM).
+
+    Precedence:
+      1. Per-intent chips — the resolved intent declares ``chips`` → contextual
+         chips offered AFTER that intent's reply (e.g. consulta_deuda → subir
+         comprobante / datos de pago / asesor).
+      2. Per-state chips — the ``_chips`` block keyed by conversation state
+         (``identified`` when the user is verified, else ``cold``) → the
+         saludo/no-intent default.
+
+    Returns the chip labels (truncated to ``max_chips``), or None when the
+    tenant declares no chips for this case (caller keeps legacy behavior).
+    Tenant-agnostic: a tenant with no ``chips``/``_chips`` always gets None.
+    """
+    if not spec.has_chips:
+        return None
+    if intent:
+        cfg = spec.intents.get(intent) or {}
+        intent_chips = cfg.get("chips")
+        if intent_chips:
+            return [str(c) for c in intent_chips][:max_chips]
+    state = "identified" if identity_verified else "cold"
+    state_chips = spec.chips.get(state)
+    if state_chips:
+        return [str(c) for c in state_chips][:max_chips]
+    return None
 
 
 def known_intents(spec: ResponsesSpec) -> list[str]:

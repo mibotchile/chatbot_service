@@ -1086,6 +1086,10 @@ async def chat(request: Request, body: ChatRequest):
         ui_actions = result.get("ui_actions", {})
         tool_pairs = result.get("tool_pairs", [])
         suggested_replies = result.get("suggested_replies")
+        # Resolved intent (canned path sets it; LLM path leaves it None). Captured
+        # HERE because ``result`` is later rebound by a ``for ... result in
+        # tool_pairs`` loop, so reading it at the chip block would be the tool dict.
+        resolved_intent = (result.get("metadata") or {}).get("intent")
         # Accumulate this turn's LLM cost on the IP's daily bucket (same pricing
         # the analytics sink uses). Read by check_daily_cost on the NEXT request.
         try:
@@ -1114,6 +1118,7 @@ async def chat(request: Request, body: ChatRequest):
         response_id = f"fallback_{conv.conversation_id[:8]}"
         ui_actions = {}
         tool_pairs = []
+        resolved_intent = None
         has_error = True
         error_message = "Error processing your request"
     except Exception:
@@ -1219,14 +1224,43 @@ async def chat(request: Request, body: ChatRequest):
             {"type": "group", "identifier": settings.chathub_web_group},
         )
 
-    # Use LLM-generated chips (validated by tool), fallback to heuristic
+    # ── Quick-reply chips (data-driven, tenant-agnostic) ──────────────────
+    # Precedence: a tenant that ships chips in its responses.json OWNS the
+    # chips (per resolved intent / conversation state). The LLM's chips are
+    # IGNORED for that tenant → zero hallucination (cures leftover off-domain
+    # chips like "Ver proyectos" from the old real-estate engine). A tenant
+    # WITHOUT chips keeps the legacy LLM-then-heuristic behavior (no break).
     quick_replies = None
-    if suggested_replies:
-        buttons = [{"id": f"qr-{i}", "label": opt, "value": opt} for i, opt in enumerate(suggested_replies)]
-        quick_replies = {"type": "single_select", "buttons": buttons[:4]}
-    if not quick_replies:
-        from core.response_builder import build_quick_replies
-        quick_replies = build_quick_replies(conv.lead.get_status(), ui_actions, tool_pairs, content)
+    _tenant_owns_chips = False
+    _tenant_chips = None
+    try:
+        from core.responses import ResponsesSpec, resolve_chips
+
+        _chip_spec = ResponsesSpec.from_dir(_tenant_dir(body.tenant_id))
+        _tenant_owns_chips = _chip_spec.has_chips
+        if _tenant_owns_chips:
+            _tenant_chips = resolve_chips(
+                _chip_spec,
+                intent=resolved_intent,
+                identity_verified=bool(conv.identity_verified),
+            )
+    except Exception:  # noqa: BLE001 — chips must never break the chat response
+        logger.opt(exception=True).warning("Tenant chip resolution failed (ignored)")
+
+    if _tenant_owns_chips:
+        # Tenant OWNS chips: render the resolved JSON chips (or none for this
+        # turn). NEVER fall back to LLM/heuristic chips → zero hallucination.
+        if _tenant_chips:
+            buttons = [{"id": f"qr-{i}", "label": c, "value": c} for i, c in enumerate(_tenant_chips)]
+            quick_replies = {"type": "single_select", "buttons": buttons[:4]}
+    else:
+        # Legacy path: LLM-generated chips (validated by tool), else heuristic.
+        if suggested_replies:
+            buttons = [{"id": f"qr-{i}", "label": opt, "value": opt} for i, opt in enumerate(suggested_replies)]
+            quick_replies = {"type": "single_select", "buttons": buttons[:4]}
+        if not quick_replies:
+            from core.response_builder import build_quick_replies
+            quick_replies = build_quick_replies(conv.lead.get_status(), ui_actions, tool_pairs, content)
 
     # Current identity state (updated this turn if the user identified via DNI).
     # Lets the widget refresh its identity strip without a token.

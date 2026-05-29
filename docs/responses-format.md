@@ -55,6 +55,48 @@ pero el flag de `tenant.config.json` gana si está presente.
 | `list` | objeto | Plantilla **list** multi-crédito (ver §3). |
 | `grupal` | objeto | Bloque opcional para créditos grupales (ver §4). |
 | `variants` | array | Solo `mode: variant`. Lista de plantillas (cada una single str/dict o list dict). |
+| `chips` | string[] | **Quick-replies contextuales** que se ofrecen DESPUÉS de la respuesta de este intent. Data-driven, **el LLM NO los inventa** (ver §2.1). |
+
+---
+
+## 2.1. Chips / quick-replies (data-driven, CORE)
+
+Los chips (quick-replies del widget) los declara el tenant en su `responses.json`,
+**no los genera el LLM**. Cuando un tenant declara chips, el backend los resuelve
+y la salida del LLM (`suggest_quick_replies`) se **ignora por completo** → cero
+alucinación (esto cura el bug histórico del chip "Ver proyectos", residuo del
+engine inmobiliario). Un tenant **sin** chips conserva el comportamiento legacy
+(chips del LLM / heurística) y no se rompe nada.
+
+Dos niveles, con precedencia:
+
+1. **Por intent** (`chips` dentro de un intent): chips contextuales tras la
+   respuesta de ESE intent. Ej. `consulta_deuda` → ofrecer subir comprobante,
+   datos de pago, asesor.
+2. **Por estado** (bloque reservado `_chips`): el default para el saludo / turnos
+   sin intent claro. Dos estados:
+   - `cold` — usuario **sin identificar**.
+   - `identified` — usuario con **DNI verificado**.
+
+El backend usa los chips del intent resuelto si existen; si no, cae a los del
+estado actual. Máximo 4 chips (se truncan). Si el tenant declara chips pero no
+hay chips para el turno → se muestran **cero** chips (no se cae al LLM).
+
+```json
+{
+  "_chips": {
+    "cold": ["Consultar mi deuda", "Subir comprobante"],
+    "identified": ["Ver mi deuda", "Subir comprobante", "Datos de pago"]
+  },
+  "consulta_deuda": {
+    "chips": ["Subir comprobante", "Datos de pago", "Hablar con un asesor"],
+    "template": "..."
+  }
+}
+```
+
+Regla de oro: los chips deben ser **acotados a las capacidades reales del bot**.
+Nunca chips fuera de dominio.
 
 ---
 
