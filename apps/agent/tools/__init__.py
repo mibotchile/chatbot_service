@@ -240,10 +240,10 @@ class ToolRegistry:
             self._debt_context, cci=cci, monto=monto, nro_operacion=nro_operacion
         )
 
-    async def _escalate_to_human(self, reason: str) -> dict:
+    async def _escalate_to_human(self, reason: str = "Cliente solicitó hablar con un asesor") -> dict:
         """Derive to a human collections agent (demo: acknowledged, not routed)."""
         return {
             "escalated": True,
             "reason": reason,
-            "message": "Te derivo con un asesor de PrestaUnion. En breve se comunicarán contigo.",
+            "message": "Te derivo con un asesor. En breve se comunicarán contigo.",
         }

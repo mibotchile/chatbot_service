@@ -119,6 +119,7 @@
     "mode": "verbatim",
     "description": "El usuario quiere hablar con una persona/asesor, o pide algo fuera de alcance (reclamo, queja).",
     "requires_identity": false,
+    "tool": "escalate_to_human",
     "keywords": ["asesor", "hablar con alguien", "agente", "persona", "humano", "reclamo", "queja"],
     "template": "Te derivo con un asesor de PrestamYpe para que te ayude con eso. En breve se comunican contigo."
   }
