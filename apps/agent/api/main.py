@@ -133,6 +133,13 @@ async def _emit_analytics(
         project_uid = _tenant_project_uid(tenant_id)
         interaction_id = str(_uuid.uuid4())
         usage = result.get("usage") or {}
+        # Tag how the turn was resolved (canned_keyword/canned_intent/llm) so we
+        # can measure the % resolved without LLM generation against the cost_usd
+        # already stored in bot_llm_usage. Folded into tools_called as a marker
+        # (schema-safe: no DDL change) — e.g. "source:canned_keyword".
+        _source = result.get("response_source") or "llm"
+        _tools = list(result.get("tools_called") or [])
+        _tools.append(f"source:{_source}")
         await analytics_sink.record_interaction(
             project_uid=project_uid,
             tenant_id=tenant_id or "",
@@ -141,7 +148,7 @@ async def _emit_analytics(
             interaction_id=interaction_id,
             user_text=user_text,
             assistant_text=result.get("content", ""),
-            tools_called=result.get("tools_called") or [],
+            tools_called=_tools,
             latency_ms=result.get("latency_ms"),
         )
         await analytics_sink.record_llm_usage(
@@ -302,6 +309,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
             lead_state=conv.lead.get_status(),
             page_context=enriched_page_context,
             channel="whatsapp",
+            session_state=conv.session_state,
         )
         content = result["content"]
         wa_ui_actions = result.get("ui_actions", {})
@@ -1027,6 +1035,7 @@ async def chat(request: Request, body: ChatRequest):
             lead_state=conv.lead.get_status(),
             page_context=enriched_page_context,
             channel=body.channel,
+            session_state=conv.session_state,
         )
         content = result["content"]
         response_id = result["response_id"]

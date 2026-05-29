@@ -1,0 +1,114 @@
+{
+  "_meta": {
+    "tenant": "prestamype",
+    "doc": "Guión curado de PrestamYpe (demo). Catálogo de intents 100% data-driven: agregar/editar intents = editar este JSON, sin tocar código. Por intent: keywords/patterns (router capa 1, sin LLM), description (catálogo que usa el clasificador LLM en capa 2), requires_identity (gate por DNI), tool (tool del engine a ejecutar antes de responder), mode (verbatim|variant) y templates (single/list/grupal/variants). Variables {nombre} {saldo} {moneda} {fecha_venc} {cuota} {loan} {dias_mora} {cci} {banco} las rellena el backend desde el crédito verificado (cero alucinación). Formato completo: docs/responses-format.md.",
+    "redaccion": "Español peruano, trato de tú, sin voseo, copy breve. El cliente real reemplaza estos textos por los suyos."
+  },
+
+  "saludo": {
+    "mode": "variant",
+    "description": "El usuario saluda o inicia la conversación sin pedir nada concreto.",
+    "requires_identity": false,
+    "keywords": ["hola", "buenas", "buenos dias", "buenas tardes", "buenas noches", "que tal", "saludos"],
+    "patterns": ["^\\s*(hola|buen[oa]s|hey)\\b"],
+    "variants": [
+      "Hola, soy Ada de PrestamYpe. Puedo ayudarte a consultar tu deuda o validar un comprobante de pago. ¿Qué necesitas?",
+      "Hola, qué gusto. Soy Ada de PrestamYpe. Te ayudo con la consulta de tu préstamo o a registrar tu comprobante. ¿En qué empezamos?",
+      "Hola. Soy Ada, tu asistente de PrestamYpe. Dime tu DNI y reviso tu préstamo, o cuéntame si quieres validar un pago."
+    ]
+  },
+
+  "despedida": {
+    "mode": "variant",
+    "description": "El usuario agradece, se despide o indica que no necesita nada más.",
+    "requires_identity": false,
+    "keywords": ["gracias", "muchas gracias", "chau", "adios", "hasta luego", "eso es todo", "nada mas"],
+    "variants": [
+      "Listo, cualquier cosa aquí estoy. ¡Que tengas buen día!",
+      "Con gusto. Si necesitas algo más sobre tu préstamo, escríbeme cuando quieras.",
+      "Gracias a ti. Aquí estaré para tu próxima consulta o comprobante."
+    ]
+  },
+
+  "no_entendido": {
+    "mode": "variant",
+    "description": "El mensaje no encaja en ninguna intención conocida (fallback).",
+    "requires_identity": false,
+    "variants": [
+      "Disculpa, no te entendí bien. Puedo ayudarte con dos cosas: consultar tu deuda o validar un comprobante de pago. ¿Cuál necesitas?",
+      "No estoy segura de haber entendido. ¿Quieres revisar el saldo de tu préstamo o registrar un comprobante de pago?",
+      "Perdona, ¿me lo repites? Te puedo mostrar tu deuda o ayudarte a subir un comprobante."
+    ]
+  },
+
+  "identidad_requerida": {
+    "mode": "verbatim",
+    "description": "Se pidió información de la cuenta sin haber verificado identidad (DNI).",
+    "requires_identity": false,
+    "template": "Para mostrarte los datos de tu cuenta necesito identificarte primero. Por favor, indícame tu número de DNI (8 dígitos)."
+  },
+
+  "consulta_deuda": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta por su deuda, saldo, cuota, vencimiento o estado de su préstamo.",
+    "requires_identity": true,
+    "tool": "consultar_deuda",
+    "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
+    "patterns": ["cu[aá]nt[oa].*(debo|pago|deuda|cuota)", "(saldo|deuda).*(pendiente|actual|tengo)"],
+    "template": "Tu crédito {loan} tiene un saldo de {saldo}. La próxima cuota es de {cuota} y vence el {fecha_venc}. Estado: {estado}.",
+    "list": {
+      "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
+      "item": "• Crédito {loan}: saldo {saldo}, cuota {cuota} (vence {fecha_venc}) — {estado}.",
+      "footer": "Saldo total entre tus créditos: {total}. ¿Sobre cuál quieres avanzar?"
+    },
+    "grupal": {
+      "header": "Este es un crédito grupal; lo comparten:",
+      "item": "• {codeudor} ({rol}) — DNI {dni}.",
+      "footer": "El saldo y las cuotas son compartidos por el grupo."
+    }
+  },
+
+  "elegir_credito": {
+    "mode": "verbatim",
+    "description": "Hay más de un crédito y se necesita que el usuario elija sobre cuál operar.",
+    "requires_identity": true,
+    "list": {
+      "header": "Tienes más de un crédito. ¿Sobre cuál quieres hacer esta gestión?",
+      "item": "{n}. Crédito {loan} — saldo {saldo} ({estado}).",
+      "footer": "Respóndeme con el número o el código del crédito."
+    }
+  },
+
+  "politica_pago": {
+    "mode": "verbatim",
+    "description": "El usuario pide un plan de pago, fraccionar, refinanciar, negociar, descuento o rebaja (fuera de alcance).",
+    "requires_identity": false,
+    "keywords": ["plan de pago", "fraccionar", "pagar en cuotas", "refinanciar", "refinanciamiento", "negociar", "descuento", "rebaja"],
+    "patterns": ["(plan|acuerdo).*(pago|cuotas)", "refinanci\\w*"],
+    "template": "Por este canal solo puedo ayudarte a consultar tu deuda y a validar comprobantes de pago. Los acuerdos de pago o refinanciamiento los ve un asesor; si quieres, te derivo con uno."
+  },
+
+  "donde_pagar": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta dónde, cómo o a qué cuenta pagar su crédito.",
+    "requires_identity": true,
+    "keywords": ["donde pago", "dónde pago", "como pago", "cómo pago", "a que cuenta", "a qué cuenta", "numero de cuenta", "cuenta para pagar", "cci"],
+    "patterns": ["(d[oó]nde|c[oó]mo|qu[eé] cuenta).*(pag|abon|deposit)"],
+    "template": "Puedes pagar tu crédito {loan} a la cuenta CCI {cci} del banco {banco}. Cuando pagues, envíame el comprobante (CCI, monto y número de operación) y lo registro."
+  },
+
+  "comprobante_resultado": {
+    "mode": "verbatim",
+    "description": "El usuario ya envió los datos del comprobante (CCI, monto, número de operación) para registrarlo.",
+    "requires_identity": true,
+    "template": "Recibí tu comprobante sobre el crédito {loan}. Quedó registrado y EN REVISIÓN: un asesor lo concilia contra el banco y, de estar conforme, se aplica a tu cuenta."
+  },
+
+  "derivar_asesor": {
+    "mode": "verbatim",
+    "description": "El usuario quiere hablar con una persona/asesor, o pide algo fuera de alcance (reclamo, queja).",
+    "requires_identity": false,
+    "keywords": ["asesor", "hablar con alguien", "agente", "persona", "humano", "reclamo", "queja"],
+    "template": "Te derivo con un asesor de PrestamYpe para que te ayude con eso. En breve se comunican contigo."
+  }
+}

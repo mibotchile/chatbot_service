@@ -1,0 +1,389 @@
+"""Tests for the curated-responses engine (tenant-agnostic, hybrid router).
+
+Covers the CORE feature (engine logic) plus the prestamype DATA that exercises
+it: responses.json format, single/list/grupal render, variant no-repeat, the
+2-layer router (keyword resolves with NO LLM, hybrid classification, fallback),
+multi-deuda (Lucía → 2 credits), grupal (Rosa → codeudores) and desambiguación.
+
+The engine is generic: nothing here asserts an if-tenant branch — it asserts the
+engine reads the tenant's responses.json + the verified profile.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from core import responses as R
+from core.responses import ResponsesSpec
+from core.tenant_loader import TenantConfig
+from integrations import debt_source
+
+TENANT = "prestamype"
+LUIS = "44218903"    # P02137, al día, single credit
+LUCIA = "76310582"   # P05012, multi-deuda (2 créditos)
+ROSA = "40517264"    # P05480, grupal (2 codeudores)
+
+
+def _tenant_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "tenants" / TENANT
+
+
+def _spec() -> ResponsesSpec:
+    return ResponsesSpec.from_dir(_tenant_dir(), response_mode="hybrid")
+
+
+def _profile(dni: str) -> dict:
+    return debt_source.resolve_dni(dni, tenant_id=TENANT)
+
+
+# ── responses.json format + spec loading ─────────────────────────────────────
+
+def test_responses_json_is_valid_and_has_required_intents():
+    data = json.loads((_tenant_dir() / "responses.json").read_text(encoding="utf-8"))
+    required = {
+        "saludo", "no_entendido", "despedida", "consulta_deuda",
+        "politica_pago", "donde_pagar", "elegir_credito",
+        "comprobante_resultado", "derivar_asesor",
+    }
+    assert required <= set(data)
+    for intent, cfg in data.items():
+        if intent.startswith("_"):
+            continue
+        assert cfg.get("mode") in ("verbatim", "variant")
+
+
+def test_spec_enabled_only_in_scripted_or_hybrid():
+    assert _spec().enabled is True
+    llm_spec = ResponsesSpec.from_dir(_tenant_dir(), response_mode="llm")
+    assert llm_spec.enabled is False  # data present but mode=llm → off
+
+
+def test_missing_responses_json_degrades_to_llm():
+    # prestaunion ships no responses.json → empty spec, mode llm, nothing breaks.
+    spec = ResponsesSpec.from_dir(
+        Path(__file__).resolve().parent.parent / "tenants" / "prestaunion",
+        response_mode="llm",
+    )
+    assert spec.intents == {}
+    assert spec.enabled is False
+
+
+# ── response_mode flag wiring (tenant_loader) ─────────────────────────────────
+
+def test_prestamype_loads_hybrid_mode_and_spec():
+    cfg = TenantConfig.from_directory(_tenant_dir())
+    assert cfg.response_mode == "hybrid"
+    assert cfg.responses.enabled is True
+
+
+def test_prestaunion_stays_llm_intact():
+    cfg = TenantConfig.from_directory(
+        Path(__file__).resolve().parent.parent / "tenants" / "prestaunion"
+    )
+    assert cfg.response_mode == "llm"
+    assert cfg.responses.enabled is False
+
+
+# ── single template render (real data) ───────────────────────────────────────
+
+def test_render_single_consulta_deuda_with_real_data():
+    spec = _spec()
+    prof = _profile(LUIS)
+    res = R.render_intent(spec, "consulta_deuda", prof, source=R.SOURCE_KEYWORD)
+    assert res is not None
+    assert "P02137" in res.text
+    assert "S/ 18,420.00" in res.text       # saldo real
+    assert "S/ 462.14" in res.text          # cuota real
+    assert "2026-06-18" in res.text         # fecha de vencimiento real
+
+
+# ── list template render (multi-deuda: Lucía → 2 créditos) ───────────────────
+
+def test_render_list_multideuda_lists_two_credits():
+    spec = _spec()
+    prof = _profile(LUCIA)
+    res = R.render_intent(spec, "consulta_deuda", prof, source=R.SOURCE_KEYWORD)
+    assert res is not None
+    assert "2 créditos" in res.text
+    assert "P05012" in res.text and "P05119" in res.text   # ambos créditos
+    assert "S/ 9,120.50" in res.text and "S/ 26,340.00" in res.text  # saldos reales
+    assert "S/ 35,460.50" in res.text                       # total = suma de saldos
+
+
+# ── grupal block render (Rosa → codeudores) ──────────────────────────────────
+
+def test_render_grupal_lists_codeudores_masked():
+    spec = _spec()
+    prof = _profile(ROSA)
+    res = R.render_intent(spec, "consulta_deuda", prof, source=R.SOURCE_KEYWORD)
+    assert res is not None
+    assert "grupal" in res.text.lower()
+    assert "Miguel Angel Paredes Quispe" in res.text
+    assert "Elena Sofia Quispe Mamani" in res.text
+    # codeudor DNIs masked (never full)
+    assert "40517265" not in res.text
+    assert "*" in res.text
+
+
+# ── variant selection (no immediate repeat) ──────────────────────────────────
+
+def test_variant_picker_avoids_last_index():
+    variants = ["a", "b", "c"]
+    for _ in range(20):
+        _, idx = R.pick_variant(variants, last_index=1)
+        assert idx != 1
+
+
+def test_variant_single_element_returns_it():
+    chosen, idx = R.pick_variant(["solo"], last_index=None)
+    assert chosen == "solo" and idx == 0
+
+
+def test_variant_intent_persists_index_in_session_state():
+    spec = _spec()
+    prof = _profile(LUIS)
+    session: dict = {}
+    out = R.route_layer1("hola", spec, prof, session_state=session)
+    assert out.handled is True
+    assert out.source == R.SOURCE_KEYWORD
+    # the chosen variant index is remembered for no-repeat next turn
+    assert session.get("_responses_variant_idx", {}).get("saludo") == out.variant_index
+
+
+# ── Layer 1 router: resolves frequent intents with ZERO LLM ───────────────────
+
+@pytest.mark.parametrize(
+    "text,intent",
+    [
+        ("Hola buenas tardes", "saludo"),
+        ("cuánto debo?", "consulta_deuda"),
+        ("¿a qué cuenta pago?", "donde_pagar"),
+        ("muchas gracias", "despedida"),
+        ("quiero hablar con un asesor", "derivar_asesor"),
+        ("se puede refinanciar?", "politica_pago"),
+    ],
+)
+def test_layer1_keyword_resolves_without_llm(text, intent):
+    spec = _spec()
+    prof = _profile(LUIS)
+    # identity verified so gated intents (consulta_deuda, donde_pagar) resolve.
+    out = R.route_layer1(text, spec, prof, session_state={}, identity_verified=True)
+    assert out.handled is True
+    assert out.intent == intent
+    assert out.source == R.SOURCE_KEYWORD     # resolved with NO LLM call
+    assert out.text
+
+
+def test_layer1_regex_pattern_resolves():
+    spec = _spec()
+    prof = _profile(LUIS)
+    out = R.route_layer1("oye, ¿cuánto pago este mes?", spec, prof,
+                         session_state={}, identity_verified=True)
+    assert out.handled is True
+    assert out.intent == "consulta_deuda"     # matched via patterns regex
+    assert out.source == R.SOURCE_KEYWORD
+
+
+def test_requires_identity_gate_blocks_unverified():
+    spec = _spec()
+    # consulta_deuda requires identity → unverified user gets the gate prompt.
+    out = R.route_layer1("cuánto debo", spec, {}, session_state={}, identity_verified=False)
+    assert out.handled is True
+    assert out.intent == "identidad_requerida"
+    assert "dni" in out.text.lower()
+
+
+def test_requires_identity_gate_passes_when_verified():
+    spec = _spec()
+    out = R.route_layer1("cuánto debo", spec, _profile(LUIS),
+                         session_state={}, identity_verified=True)
+    assert out.intent == "consulta_deuda"
+    assert out.run_tool == "consultar_deuda"   # data-driven intent→tool
+
+
+def test_classifier_menu_is_data_driven_from_json():
+    spec = _spec()
+    menu = R.classifier_menu(spec)
+    # every intent contributes a {name: description}; nothing hard-coded.
+    assert "consulta_deuda" in menu
+    assert menu["consulta_deuda"]   # has a description string
+    assert set(menu) == set(spec.intents)
+
+
+def test_intent_tool_and_requires_identity_read_from_json():
+    spec = _spec()
+    assert R.intent_tool(spec, "consulta_deuda") == "consultar_deuda"
+    assert R.intent_tool(spec, "saludo") is None
+    assert R.intent_requires_identity(spec, "consulta_deuda") is True
+    assert R.intent_requires_identity(spec, "saludo") is False
+
+
+def test_layer1_miss_in_hybrid_requests_classification():
+    spec = _spec()
+    prof = _profile(LUIS)
+    out = R.route_layer1("xyzzy mensaje sin keyword", spec, prof, session_state={})
+    assert out.handled is False
+    assert out.needs_llm_classification is True
+
+
+def test_scripted_mode_falls_back_to_no_entendido_without_llm():
+    spec = ResponsesSpec.from_dir(_tenant_dir(), response_mode="scripted")
+    prof = _profile(LUIS)
+    out = R.route_layer1("xyzzy sin keyword", spec, prof, session_state={})
+    assert out.handled is True
+    assert out.intent == "no_entendido"
+    assert out.source == R.SOURCE_KEYWORD     # minimal LLM: canned fallback
+
+
+# ── Layer 2 resolution: classified intent → canned ───────────────────────────
+
+def test_layer2_classified_intent_renders_canned():
+    spec = _spec()
+    prof = _profile(LUIS)
+    out = R.resolve_classified_intent("donde_pagar", spec, prof,
+                                      session_state={}, identity_verified=True)
+    assert out.handled is True
+    assert out.source == R.SOURCE_INTENT
+    assert prof["cci"] in out.text and prof["banco"] in out.text
+
+
+def test_layer2_unknown_intent_falls_through_to_llm():
+    spec = _spec()
+    out = R.resolve_classified_intent("no_existe_este_intent", spec, {}, session_state={})
+    assert out.handled is False
+    assert out.source == R.SOURCE_LLM
+
+
+# ── desambiguación: elegir_credito lists numbered credits ────────────────────
+
+def test_elegir_credito_numbers_the_credits():
+    spec = _spec()
+    prof = _profile(LUCIA)  # 2 créditos
+    res = R.render_intent(spec, "elegir_credito", prof, source=R.SOURCE_INTENT)
+    assert res is not None
+    assert "1." in res.text and "2." in res.text
+    assert "P05012" in res.text and "P05119" in res.text
+
+
+# ── profile normalization (generic) ──────────────────────────────────────────
+
+def test_normalize_credits_single_vs_multi():
+    assert len(R.normalize_credits(_profile(LUIS))) == 1
+    assert len(R.normalize_credits(_profile(LUCIA))) == 2
+
+
+def test_build_variables_fills_from_profile():
+    v = R.build_variables(_profile(LUIS))
+    assert v["nombre"] == "Carlos"
+    assert v["saldo"] == "S/ 18,420.00"
+    assert v["cci"] == "00389801338381007048"
+
+
+# ── agent integration: canned short-circuits the LLM ─────────────────────────
+
+from core.agent import SoreliaAgent  # noqa: E402
+from core.llm import LLMProvider, LLMResponse, ToolCall  # noqa: E402
+
+
+class _CountingProvider(LLMProvider):
+    """Counts complete() calls so we can prove keyword hits skip the LLM."""
+
+    model = "claude-haiku-test"
+    name = "anthropic"
+
+    def __init__(self, classify_as: str | None = None):
+        self.calls = 0
+        self._classify_as = classify_as
+
+    async def complete(self, *, system, messages, tools, model=None, max_tokens=1024, force_tool=None):
+        self.calls += 1
+        # When used as the intent classifier, echo the configured label.
+        if "clasificador" in (system or "").lower() and self._classify_as:
+            return LLMResponse(text=self._classify_as, tool_calls=[])
+        return LLMResponse(text="respuesta generada por LLM", tool_calls=[])
+
+
+def _agent(provider, *, identity_dni: str | None = None):
+    from tools import ToolRegistry
+
+    debt_ctx = _profile(identity_dni) if identity_dni else {}
+    reg = ToolRegistry(
+        identity_verified=bool(identity_dni),
+        debt_context=debt_ctx,
+        tenant_id=TENANT,
+    )
+    return SoreliaAgent(
+        provider=provider,
+        tool_registry=reg,
+        tenant=TenantConfig.from_directory(_tenant_dir()),
+    )
+
+
+async def test_agent_keyword_saludo_resolves_with_zero_llm_calls():
+    provider = _CountingProvider()
+    agent = _agent(provider, identity_dni=LUIS)
+    res = await agent.process_message(
+        text="hola buenas",
+        conversation_id="c1",
+        history=[],
+        lead_state={},
+        page_context={},
+        session_state={},
+    )
+    assert provider.calls == 0                          # NO LLM call at all
+    assert res["response_source"] == R.SOURCE_KEYWORD
+    assert res["usage"]["input_tokens"] == 0
+
+
+async def test_agent_consulta_deuda_keyword_uses_real_data_no_llm():
+    provider = _CountingProvider()
+    agent = _agent(provider, identity_dni=LUCIA)         # multi-deuda
+    res = await agent.process_message(
+        text="cuánto debo", conversation_id="c2", history=[],
+        lead_state={}, page_context={}, session_state={},
+    )
+    assert provider.calls == 0
+    assert "P05012" in res["content"] and "P05119" in res["content"]
+    # data-driven intent→tool: consultar_deuda ran and is surfaced for UI/analytics
+    assert res["tools_called"] == ["consultar_deuda"]
+
+
+async def test_agent_gated_intent_without_identity_asks_for_dni_no_llm():
+    provider = _CountingProvider()
+    agent = _agent(provider, identity_dni=None)          # unverified
+    res = await agent.process_message(
+        text="cuánto debo", conversation_id="c5", history=[],
+        lead_state={}, page_context={}, session_state={},
+    )
+    assert provider.calls == 0
+    assert res["metadata"]["intent"] == "identidad_requerida"
+    assert "dni" in res["content"].lower()
+    assert res["tools_called"] == []                     # gated: tool never ran
+
+
+async def test_agent_hybrid_miss_classifies_then_canned():
+    # Layer1 misses → ONE cheap classification call → canned (Layer 2).
+    provider = _CountingProvider(classify_as="donde_pagar")
+    agent = _agent(provider, identity_dni=LUIS)
+    res = await agent.process_message(
+        text="necesito los datos para abonar", conversation_id="c3", history=[],
+        lead_state={}, page_context={}, session_state={},
+    )
+    assert provider.calls == 1                          # only the classifier
+    assert res["response_source"] == R.SOURCE_INTENT
+    assert _profile(LUIS)["cci"] in res["content"]
+
+
+async def test_agent_hybrid_no_canned_falls_through_to_llm():
+    # Classifier returns 'ninguna' → no canned → full agent loop generates.
+    provider = _CountingProvider(classify_as="ninguna")
+    agent = _agent(provider, identity_dni=LUIS)
+    res = await agent.process_message(
+        text="cuéntame un chiste sobre finanzas", conversation_id="c4", history=[],
+        lead_state={}, page_context={}, session_state={},
+    )
+    assert res["response_source"] == R.SOURCE_LLM
+    assert provider.calls >= 2                          # classify + generate

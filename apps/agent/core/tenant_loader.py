@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from config.soul import AgentSoul
+from core.responses import ResponsesSpec
 
 
 @dataclass
@@ -27,6 +28,11 @@ class TenantConfig:
     sales_arsenal: dict = field(default_factory=dict)
     company: dict = field(default_factory=dict)
     guardrails: str = ""
+    # Curated-responses feature (tenant-agnostic). ``response_mode`` is the flag;
+    # ``responses`` is the loaded responses.json spec (empty when the tenant has
+    # none → mode degrades to "llm", current behavior, nothing breaks).
+    response_mode: str = "llm"
+    responses: ResponsesSpec = field(default_factory=ResponsesSpec)
 
     @classmethod
     def from_directory(cls, tenant_dir: str | Path) -> TenantConfig:
@@ -71,6 +77,11 @@ class TenantConfig:
         skills = agent_cfg.get("skills", None)
         excluded_tools = agent_cfg.get("excluded_tools", None)
 
+        # Curated-responses feature: flag from tenant.config.json + responses.json.
+        # Default "llm" (current behavior) when the tenant ships neither.
+        response_mode = (config.get("response_mode") or "llm").strip().lower()
+        responses = ResponsesSpec.from_dir(tenant_dir, response_mode=response_mode)
+
         return cls(
             slug=config.get("slug", tenant_dir.name),
             soul=soul,
@@ -82,4 +93,6 @@ class TenantConfig:
             sales_arsenal=sales_arsenal if isinstance(sales_arsenal, dict) else {},
             company=company if isinstance(company, dict) else {},
             guardrails=guardrails,
+            response_mode=response_mode,
+            responses=responses,
         )

@@ -145,7 +145,7 @@ def build_quick_replies(
     Priority: agent's question > tool results > lead state fallback.
     Returns a QuickReplySet: {type, buttons: [{id, label, value}]}
     """
-    collected = set(lead_status.get("collected", {}).keys())
+    collected = lead_status.get("collected", {}) or {}
     buttons: list[dict] = []
     tools_called = {name for name, _ in (tool_results or [])}
 

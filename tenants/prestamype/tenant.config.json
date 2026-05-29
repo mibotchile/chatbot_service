@@ -4,6 +4,7 @@
   "name": "PrestamYpe",
   "domain": "prestamype.com",
   "data_source": "mock",
+  "response_mode": "hybrid",
   "project_uid": "QUIdI0iwQY0l3pJwRKLB",
   "doris_schema": {
     "db": null,

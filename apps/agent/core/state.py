@@ -46,6 +46,9 @@ class ConversationState:
         # debt_context holds the verified borrower profile (incl. account_id).
         self.identity_verified: bool = False
         self.debt_context: dict = {}
+        # Per-session scratch for the curated-responses engine: variant no-repeat
+        # memory + the chosen credit for desambiguación (multi-credit borrowers).
+        self.session_state: dict = {}
 
     # -- Sync API (in-memory only, backwards-compatible) --
 
