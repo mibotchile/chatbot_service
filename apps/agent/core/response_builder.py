@@ -102,6 +102,8 @@ def _debt_card(c: dict) -> dict:
         "next_due_date": c.get("next_due_date"),
         "next_installment_formatted": c.get("next_installment_formatted", ""),
         "banco": c.get("banco"),
+        # Full destination account so the borrower can transfer the payment.
+        "cci": c.get("cci"),
         "cci_masked": c.get("cci_masked"),
         "badge": _status_badge(c.get("status", ""), c.get("status_label", ""), c.get("days_overdue", 0)),
     }

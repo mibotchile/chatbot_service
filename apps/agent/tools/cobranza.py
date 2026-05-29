@@ -112,8 +112,12 @@ async def consultar_deuda(profile: dict) -> dict:
         "days_overdue": profile.get("days_overdue", 0),
         "installment_history": profile.get("installment_history", []),
         "has_debt": (profile.get("balance", 0.0) or 0.0) > 0,
-        # Bank + masked CCI for the side-panel card (never the full CCI).
+        # Bank + payment account for the side-panel card. ``cci`` is the FULL
+        # destination account the borrower must transfer to (shown complete in
+        # the panel so they can pay); ``cci_masked`` is kept for any consumer
+        # that still wants the masked form (e.g. chat copy).
         "banco": profile.get("banco"),
+        "cci": profile.get("cci"),
         "cci_masked": _mask_cci(profile.get("cci")),
     }
 
@@ -161,6 +165,7 @@ def _credit_brief(c: dict, sym: str) -> dict:
         "next_installment_amount": c.get("next_installment_amount"),
         "next_installment_formatted": _fmt(c.get("next_installment_amount", 0.0) or 0.0, sym),
         "banco": c.get("banco"),
+        "cci": c.get("cci"),
         "cci_masked": _mask_cci(c.get("cci")),
     }
 

@@ -264,11 +264,17 @@
      Sits to the LEFT of the floating chat, same vertical band. It's its OWN
      fixed element inside the shadow root (a sibling of the chat panel), so the
      chat layout is untouched. Hidden until content is shown; collapsible. */
+  /* Defaults match the native (prestaunion) theme; applyBranding() overrides
+     these inline per tenant so the panel always wears the SAME brand color as
+     the chat (it's a shadow-DOM sibling of the chat root, so it can't inherit). */
   #pu-sidepanel {
     --pu-brand: #0083E0; --pu-brand-hover: #0070bf; --pu-brand-soft: #C5E4F9;
-    position: fixed; bottom: 96px; right: calc(24px + 384px + 12px); z-index: 2147482999;
+    position: fixed; bottom: 96px; right: calc(24px + 384px + 6px); z-index: 2147482999;
     width: 360px; max-width: calc(100vw - 32px); height: 600px; max-height: calc(100vh - 120px);
-    background: #ffffff; border: 1px solid #D7D8DB; border-radius: 18px;
+    background: #ffffff; border: 1px solid #D7D8DB;
+    /* Docked to the chat: round the OUTER (left) corners fully, flatten the
+       INNER (right, chat-facing) corners so it reads as one expanded surface. */
+    border-radius: 18px 6px 6px 18px;
     display: flex; flex-direction: column; overflow: hidden; color: #1A1A1C;
     box-shadow: 0 24px 60px -12px rgba(19,53,77,0.22), 0 6px 18px rgba(19,53,77,0.08);
     opacity: 0; transform: translateX(16px) scale(0.98); pointer-events: none;
@@ -714,6 +720,18 @@
 
   function resetConversation() {
     conversationId = null;
+    // Reset the LOCAL identity so the strip doesn't keep the previous user's
+    // name/badge. A pre-identified session (CT token) re-identifies from the
+    // token; a DNI-typed session goes back to "Sin verificar".
+    verifiedDni = (CT && PRESTAMYPE_TOKEN_DNI[CT]) || null;
+    renderIdentity();
+    // Isolation: drop the previous user's debt cards. Close the side panel and
+    // wipe its body so nothing from the old session lingers.
+    if (sidePanel) {
+      sidePanel.classList.remove("pu-open");
+      if ($spBody) $spBody.innerHTML = "";
+      spMode = null;
+    }
     renderWelcome();
     $input.focus();
   }
@@ -944,11 +962,14 @@
     if (c.next_due_date) {
       rows.push(`<div class="pu-card-row"><span class="k">Vence</span><span class="v">${escapeHtml(c.next_due_date)}</span></div>`);
     }
-    if (c.cci_masked) {
+    // Destination account for the payment — shown COMPLETE so the borrower can
+    // transfer. Falls back to the masked form only if the full one is absent.
+    const account = c.cci || c.cci_masked;
+    if (account) {
       const acct = c.banco
-        ? `${escapeHtml(c.cci_masked)} · ${escapeHtml(c.banco)}`
-        : escapeHtml(c.cci_masked);
-      rows.push(`<div class="pu-card-row"><span class="k">Cuenta para realizar el pago</span><span class="v">${acct}</span></div>`);
+        ? `${escapeHtml(account)} · ${escapeHtml(c.banco)}`
+        : escapeHtml(account);
+      rows.push(`<div class="pu-card-row pu-card-acct"><span class="k">Cuenta para realizar el pago</span><span class="v">${acct}</span></div>`);
     }
     let grupal = "";
     if (c.is_grupal && Array.isArray(c.codeudores) && c.codeudores.length) {
@@ -1202,8 +1223,12 @@
     AGENT = b.agent_name || AGENT;
     COMPANY = b.name || COMPANY;
     const color = b.primary_color || "#0083E0";
-    // Override the widget's brand CSS vars on the two scoped roots.
-    [fab, root].forEach((node) => {
+    // Override the widget's brand CSS vars on every scoped root. The side panel
+    // is a sibling of the chat root inside the shadow DOM (not a descendant), so
+    // it does NOT inherit these vars — it must be branded explicitly, otherwise
+    // its own hardcoded defaults win and the panel looks off-brand (e.g. blue
+    // header on a green tenant). Inline setProperty beats the stylesheet rule.
+    [fab, root, sidePanel].forEach((node) => {
       if (!node) return;
       node.style.setProperty("--pu-brand", color);
       node.style.setProperty("--pu-brand-hover", color);

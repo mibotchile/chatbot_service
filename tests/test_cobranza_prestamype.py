@@ -125,15 +125,16 @@ async def test_consultar_deuda_single_credit_has_no_multi_flags():
 # build_ui_actions for the consultar_deuda tool result. Tenant-agnostic / core.
 
 
-async def test_consultar_deuda_exposes_bank_and_masked_cci():
+async def test_consultar_deuda_exposes_bank_and_payment_account():
     from tools.cobranza import consultar_deuda
 
     prof = debt_source.resolve_dni(LUIS, tenant_id=TENANT)
     summary = await consultar_deuda(prof)
     assert summary["banco"] == "INTERBANK"
-    # CCI is masked to its last 4 digits — the full 20-digit CCI is never exposed.
+    # The FULL destination account is exposed so the borrower can transfer the
+    # payment to it; the masked form is kept for any consumer that needs it.
+    assert summary["cci"] == prof["cci"]
     assert summary["cci_masked"] == "···7048"
-    assert prof["cci"] not in summary["cci_masked"]
 
 
 async def test_build_panel_single_credit():
@@ -151,7 +152,8 @@ async def test_build_panel_single_credit():
     assert card["balance_formatted"] == "S/ 18,420.00"
     assert card["next_due_date"] == "2026-06-18"
     assert card["banco"] == "INTERBANK"
-    assert card["cci_masked"] == "···7048"
+    # Panel shows the COMPLETE payment account (not the masked one).
+    assert card["cci"] == prof["cci"]
     assert card["badge"]["kind"] == "aldia"
 
 
