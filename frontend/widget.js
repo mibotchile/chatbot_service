@@ -945,7 +945,10 @@
       rows.push(`<div class="pu-card-row"><span class="k">Vence</span><span class="v">${escapeHtml(c.next_due_date)}</span></div>`);
     }
     if (c.cci_masked) {
-      rows.push(`<div class="pu-card-row"><span class="k">CCI</span><span class="v">${escapeHtml(c.cci_masked)}</span></div>`);
+      const acct = c.banco
+        ? `${escapeHtml(c.cci_masked)} · ${escapeHtml(c.banco)}`
+        : escapeHtml(c.cci_masked);
+      rows.push(`<div class="pu-card-row"><span class="k">Cuenta para realizar el pago</span><span class="v">${acct}</span></div>`);
     }
     let grupal = "";
     if (c.is_grupal && Array.isArray(c.codeudores) && c.codeudores.length) {

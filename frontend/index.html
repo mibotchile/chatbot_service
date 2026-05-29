@@ -179,6 +179,10 @@
     body.tenant-prestamype .features,
     body.tenant-prestamype .dni-note,
     body.tenant-prestamype h2.section-label:not(#acceso) { display: none; }   /* no heavy blocks / orphan labels */
+    /* Máximo minimalismo: el hero solo ENMARCA los casos. Ocultamos kicker + CTA
+       vía CSS (no JS post-fetch) para que NO parpadee el hero de prestaunion. */
+    body.tenant-prestamype .kicker,
+    body.tenant-prestamype .hero-cta { display: none; }
 
     /* Cards: airy, soft corners, subtle shadow — fintech-clean. Sit right under
        the hero so the headline frames the 5 test cases. */
@@ -268,6 +272,21 @@
         <span class="kicker"><span class="dot"></span> <span id="kicker-name">Ada</span> responde al instante, las 24 horas</span>
         <h1 id="hero-h1">Resuelve tu préstamo hablando con <span class="accent">Ada</span>.</h1>
         <p class="lead" id="hero-lead">Consulta tu saldo, regulariza una cuota, presenta un reclamo o pide tu certificado de no adeudo. Atención clara y en tu idioma, sin letra chica.</p>
+        <!-- FOUC guard (contenido): seteá el lead de prestamype AQUÍ, justo tras
+             parsear el <p>, de forma SÍNCRONA (antes del primer paint). Así el
+             texto del hero de prestaunion nunca llega a verse. El kicker y la CTA
+             se ocultan por CSS (body.tenant-prestamype). applyBrand() post-fetch
+             es idempotente. -->
+        <script>
+          (() => {
+            try {
+              if (new URLSearchParams(location.search).get("tenant") === "prestamype") {
+                var l = document.getElementById("hero-lead");
+                if (l) l.textContent = "Elige un caso de prueba y conversa con Ada.";
+              }
+            } catch (e) {}
+          })();
+        </script>
         <div class="hero-cta">
           <a class="btn-primary" href="#acceso">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
@@ -397,15 +416,11 @@
         // PrestamYpe gets a minimalist, prestamype.com-inspired layout: a CSS
         // class toggles the airy single-column overrides + hides heavy blocks.
         if (TENANT === "prestamype") {
+          // Layout/colour + hero content (kicker/CTA hidden via CSS, lead text set
+          // synchronously in <head>/inline before first paint) are already applied
+          // — no FOUC. This idempotent re-add covers the no-?tenant edge and keeps
+          // applyBrand self-contained for logo/cards/branding fino below.
           document.body.classList.add("tenant-prestamype");
-          // Máximo minimalismo: el hero solo ENMARCA los casos de prueba.
-          // Quitamos kicker, CTA y nota — las cards SON la acción.
-          const kicker = $("kicker-name")?.closest(".kicker");
-          if (kicker) kicker.style.display = "none";
-          const ctaWrap = document.querySelector(".hero-cta");
-          if (ctaWrap) ctaWrap.style.display = "none";
-          const lead = $("hero-lead");
-          if (lead) lead.textContent = "Elige un caso de prueba y conversa con Ada.";
         }
         // The whole page reads brand color from these CSS vars. Map the tenant
         // color onto fills + accents (hover/accent kept = primary for simplicity).
