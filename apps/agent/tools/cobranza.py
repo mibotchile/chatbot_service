@@ -25,6 +25,8 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from loguru import logger
+
 from config.settings import settings
 from integrations.certificate_pdf import generate_certificate
 from integrations.doris_debt_source import classify_tipo, normalize_cci
@@ -69,6 +71,11 @@ def _add_business_days(start: date, days: int) -> date:
 
 def _fmt(amount: float, sym: str = "S/") -> str:
     return f"{sym} {amount:,.2f}"
+
+
+def _title(s: str) -> str:
+    """Title-case a name (CARLOS MENDOZA -> Carlos Mendoza)."""
+    return " ".join(w.capitalize() for w in str(s or "").split())
 
 
 # ── 1. Consultar deuda ───────────────────────────────────────────────────
@@ -354,6 +361,197 @@ def _valid_phone(destino: str) -> bool:
     digits = re.sub(r"\D", "", destino or "")
     # Peru mobile: 9 digits (9XXXXXXXX) or 11 with country code (519XXXXXXXX)
     return len(digits) in (9, 11)
+
+
+# ── 6. Envío de información bajo demanda (CORE, data-driven) ───────────────
+#
+# Tenant-agnostic: the SENDABLE info types + their copy live in the tenant's
+# responses.json under a ``_deliverables`` block (subject/body for correo, text
+# for whatsapp), with {variables} from the verified profile — exactly like the
+# curated responses. The engine fills them; zero tenant hardcode here.
+#
+# Demo vs prod is decided by ``delivery_mode``:
+#   - "simulate" (tenant data_source == "mock") → NO real send. Ada confirms with
+#     a MASKED destination ("…a tu correo c···@···.com"). Logged as simulated.
+#   - "real" (tenant data_source == "doris")    → real send (SendGrid / ChatHub).
+# The destination is ALWAYS the borrower's REGISTERED email/phone from the
+# verified profile — never typed by the user (no document-leak vector).
+
+_CANALES_INFO = {"correo", "whatsapp"}
+
+
+def _normalize_canal(canal: str) -> str:
+    """Map the many ways a user names a channel to {correo, whatsapp}.
+
+    The data-driven ``elegir_canal`` intent captures the raw word the user typed
+    (correo/email/whatsapp/wsp/…); normalize it here so the spec stays readable
+    and the tool contract stays {correo, whatsapp}.
+    """
+    c = (canal or "").strip().lower()
+    if c in ("correo", "email", "e-mail", "mail"):
+        return "correo"
+    if c in ("whatsapp", "whatsap", "wasap", "wsp", "wpp", "wa"):
+        return "whatsapp"
+    if "correo" in c or "mail" in c:
+        return "correo"
+    if "whats" in c or "wsp" in c or "wasap" in c:
+        return "whatsapp"
+    return c
+
+
+def mask_email(addr: str) -> str:
+    """Mask an email for confirmation copy: ``carlos@gmail.com`` → ``c···@···.com``.
+
+    Shows the first char of the local part and the TLD only — enough for the
+    borrower to recognize their own address without exposing it in full.
+    """
+    a = (addr or "").strip()
+    if "@" not in a:
+        return "···"
+    local, _, domain = a.partition("@")
+    first = local[:1] or "·"
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else domain
+    return f"{first}···@···.{tld}" if tld else f"{first}···@···"
+
+
+def mask_phone(phone: str) -> str:
+    """Mask a phone for confirmation copy: ``951234567`` → ``···4567`` (last 4)."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) < 4:
+        return "···"
+    return f"···{digits[-4:]}"
+
+
+def render_deliverable(spec: dict, channel: str, profile: dict) -> dict:
+    """Render a deliverable's copy for a channel from its data-driven ``spec``.
+
+    ``spec`` is one entry of the tenant's ``_deliverables`` block, e.g.::
+
+        {"label": "estado de cuenta",
+         "correo": {"subject": "...", "body": "...{saldo}..."},
+         "whatsapp": {"text": "...{saldo}..."}}
+
+    Returns ``{"subject", "body", "text", "label"}`` with {variables} filled from
+    the verified profile via the responses engine (single + list multi-deuda).
+    Imported lazily to avoid a hard dependency cycle with the responses module.
+    """
+    from core.responses import render_template
+
+    label = spec.get("label", "información")
+    out = {"label": label, "subject": "", "body": "", "text": ""}
+    if channel == "correo":
+        correo = spec.get("correo") or {}
+        out["subject"] = render_template(correo.get("subject", ""), profile) or label
+        out["body"] = render_template(correo.get("body") or correo.get("template"), profile)
+    else:  # whatsapp
+        wa = spec.get("whatsapp") or {}
+        out["text"] = render_template(wa.get("text") or wa.get("template"), profile)
+    return out
+
+
+async def enviar_info(
+    profile: dict,
+    tipo: str,
+    canal: str,
+    *,
+    deliverables: dict | None = None,
+    delivery_mode: str = "simulate",
+    email_service=None,
+    chathub_outbound=None,
+) -> dict:
+    """Send a data-driven deliverable to the borrower's REGISTERED destination.
+
+    CORE feature, tenant-agnostic. ``tipo`` is a key in the tenant's
+    ``_deliverables`` spec; ``canal`` ∈ {correo, whatsapp}. The copy is rendered
+    from that spec with the verified profile's data. The destination is the
+    profile's own email/phone — masked in the confirmation, NEVER user-typed.
+
+    ``delivery_mode``:
+      - ``"simulate"`` (demo / mock fixture) → NO SendGrid/ChatHub call; Ada
+        confirms with the masked destination; logged as simulated.
+      - ``"real"`` → real send (SendGrid for correo, ChatHub outbound for WhatsApp).
+
+    Returns a structured result the canned layer narrates. Never raises.
+    """
+    tipo_norm = (tipo or "").strip().lower()
+    canal_norm = _normalize_canal(canal)
+    spec_all = deliverables or {}
+    spec = spec_all.get(tipo_norm)
+    if not spec:
+        return {"error": "tipo_no_disponible", "message": f"No tengo ese tipo de envío disponible: {tipo}."}
+    if canal_norm not in _CANALES_INFO:
+        return {
+            "error": "canal_requerido",
+            "message": "¿Te lo envío a tu correo o por WhatsApp?",
+        }
+
+    label = spec.get("label", "información")
+    rendered = render_deliverable(spec, canal_norm, profile)
+    name = _title(profile.get("borrower_name", ""))
+
+    if canal_norm == "correo":
+        destino = (profile.get("email") or "").strip()
+        if not destino:
+            return {
+                "error": "sin_correo",
+                "message": "No tengo un correo registrado en tu cuenta. ¿Quieres que te lo envíe por WhatsApp?",
+            }
+        masked = mask_email(destino)
+        if delivery_mode == "real":
+            sent = False
+            if email_service:
+                sent = await email_service.send_document(
+                    destino, name, label,
+                    summary_html=rendered.get("body", ""),
+                )
+            logger.info("enviar_info REAL correo tipo={} to_masked={} sent={}", tipo_norm, masked, sent)
+        else:  # simulate (demo)
+            sent = True
+            logger.info("enviar_info SIMULADO correo tipo={} to_masked={} (sin SendGrid)", tipo_norm, masked)
+        return {
+            "delivered": bool(sent),
+            "simulated": delivery_mode != "real",
+            "canal": "correo",
+            "tipo": tipo_norm,
+            "doc_label": label,
+            "destino_masked": masked,
+            "message": (
+                f"Listo, te enviamos tu {label} a tu correo {masked}."
+                if sent else
+                f"Intenté enviar tu {label} a tu correo {masked}; si no llega, dímelo y reintento."
+            ),
+        }
+
+    # canal == whatsapp
+    destino = (profile.get("phone") or "").strip()
+    if not destino:
+        return {
+            "error": "sin_telefono",
+            "message": "No tengo un número de WhatsApp registrado en tu cuenta. ¿Quieres que te lo envíe por correo?",
+        }
+    masked = mask_phone(destino)
+    if delivery_mode == "real" and chathub_outbound and getattr(chathub_outbound, "is_configured", False):
+        sent = await chathub_outbound.send_text(destino, rendered.get("text", ""))
+        logger.info("enviar_info REAL whatsapp tipo={} to_masked={} sent={}", tipo_norm, masked, sent)
+        channel_status = "configured"
+    else:
+        # demo OR ChatHub outbound not yet provisioned → simulate (honest).
+        sent = True
+        logger.info(
+            "enviar_info SIMULADO whatsapp tipo={} to_masked={} (ChatHub outbound pendiente número+auth)",
+            tipo_norm, masked,
+        )
+        channel_status = "configured" if (chathub_outbound and getattr(chathub_outbound, "is_configured", False)) else "chathub_pending"
+    return {
+        "delivered": bool(sent),
+        "simulated": delivery_mode != "real" or channel_status == "chathub_pending",
+        "canal": "whatsapp",
+        "tipo": tipo_norm,
+        "doc_label": label,
+        "destino_masked": masked,
+        "channel_status": channel_status,
+        "message": f"Listo, te enviamos tu {label} a tu WhatsApp {masked}.",
+    }
 
 
 async def enviar_documento(

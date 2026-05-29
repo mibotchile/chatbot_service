@@ -161,6 +161,33 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "enviar_info",
+        "description": (
+            "Envía al cliente identificado UN TIPO DE INFORMACIÓN a su correo o WhatsApp REGISTRADO "
+            "(no a uno que él escriba). ANTES de llamar, pregúntale el canal ('¿a tu correo o por WhatsApp?'). "
+            "tipo: 'estado_cuenta' (su deuda/saldo), 'datos_pago' (CCI/banco/monto/vencimiento) o "
+            "'constancia_comprobante' (recepción de su comprobante). canal: 'correo' o 'whatsapp'. "
+            "La identidad y el destino salen de su cuenta verificada; confirma con el destino ENMASCARADO. "
+            "En demo el envío es simulado; nunca inventes el destino."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tipo": {
+                    "type": "string",
+                    "enum": ["estado_cuenta", "datos_pago", "constancia_comprobante"],
+                    "description": "Tipo de información a enviar",
+                },
+                "canal": {
+                    "type": "string",
+                    "enum": ["correo", "whatsapp"],
+                    "description": "Canal elegido por el cliente",
+                },
+            },
+            "required": ["tipo", "canal"],
+        },
+    },
+    {
         "name": "validar_comprobante",
         "description": (
             "Valida un comprobante de pago del cliente YA IDENTIFICADO (PrestamYpe). "

@@ -238,6 +238,11 @@ class ResponsesSpec:
 
     intents: dict[str, dict] = field(default_factory=dict)
     response_mode: str = "llm"
+    # Data-driven SENDABLE info types (envío de info bajo demanda). Keyed by tipo
+    # (e.g. estado_cuenta), each with per-channel copy (correo/whatsapp). Lives in
+    # responses.json under the reserved ``_deliverables`` key (ignored as an
+    # intent). Empty for tenants that don't ship it. See docs/deliverables-format.md.
+    deliverables: dict[str, dict] = field(default_factory=dict)
 
     @property
     def enabled(self) -> bool:
@@ -265,8 +270,13 @@ class ResponsesSpec:
         # Allow an in-file ``response_mode`` override; the tenant.config flag wins
         # when provided (passed in), else the file's own, else llm.
         file_mode = data.pop("_response_mode", None)
+        deliverables = data.get("_deliverables") or {}
         intents = {k: v for k, v in data.items() if not k.startswith("_")}
-        return cls(intents=intents, response_mode=(response_mode or file_mode or "llm"))
+        return cls(
+            intents=intents,
+            response_mode=(response_mode or file_mode or "llm"),
+            deliverables=deliverables if isinstance(deliverables, dict) else {},
+        )
 
 
 # ── Variant selection (no immediate repeat) ──────────────────────────────────
@@ -437,6 +447,9 @@ class RouterOutcome:
     needs_llm_classification: bool = False  # hybrid miss → let the agent classify
     run_tool: str | None = None         # tool the agent must execute before replying
     tool_args: dict = field(default_factory=dict)  # args parsed from the message (e.g. {"dni": "..."})
+    # Re-render the intent's template AFTER its tool ran, with the tool result
+    # merged into the variables (e.g. the masked destination from enviar_info).
+    rerender_with_result: bool = False
 
 
 def route_layer1(
@@ -566,6 +579,8 @@ def _emit_intent(
             handled=True, text=gate_text, intent="identidad_requerida", source=source
         )
 
+    cfg = spec.intents.get(intent) or {}
+
     last_idx = _last_variant(session_state, intent)
     result = render_intent(spec, intent, profile, source=source, last_variant_index=last_idx)
     if not result:
@@ -575,14 +590,31 @@ def _emit_intent(
     # Build the tool args: if the intent captures a value, pass it as the named
     # argument (the ``capture`` name == the tool's parameter name, data-driven).
     tool_args: dict = {}
-    capture_name = (spec.intents.get(intent) or {}).get("capture")
+    capture_name = cfg.get("capture")
     if capture_name and captured:
         tool_args[str(capture_name)] = captured
+
+    # ── Session writes (data-driven): an intent may stash values into the
+    # session for a LATER turn. Used by the "ask the channel" flow: the deliverable
+    # intent stores ``pending_deliverable=estado_cuenta`` now; the channel-choice
+    # intent reads it next turn. Values support a literal or ``{capture}``. ──
+    for skey, sval in (cfg.get("set_session") or {}).items():
+        val = captured if (isinstance(sval, str) and sval == "{capture}") else sval
+        _set_session(session_state, str(skey), val)
+
+    # ── Session reads (data-driven): pull named keys from the session into the
+    # tool args (e.g. the channel-choice intent feeds ``tipo`` from the pending
+    # deliverable stored last turn + ``canal`` captured this turn into enviar_info). ──
+    for need in cfg.get("needs_session") or []:
+        sv = _get_session(session_state, str(need))
+        if sv is not None:
+            tool_args[str(need)] = sv
 
     return RouterOutcome(
         handled=True, text=result.text, intent=intent, source=source,
         variant_index=result.variant_index, run_tool=intent_tool(spec, intent),
         tool_args=tool_args,
+        rerender_with_result=bool(cfg.get("rerender_with_result")),
     )
 
 
@@ -650,3 +682,22 @@ def _remember_variant(session_state: dict | None, intent: str, index: int) -> No
         return
     bucket = session_state.setdefault(_VARIANT_KEY, {})
     bucket[intent] = index
+
+
+# ── Generic data-driven session scratch (set_session / needs_session) ─────────
+# A small namespaced bucket so intent-declared keys never collide with the
+# variant memory. Used by the "ask the channel" delivery flow (pending tipo +
+# chosen canal carried across turns), but fully generic for any tenant intent.
+_SESSION_KEY = "_responses_session"
+
+
+def _set_session(session_state: dict | None, key: str, value) -> None:
+    if session_state is None:
+        return
+    session_state.setdefault(_SESSION_KEY, {})[key] = value
+
+
+def _get_session(session_state: dict | None, key: str):
+    if not session_state:
+        return None
+    return (session_state.get(_SESSION_KEY) or {}).get(key)

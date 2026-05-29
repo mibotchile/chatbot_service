@@ -25,6 +25,7 @@ from tools.cobranza import (
     consultar_deuda,
     emitir_certificado_no_adeudo,
     enviar_documento,
+    enviar_info,
     registrar_reclamo,
     validar_comprobante,
 )
@@ -36,6 +37,7 @@ _GATED_TOOLS = {
     "registrar_reclamo",
     "emitir_certificado_no_adeudo",
     "enviar_documento",
+    "enviar_info",
     "validar_comprobante",
 }
 
@@ -60,12 +62,22 @@ class ToolRegistry:
         tenant_id: str = "prestaunion",
         on_identity_resolved: Callable[[dict], None] | None = None,
         on_identification_attempt: Callable[[str], Any] | None = None,
+        # Envío de info bajo demanda (CORE, data-driven). ``deliverables`` is the
+        # tenant's _deliverables spec; ``delivery_mode`` is "simulate" (demo/mock)
+        # or "real" (prod/doris); ``chathub_outbound`` is the WhatsApp REAL client
+        # (Evolution retired). All optional — feature is a no-op without them.
+        deliverables: dict | None = None,
+        delivery_mode: str = "simulate",
+        chathub_outbound=None,
     ):
         self._lead_machine = lead_machine
         self._webhook_config = webhook_config
         self._visitor_memory = visitor_memory
         self._email_service = email_service
         self._whatsapp_service = whatsapp_service
+        self._deliverables = deliverables or {}
+        self._delivery_mode = (delivery_mode or "simulate").strip().lower()
+        self._chathub_outbound = chathub_outbound
         # Identity gate state — injected server-side, never from the LLM.
         self._identity_verified = identity_verified
         self._debt_context = debt_context or {}
@@ -92,6 +104,7 @@ class ToolRegistry:
             "registrar_reclamo": self._registrar_reclamo,
             "emitir_certificado_no_adeudo": self._emitir_certificado_no_adeudo,
             "enviar_documento": self._enviar_documento,
+            "enviar_info": self._enviar_info,
             "validar_comprobante": self._validar_comprobante,
             "escalate_to_human": self._escalate_to_human,
         }
@@ -226,6 +239,19 @@ class ToolRegistry:
             email_service=self._email_service,
             whatsapp_service=self._whatsapp_service,
             download_base_url=self._download_base_url,
+        )
+
+    async def _enviar_info(self, tipo: str = "", canal: str = "") -> dict:
+        """Send a data-driven deliverable to the verified borrower's REGISTERED
+        destination (email/phone), masked. ``tipo`` is a key in the tenant's
+        _deliverables spec; ``canal`` ∈ {correo, whatsapp}. Demo (mock) simulates;
+        prod (doris) sends for real. Identity/destination come from debt_context."""
+        return await enviar_info(
+            self._debt_context, tipo, canal,
+            deliverables=self._deliverables,
+            delivery_mode=self._delivery_mode,
+            email_service=self._email_service,
+            chathub_outbound=self._chathub_outbound,
         )
 
     async def _validar_comprobante(

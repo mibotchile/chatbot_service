@@ -5,6 +5,48 @@
     "redaccion": "Español peruano, trato de tú, sin voseo, copy breve. El cliente real reemplaza estos textos por los suyos."
   },
 
+  "_deliverables": {
+    "_doc": "Envío de info bajo demanda (CORE, data-driven). Cada tipo declara su copy por canal: correo (subject + body, soporta single {template}/list {header,item,footer}) y whatsapp (text). El backend rellena {variables} desde el crédito verificado y envía al correo/teléfono REGISTRADO del cliente (enmascarado). En demo (data_source=mock) el envío es SIMULADO; en prod (doris) es real (SendGrid / ChatHub). Formato completo: docs/deliverables-format.md.",
+    "estado_cuenta": {
+      "label": "estado de cuenta",
+      "correo": {
+        "subject": "Tu estado de cuenta — PrestamYpe",
+        "body": {
+          "header": "Hola {nombre}, este es el estado de tus créditos en PrestamYpe:",
+          "item": "Crédito {loan}: saldo {saldo}, próxima cuota {cuota} (vence {fecha_venc}) — {estado}.",
+          "footer": "Saldo total: {total}. Si ya pagaste, envíanos tu comprobante para registrarlo."
+        }
+      },
+      "whatsapp": {
+        "text": {
+          "header": "*Estado de cuenta — PrestamYpe*\nHola {nombre}, este es el resumen de tus créditos:",
+          "item": "• Crédito {loan}: saldo {saldo}, cuota {cuota} (vence {fecha_venc}) — {estado}.",
+          "footer": "Saldo total: {total}."
+        }
+      }
+    },
+    "datos_pago": {
+      "label": "datos de pago",
+      "correo": {
+        "subject": "Datos para pagar tu crédito {loan} — PrestamYpe",
+        "body": "Hola {nombre}, para pagar tu crédito {loan} usa la cuenta CCI {cci} del banco {banco}. Próxima cuota: {cuota}, vence el {fecha_venc}. Cuando pagues, envíanos tu comprobante (CCI, monto y número de operación)."
+      },
+      "whatsapp": {
+        "text": "*Datos de pago — PrestamYpe*\nCrédito {loan}\nCuenta CCI: {cci}\nBanco: {banco}\nPróxima cuota: {cuota} (vence {fecha_venc})\nEnvíanos tu comprobante cuando pagues."
+      }
+    },
+    "constancia_comprobante": {
+      "label": "constancia de recepción",
+      "correo": {
+        "subject": "Constancia de recepción de comprobante — PrestamYpe",
+        "body": "Hola {nombre}, dejamos constancia de que recibimos tu comprobante de pago sobre el crédito {loan}. Queda EN REVISIÓN: un asesor lo concilia contra el banco y, de estar conforme, se aplica a tu cuenta."
+      },
+      "whatsapp": {
+        "text": "*Constancia de recepción — PrestamYpe*\nRecibimos tu comprobante sobre el crédito {loan}. Quedó EN REVISIÓN; te confirmamos cuando se aplique a tu cuenta."
+      }
+    }
+  },
+
   "saludo": {
     "mode": "variant",
     "description": "El usuario saluda o inicia la conversación sin pedir nada concreto.",
@@ -122,5 +164,48 @@
     "tool": "escalate_to_human",
     "keywords": ["asesor", "hablar con alguien", "agente", "persona", "humano", "reclamo", "queja"],
     "template": "Te derivo con un asesor de PrestamYpe para que te ayude con eso. En breve se comunican contigo."
+  },
+
+  "enviar_estado": {
+    "mode": "verbatim",
+    "description": "El usuario pide que le ENVÍEN su estado de cuenta / resumen de deuda (a su correo o WhatsApp).",
+    "requires_identity": true,
+    "keywords": ["enviame mi estado", "envíame mi estado", "mandame mi estado", "mándame mi estado", "enviar estado de cuenta", "enviame el estado", "quiero mi estado de cuenta", "enviame mi deuda", "mandame mi deuda"],
+    "patterns": ["(env[ií]a|m[aá]nda|p[aá]sa).*(estado|deuda|saldo)"],
+    "set_session": { "tipo": "estado_cuenta" },
+    "template": "Claro, te puedo enviar tu estado de cuenta. ¿Te lo envío a tu correo o por WhatsApp?"
+  },
+
+  "enviar_datos_pago": {
+    "mode": "verbatim",
+    "description": "El usuario pide que le ENVÍEN los datos de pago (CCI, banco, monto, vencimiento) a su correo o WhatsApp.",
+    "requires_identity": true,
+    "keywords": ["enviame los datos de pago", "envíame los datos de pago", "mandame el cci", "mándame el cci", "enviar datos de pago", "enviame donde pagar", "mandame la cuenta", "enviame la cuenta para pagar"],
+    "patterns": ["(env[ií]a|m[aá]nda|p[aá]sa).*(datos de pago|cci|cuenta para pagar)"],
+    "set_session": { "tipo": "datos_pago" },
+    "template": "Perfecto, te envío los datos para pagar tu crédito. ¿A tu correo o por WhatsApp?"
+  },
+
+  "enviar_constancia": {
+    "mode": "verbatim",
+    "description": "El usuario pide una constancia/comprobante de que recibimos su pago o comprobante.",
+    "requires_identity": true,
+    "keywords": ["enviame la constancia", "envíame la constancia", "constancia de recepcion", "constancia de recepción", "comprobante de recepcion", "mandame la constancia", "quiero una constancia"],
+    "patterns": ["(env[ií]a|m[aá]nda|quiero).*(constancia|recepci[oó]n)"],
+    "set_session": { "tipo": "constancia_comprobante" },
+    "template": "Claro, te envío la constancia de recepción de tu comprobante. ¿A tu correo o por WhatsApp?"
+  },
+
+  "elegir_canal": {
+    "mode": "verbatim",
+    "description": "El usuario eligió el canal de envío respondiendo 'correo' o 'whatsapp' a la pregunta de a dónde enviarle la información.",
+    "requires_identity": true,
+    "tool": "enviar_info",
+    "capture": "canal",
+    "patterns": ["\\b(?P<canal>correo|email|e-?mail|whats?app|wsp|wasap)\\b"],
+    "set_session": { "canal": "{capture}" },
+    "needs_session": ["tipo", "canal"],
+    "rerender_with_result": true,
+    "template": "Te envío la información al canal que elegiste."
   }
 }

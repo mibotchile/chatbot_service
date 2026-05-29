@@ -332,6 +332,15 @@ class SoreliaAgent:
             return fallback
         intent = outcome.intent
         cfg = (getattr(spec, "intents", {}) or {}).get(intent, {}) if spec else {}
+
+        # Delivery-style intents (envío de info bajo demanda): the tool builds the
+        # customer-facing confirmation WITH the masked destination (or an error
+        # asking to switch channel), so use the tool's ``message`` verbatim. This
+        # keeps the masked destino + simulate/real wording data-correct without the
+        # canned template needing to know the destination.
+        if getattr(outcome, "rerender_with_result", False):
+            return tool_result.get("message") or fallback
+
         # Only identity-opening intents (declare capture+tool, not gated) reshape
         # their copy from the tool outcome — everything else is unchanged.
         if not (cfg.get("capture") and cfg.get("tool")):

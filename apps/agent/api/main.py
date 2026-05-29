@@ -36,6 +36,7 @@ from core.rate_limit import from_settings as _build_rate_limiter
 # and are NOT ported. Their references are removed below (TODO if cobranza ever
 # needs scheduled callbacks).
 from tools import ToolRegistry
+from integrations.chathub_outbound import ChathubOutboundClient
 from api.dashboard import dashboard_router
 from api.chathub import chathub_router
 from integrations.chathub_adapter import was_escalated
@@ -46,6 +47,41 @@ visitor_memory: VisitorMemory | None = None
 email_service: EmailService | None = None
 whatsapp_service: WhatsAppService | None = None
 whatsapp_services: dict[str, WhatsAppService] = {}  # tenant_id → WhatsAppService
+
+# ChatHub OUTBOUND (REAL WhatsApp for envío de info; replaces Evolution). Stateless
+# config singleton — a no-op that SIMULATES when COBRANZA_CHATHUB_OUTBOUND_URL is
+# unset (current state: ChatHub needs the provisioned number + auth).
+chathub_outbound_client = ChathubOutboundClient(
+    url=settings.chathub_outbound_url,
+    token=settings.chathub_outbound_token,
+    channel_id=settings.chathub_outbound_channel_id,
+    timeout=settings.chathub_outbound_timeout,
+    verify_ssl=settings.chathub_outbound_verify_ssl,
+)
+
+
+def _delivery_for(tenant_id: str | None) -> tuple[dict, str]:
+    """Resolve (deliverables_spec, delivery_mode) for a tenant.
+
+    ``delivery_mode`` is derived from the tenant's ``data_source``: ``mock`` →
+    ``"simulate"`` (demo: no real SendGrid/ChatHub), anything else (e.g. ``doris``)
+    → ``"real"``. ``deliverables`` is the tenant's responses.json ``_deliverables``
+    block. Both empty/simulate for tenants that don't ship the feature.
+    """
+    if not tenant_id:
+        return {}, "simulate"
+    cfg = _load_tenant_config(tenant_id) or {}
+    data_source = (cfg.get("data_source") or "mock").strip().lower()
+    delivery_mode = "simulate" if data_source == "mock" else "real"
+    deliverables: dict = {}
+    try:
+        from core.responses import ResponsesSpec
+
+        spec = ResponsesSpec.from_dir(_tenant_dir(tenant_id))
+        deliverables = spec.deliverables or {}
+    except Exception:
+        logger.opt(exception=True).warning("Failed to load deliverables for {}", tenant_id)
+    return deliverables, delivery_mode
 
 
 def get_whatsapp_service(tenant_id: str | None = None) -> WhatsAppService | None:
@@ -264,6 +300,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
                 conv.conversation_id, _profile.get("account_id"),
             )
 
+        _deliverables, _delivery_mode = _delivery_for(tenant_id)
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.lead,
@@ -277,6 +314,9 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
             download_base_url=settings.public_base_url,
             tenant_id=tenant_id,
             on_identity_resolved=_persist_identity_wa,
+            deliverables=_deliverables,
+            delivery_mode=_delivery_mode,
+            chathub_outbound=chathub_outbound_client,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry)
 
@@ -993,6 +1033,7 @@ async def chat(request: Request, body: ChatRequest):
         def _ident_attempt(dni: str):
             return rate_limiter.check_identification(client_ip, dni)
 
+        _deliverables, _delivery_mode = _delivery_for(body.tenant_id)
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.lead,
@@ -1005,6 +1046,9 @@ async def chat(request: Request, body: ChatRequest):
             tenant_id=body.tenant_id or "prestaunion",
             on_identity_resolved=_persist_identity,
             on_identification_attempt=_ident_attempt,
+            deliverables=_deliverables,
+            delivery_mode=_delivery_mode,
+            chathub_outbound=chathub_outbound_client,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry, tenant=_tenant_config)
 

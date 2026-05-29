@@ -121,6 +121,7 @@ async def _run_chathub_engine_turn(
 
     try:
         provider = build_llm_provider(m.settings, api_key_override=api_key)
+        _deliverables, _delivery_mode = m._delivery_for(tenant_id)
         registry = ToolRegistry(
             lead_machine=conv.lead,
             visitor_memory=m.visitor_memory,
@@ -131,6 +132,9 @@ async def _run_chathub_engine_turn(
             download_base_url=download_base,
             tenant_id=tenant_id,
             on_identity_resolved=_persist_identity,
+            deliverables=_deliverables,
+            delivery_mode=_delivery_mode,
+            chathub_outbound=m.chathub_outbound_client,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry, tenant=tenant_config)
 

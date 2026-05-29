@@ -134,6 +134,17 @@ class Settings(BaseSettings):
     chathub_web_timeout: float = 10.0
     chathub_web_verify_ssl: bool = False
 
+    # ── ChatHub OUTBOUND (envío de info por WhatsApp, REAL) — replaces Evolution.
+    # When the URL is set + tenant is in prod (data_source=doris), enviar_info
+    # delivers WhatsApp for real via ChatHub /messages/send. Empty ⇒ SIMULATED
+    # (the current state: ChatHub needs the provisioned number + Firebase auth).
+    # Env prefix COBRANZA_ (e.g. COBRANZA_CHATHUB_OUTBOUND_URL).
+    chathub_outbound_url: str = ""
+    chathub_outbound_token: str = ""       # Firebase/bearer token (when required)
+    chathub_outbound_channel_id: str = ""  # ChatHub channel for the tenant number
+    chathub_outbound_timeout: float = 10.0
+    chathub_outbound_verify_ssl: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="COBRANZA_",
