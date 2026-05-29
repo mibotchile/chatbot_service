@@ -136,6 +136,8 @@ def test_branding_rejects_path_traversal(client):
 # ── Comprobante upload endpoint ─────────────────────────────────────────────
 
 def _post(client, **overrides):
+    # Default uses the legacy ``cci`` field (account_type defaults to "cci")
+    # to confirm backward compat still works.
     data = {
         "tenant_id": TENANT,
         "dni": LUIS_DNI,
@@ -180,6 +182,57 @@ def test_comprobante_arbitrary_cci_accepted(client):
     assert body["tipo"] == "pago"
     assert body["dedup_ok"] is True
     assert "no corresponde" not in body["mensaje"].lower()
+
+
+# ── account_type: número de cuenta (corto) vs CCI (20 dígitos) ──────────────
+
+def test_comprobante_account_type_cuenta_short_accepted(client):
+    # Jorge feedback: con account_type=cuenta se acepta un número corto, se
+    # clasifica por MONTO y se deduplica por nº de operación. No se fuerza CCI.
+    data = {"account_type": "cuenta", "cuenta_destino": "1320268376", "cci": ""}
+    r = _post(client, nro_operacion="OP-CUENTA", **data)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["cuenta_valida"] is True       # NO valida contra Doris
+    assert body["account_type"] == "cuenta"
+    assert body["cuenta_destino"] == "1320268376"
+    assert body["credito"] == "P02137"
+    assert body["tipo"] == "pago"              # por monto
+    assert body["dedup_ok"] is True
+
+
+def test_comprobante_account_type_cci_requires_20_digits(client):
+    # account_type=cci con menos de 20 dígitos → 400 (validación de FORMATO).
+    data = {"account_type": "cci", "cuenta_destino": "1320268376", "cci": ""}
+    r = _post(client, nro_operacion="OP-CCISHORT", **data)
+    assert r.status_code == 400
+
+
+def test_comprobante_account_type_cuenta_rejects_too_short(client):
+    # account_type=cuenta con menos de 8 dígitos → 400 (formato).
+    data = {"account_type": "cuenta", "cuenta_destino": "123", "cci": ""}
+    r = _post(client, nro_operacion="OP-TOOSHORT", **data)
+    assert r.status_code == 400
+
+
+def test_comprobante_account_type_cuenta_classifies_by_monto(client):
+    # La clasificación NO depende de la cuenta: mismo número de cuenta corta,
+    # distintos montos → pago / abono / cancelacion.
+    base = {"account_type": "cuenta", "cuenta_destino": "1320268376", "cci": ""}
+    abono = _post(client, monto="100.00", nro_operacion="OP-CTA-AB", **base).json()
+    assert abono["tipo"] == "abono"
+    canc = _post(client, monto=str(LUIS_SALDO), nro_operacion="OP-CTA-CN", **base).json()
+    assert canc["tipo"] == "cancelacion"
+
+
+def test_comprobante_dedup_by_nro_operacion_independent_of_account(client):
+    base = {"account_type": "cuenta", "cuenta_destino": "1320268376", "cci": ""}
+    first = _post(client, nro_operacion="OP-CTA-DUP", **base).json()
+    assert first["dedup_ok"] is True
+    # mismo nº de operación con CCI distinto → igual duplicado
+    cci_args = {"account_type": "cci", "cuenta_destino": LUIS_CCI, "cci": ""}
+    second = _post(client, nro_operacion="OP-CTA-DUP", **cci_args).json()
+    assert second["dedup_ok"] is False
 
 
 def test_comprobante_duplicate_detected(client):

@@ -230,6 +230,94 @@ async def test_validar_comprobante_cci_with_spaces_accepted(tmp_path, monkeypatc
     assert r["tipo"] == "pago"
 
 
+# ── account_type: número de cuenta (corto) vs CCI (20 dígitos) ──────────────
+
+async def test_validar_comprobante_account_type_cuenta_corta(tmp_path, monkeypatch):
+    # Número de cuenta corto (Jorge feedback): se acepta, se guarda el tipo, y
+    # la clasificación sigue siendo por MONTO (no por la cuenta).
+    _isolate_dedup(monkeypatch, tmp_path)
+    reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
+    r = await reg.execute(
+        "validar_comprobante",
+        {
+            "account_type": "cuenta",
+            "cuenta_destino": "1320268376",
+            "monto": 462.14,
+            "nro_operacion": "OP-CUENTA",
+        },
+    )
+    assert r["cuenta_valida"] is True          # NO se valida contra Doris
+    assert r["account_type"] == "cuenta"
+    assert r["cuenta_destino"] == "1320268376"
+    assert r["tipo"] == "pago"                 # clasificado por monto
+    assert r["dedup_ok"] is True
+    # número de cuenta corto en el mensaje (NO se fuerza CCI)
+    assert "número de cuenta" in r["mensaje"].lower()
+
+
+async def test_validar_comprobante_account_type_cci_20(tmp_path, monkeypatch):
+    _isolate_dedup(monkeypatch, tmp_path)
+    reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
+    r = await reg.execute(
+        "validar_comprobante",
+        {
+            "account_type": "cci",
+            "cuenta_destino": "00389801338381007048",
+            "monto": 462.14,
+            "nro_operacion": "OP-CCI20",
+        },
+    )
+    assert r["cuenta_valida"] is True
+    assert r["account_type"] == "cci"
+    assert r["tipo"] == "pago"
+
+
+async def test_validar_comprobante_stores_account_type_in_audit(tmp_path, monkeypatch):
+    # El audit/registro debe guardar tipo + número de cuenta (y el alias cci).
+    _isolate_dedup(monkeypatch, tmp_path)
+    import json as _json
+    import tools.cobranza as cobranza
+
+    reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
+    await reg.execute(
+        "validar_comprobante",
+        {
+            "account_type": "cuenta",
+            "cuenta_destino": "1320268376",
+            "monto": 462.14,
+            "nro_operacion": "OP-AUDIT",
+        },
+    )
+    items = _json.loads(cobranza._COMPROBANTES_PATH.read_text(encoding="utf-8"))
+    rec = next(r for r in items if r["nro_operacion"] == "OP-AUDIT")
+    assert rec["account_type"] == "cuenta"
+    assert rec["cuenta_destino"] == "1320268376"
+    assert rec["cci"] == "1320268376"  # legacy alias preserved
+
+
+async def test_validar_comprobante_dedup_by_nro_operacion_independent_of_type(tmp_path, monkeypatch):
+    # Dedup sigue siendo por nº de operación (no por la cuenta).
+    _isolate_dedup(monkeypatch, tmp_path)
+    reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
+    first = await reg.execute(
+        "validar_comprobante",
+        {
+            "account_type": "cuenta", "cuenta_destino": "1320268376",
+            "monto": 462.14, "nro_operacion": "OP-DUP2",
+        },
+    )
+    assert first["dedup_ok"] is True
+    # mismo nº de operación, distinta cuenta/tipo → igual se considera duplicado
+    second = await reg.execute(
+        "validar_comprobante",
+        {
+            "account_type": "cci", "cuenta_destino": "00389801338381007048",
+            "monto": 462.14, "nro_operacion": "OP-DUP2",
+        },
+    )
+    assert second["dedup_ok"] is False
+
+
 # ── scope: prestamype acotado a 2 capacidades (consulta + comprobante) ──────
 
 def _tenant_config():

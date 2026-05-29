@@ -276,6 +276,21 @@
   #pu-widget-root .pu-cb-result.warn { background: #fffaeb; border: 1px solid #fdb022; color: #b54708; }
   #pu-widget-root .pu-cb-result.err  { background: #fef3f2; border: 1px solid #f04438; color: #d92d20; }
   #pu-widget-root .pu-cb-result strong { font-weight: 800; }
+  /* Account-type selector (cuenta / CCI). */
+  #pu-widget-root .pu-cb-segch { display: flex; flex-direction: column; gap: 6px; }
+  #pu-widget-root .pu-cb-seg { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid #d5d7da; border-radius: 8px;
+    cursor: pointer; font-size: 13px; color: #414651; font-weight: 600; transition: border-color .15s, background .15s; }
+  #pu-widget-root .pu-cb-seg:hover { border-color: var(--pu-brand-hover); }
+  #pu-widget-root .pu-cb-seg input { width: 16px; height: 16px; min-height: 0; accent-color: var(--pu-brand); margin: 0; flex: 0 0 auto; }
+  #pu-widget-root .pu-cb-seg:has(input:checked) { border-color: var(--pu-brand); background: var(--pu-brand-soft); color: var(--pu-brand-hover); }
+  /* Helper + example. */
+  #pu-widget-root .pu-cb-help { font-size: 11.5px; color: #535862; margin-top: 5px; line-height: 1.4; }
+  #pu-widget-root .pu-cb-help b { color: #181d27; font-weight: 700; }
+  #pu-widget-root .pu-cb-egtoggle { margin-top: 7px; background: none; border: 0; padding: 0; cursor: pointer;
+    font-size: 12px; font-weight: 700; color: var(--pu-brand-hover); text-decoration: underline; }
+  #pu-widget-root .pu-cb-egfig { margin: 9px 0 0; padding: 8px; border: 1px solid #eef0f3; border-radius: 10px; background: #fbfdfc; }
+  #pu-widget-root .pu-cb-egcap { font-size: 10.5px; color: #667085; margin-top: 6px; line-height: 1.4; }
+  #pu-widget-root .pu-cb-egcap b { color: var(--pu-brand-hover); font-weight: 700; }
 
   /* Mobile: near fullscreen */
   @media (max-width: 480px) {
@@ -321,6 +336,38 @@
     alert: '<svg class="pu-sys-ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.3 3.86l-8.1 14A1 1 0 003 19.5h18a1 1 0 00.86-1.5l-8.1-14a1 1 0 00-1.72 0z"/></svg>',
     upload: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>',
   };
+
+  // Illustrative voucher mockup (FICTITIOUS data) shown via "Ver ejemplo". It
+  // points to where the "Número de cuenta" and the "CCI" appear on a typical
+  // Peruvian transfer receipt. Accent color follows the tenant brand (var(--pu-brand)).
+  const VOUCHER_EXAMPLE_SVG = `
+    <figure class="pu-cb-egfig">
+      <svg viewBox="0 0 320 232" width="100%" role="img" aria-label="Ejemplo ilustrativo de un voucher de transferencia señalando el número de cuenta y el CCI" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6" y="6" width="308" height="220" rx="12" fill="#ffffff" stroke="#e4e7ec"/>
+        <rect x="6" y="6" width="308" height="34" rx="12" fill="var(--pu-brand-soft)"/>
+        <rect x="6" y="28" width="308" height="12" fill="var(--pu-brand-soft)"/>
+        <circle cx="26" cy="23" r="8" fill="var(--pu-brand)"/>
+        <text x="42" y="27" font-family="system-ui,Arial" font-size="12" font-weight="700" fill="var(--pu-brand-hover)">Constancia de transferencia</text>
+        <text x="20" y="60" font-family="system-ui,Arial" font-size="9" fill="#667085">Operación exitosa · Banco Demo</text>
+        <text x="20" y="84" font-family="system-ui,Arial" font-size="9" fill="#98a2b3">Destinatario</text>
+        <text x="20" y="98" font-family="system-ui,Arial" font-size="11" font-weight="600" fill="#1a1a1c">PRESTAMYPE S.A.</text>
+        <!-- Número de cuenta (highlighted) -->
+        <rect x="16" y="112" width="200" height="30" rx="6" fill="#f6fefb"/>
+        <rect x="16" y="112" width="200" height="30" rx="6" fill="none" stroke="var(--pu-brand)" stroke-width="2" stroke-dasharray="4 3"/>
+        <text x="24" y="125" font-family="system-ui,Arial" font-size="8" fill="#667085">Número de cuenta</text>
+        <text x="24" y="138" font-family="ui-monospace,monospace" font-size="12" font-weight="700" fill="#1a1a1c">132-0268376</text>
+        <rect x="232" y="116" width="74" height="18" rx="9" fill="var(--pu-brand)"/>
+        <text x="269" y="129" font-family="system-ui,Arial" font-size="8.5" font-weight="700" fill="#ffffff" text-anchor="middle">N° de cuenta</text>
+        <!-- CCI (highlighted) -->
+        <rect x="16" y="156" width="288" height="32" rx="6" fill="none" stroke="var(--pu-brand-hover)" stroke-width="2" stroke-dasharray="4 3"/>
+        <text x="24" y="169" font-family="system-ui,Arial" font-size="8" fill="#667085">Código de Cuenta Interbancario (CCI)</text>
+        <text x="24" y="183" font-family="ui-monospace,monospace" font-size="11" font-weight="700" fill="#1a1a1c">002-193-001320268376-58</text>
+        <rect x="224" y="194" width="82" height="18" rx="9" fill="var(--pu-brand-hover)"/>
+        <text x="265" y="207" font-family="system-ui,Arial" font-size="8.5" font-weight="700" fill="#ffffff" text-anchor="middle">CCI · 20 dígitos</text>
+        <text x="20" y="208" font-family="system-ui,Arial" font-size="8" fill="#98a2b3">Monto S/ 462.14 · Op. 0012345</text>
+      </svg>
+      <figcaption class="pu-cb-egcap">Ejemplo ilustrativo (datos ficticios). El <b>Número de cuenta</b> es más corto; el <b>CCI</b> tiene 20 dígitos.</figcaption>
+    </figure>`;
 
   // Display name for header/welcome. Defaults match the static prestaunion look;
   // a branding fetch (non-default tenant) overrides AGENT + COMPANY at runtime.
@@ -374,7 +421,7 @@
       <div class="pu-modal-ov" id="pu-modal-ov">
         <div class="pu-modal" role="dialog" aria-modal="true" aria-label="Subir comprobante de pago">
           <h3>Subir comprobante de pago</h3>
-          <p class="pu-msub">Sube tu constancia de transferencia. Validamos la cuenta y la clasificamos al instante; queda en revisión.</p>
+          <p class="pu-msub">Sube tu constancia de transferencia y dinos a qué cuenta pagaste. La clasificamos al instante; queda en revisión.</p>
           <div class="pu-cb-result" id="pu-cb-result" style="display:none;"></div>
           <form id="pu-cb-form">
             <div class="pu-field">
@@ -382,9 +429,25 @@
               <input type="file" id="pu-cb-file" accept="image/jpeg,image/png,application/pdf" required />
             </div>
             <div class="pu-field">
-              <label for="pu-cb-cci">CCI destino (20 dígitos)</label>
-              <input type="text" id="pu-cb-cci" inputmode="numeric" autocomplete="off" maxlength="20" pattern="\d{20}" placeholder="00000000000000000000" required aria-describedby="pu-cb-cci-hint" />
+              <label id="pu-cb-acct-lbl">¿Qué dato de la cuenta destino vas a ingresar?</label>
+              <div class="pu-cb-segch" role="radiogroup" aria-labelledby="pu-cb-acct-lbl">
+                <label class="pu-cb-seg">
+                  <input type="radio" name="pu-cb-acct" value="cuenta" checked />
+                  <span>Número de cuenta</span>
+                </label>
+                <label class="pu-cb-seg">
+                  <input type="radio" name="pu-cb-acct" value="cci" />
+                  <span>Código de Cuenta Interbancario (CCI)</span>
+                </label>
+              </div>
+            </div>
+            <div class="pu-field">
+              <label for="pu-cb-cci" id="pu-cb-cci-lbl">Número de cuenta destino</label>
+              <input type="text" id="pu-cb-cci" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="Ej. 1320268376" required aria-describedby="pu-cb-cci-hint" />
+              <div class="pu-cb-help" id="pu-cb-cci-help">Es la cuenta del <b>destinatario del depósito</b> (a quién le pagaste / PrestamYpe), no tu propia cuenta.</div>
               <div class="pu-cb-fieldhint" id="pu-cb-cci-hint"></div>
+              <button type="button" class="pu-cb-egtoggle" id="pu-cb-eg-toggle" aria-expanded="false" aria-controls="pu-cb-eg">Ver ejemplo de voucher</button>
+              <div class="pu-cb-eg" id="pu-cb-eg" hidden>${VOUCHER_EXAMPLE_SVG}</div>
             </div>
             <div class="pu-field">
               <div class="pu-row2">
@@ -427,6 +490,12 @@
       root.querySelector(sel).addEventListener("input", _cbValidate);
       root.querySelector(sel).addEventListener("change", _cbValidate);
     });
+    // Account-type selector: relabel the field + re-validate when it changes.
+    root.querySelectorAll('input[name="pu-cb-acct"]').forEach((r) => {
+      r.addEventListener("change", _cbOnAcctChange);
+    });
+    // "Ver ejemplo de voucher" toggle.
+    root.querySelector("#pu-cb-eg-toggle").addEventListener("click", _cbToggleExample);
     root.querySelector("#pu-modal-ov").addEventListener("click", (e) => { if (e.target.id === "pu-modal-ov") closeComprobante(); });
     $form.addEventListener("submit", (e) => { e.preventDefault(); submit(); });
     $input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
@@ -742,7 +811,12 @@
     const res = root.querySelector("#pu-cb-result");
     res.style.display = "none"; res.textContent = "";
     root.querySelector("#pu-cb-form").reset();
-    _cbValidate();
+    // Collapse the example + sync the label to the (reset) default account type.
+    root.querySelector("#pu-cb-eg").setAttribute("hidden", "");
+    const egBtn = root.querySelector("#pu-cb-eg-toggle");
+    egBtn.setAttribute("aria-expanded", "false");
+    egBtn.textContent = "Ver ejemplo de voucher";
+    _cbOnAcctChange();
     ov.classList.add("show");
     setTimeout(() => root.querySelector("#pu-cb-file").focus(), 80);
   }
@@ -751,16 +825,50 @@
     root.querySelector("#pu-modal-ov").classList.remove("show");
   }
 
+  // ── Account-type selector ──────────────────────────────────────────────
+  // CCI = 20 dígitos exactos (entre bancos). Número de cuenta = más corto y
+  // flexible (8–20 dígitos, mismo banco). El selector decide qué validar.
+  function _cbAcctType() {
+    const r = root.querySelector('input[name="pu-cb-acct"]:checked');
+    return r ? r.value : "cuenta";
+  }
+
+  function _cbOnAcctChange() {
+    const type = _cbAcctType();
+    const lbl = root.querySelector("#pu-cb-cci-lbl");
+    const inp = root.querySelector("#pu-cb-cci");
+    if (type === "cci") {
+      lbl.textContent = "CCI destino (20 dígitos)";
+      inp.placeholder = "00000000000000000000";
+      inp.maxLength = 20;
+    } else {
+      lbl.textContent = "Número de cuenta destino";
+      inp.placeholder = "Ej. 1320268376";
+      inp.maxLength = 20;
+    }
+    _cbValidate();
+  }
+
+  function _cbToggleExample() {
+    const eg = root.querySelector("#pu-cb-eg");
+    const btn = root.querySelector("#pu-cb-eg-toggle");
+    const show = eg.hasAttribute("hidden");
+    if (show) { eg.removeAttribute("hidden"); } else { eg.setAttribute("hidden", ""); }
+    btn.setAttribute("aria-expanded", String(show));
+    btn.textContent = show ? "Ocultar ejemplo" : "Ver ejemplo de voucher";
+  }
+
   // ── Live FORMAT validation (no business logic): toggles the submit button
   // and renders inline format hints in PrestamYpe green/red. ──
-  function _cbDigits20(el) {
-    // Keep only digits, cap at 20 (CCI estándar Perú).
-    const cleaned = el.value.replace(/\D/g, "").slice(0, 20);
+  function _cbDigits(el, max) {
+    // Keep only digits, cap at max.
+    const cleaned = el.value.replace(/\D/g, "").slice(0, max);
     if (cleaned !== el.value) el.value = cleaned;
     return cleaned;
   }
 
   function _cbValidate() {
+    const type = _cbAcctType();
     const cciEl = root.querySelector("#pu-cb-cci");
     const montoEl = root.querySelector("#pu-cb-monto");
     const opEl = root.querySelector("#pu-cb-op");
@@ -768,31 +876,39 @@
     const submitBtn = root.querySelector("#pu-cb-submit");
     const cciHint = root.querySelector("#pu-cb-cci-hint");
 
-    const cci = _cbDigits20(cciEl);
+    const cuenta = _cbDigits(cciEl, 20);
     const monto = Number(montoEl.value);
     const op = opEl.value.trim();
     const file = fileEl.files && fileEl.files[0];
 
-    const cciOk = cci.length === 20;
+    // Length rule depends on the chosen account type.
+    const cuentaOk = type === "cci"
+      ? cuenta.length === 20
+      : (cuenta.length >= 8 && cuenta.length <= 20);
     const montoOk = montoEl.value !== "" && monto > 0;
     const opOk = op.length > 0 && op.length <= 30;
     const fileOk = !!file && file.size <= 8 * 1024 * 1024;
 
-    // CCI inline hint: only nag once the user has typed something.
-    if (cci.length === 0) {
+    // Inline hint: only nag once the user has typed something.
+    if (cuenta.length === 0) {
       cciHint.textContent = ""; cciHint.className = "pu-cb-fieldhint";
       cciEl.classList.remove("pu-invalid");
-    } else if (cciOk) {
-      cciHint.textContent = "Listo, 20 dígitos."; cciHint.className = "pu-cb-fieldhint ok";
+    } else if (cuentaOk) {
+      cciHint.textContent = type === "cci" ? "Listo, 20 dígitos." : `Listo (${cuenta.length} dígitos).`;
+      cciHint.className = "pu-cb-fieldhint ok";
       cciEl.classList.remove("pu-invalid");
+    } else if (type === "cci") {
+      cciHint.textContent = `El CCI necesita 20 dígitos (${cuenta.length}/20).`;
+      cciHint.className = "pu-cb-fieldhint err";
+      cciEl.classList.add("pu-invalid");
     } else {
-      cciHint.textContent = `Faltan dígitos (${cci.length}/20).`;
+      cciHint.textContent = `El número de cuenta debe tener entre 8 y 20 dígitos (${cuenta.length}).`;
       cciHint.className = "pu-cb-fieldhint err";
       cciEl.classList.add("pu-invalid");
     }
 
-    submitBtn.disabled = !(cciOk && montoOk && opOk && fileOk);
-    return cciOk && montoOk && opOk && fileOk;
+    submitBtn.disabled = !(cuentaOk && montoOk && opOk && fileOk);
+    return cuentaOk && montoOk && opOk && fileOk;
   }
 
   function _cbError(text) {
@@ -814,14 +930,19 @@
     if (!verifiedDni) { _cbError("Necesitamos identificarte antes de subir un comprobante."); return; }
 
     const fileEl = root.querySelector("#pu-cb-file");
-    const cci = root.querySelector("#pu-cb-cci").value.replace(/\D/g, "");
+    const acctType = _cbAcctType();
+    const cuenta = root.querySelector("#pu-cb-cci").value.replace(/\D/g, "");
     const monto = root.querySelector("#pu-cb-monto").value;
     const op = root.querySelector("#pu-cb-op").value.trim();
     const file = fileEl.files && fileEl.files[0];
 
     if (!file) { _cbError("Adjunta la imagen o PDF del comprobante."); return; }
     if (file.size > 8 * 1024 * 1024) { _cbError("El archivo supera 8 MB."); return; }
-    if (cci.length !== 20) { _cbError("El CCI debe tener exactamente 20 dígitos."); return; }
+    if (acctType === "cci") {
+      if (cuenta.length !== 20) { _cbError("El CCI debe tener exactamente 20 dígitos."); return; }
+    } else if (cuenta.length < 8 || cuenta.length > 20) {
+      _cbError("El número de cuenta debe tener entre 8 y 20 dígitos."); return;
+    }
     if (!monto || Number(monto) <= 0) { _cbError("Indica el monto transferido."); return; }
     if (!op) { _cbError("Indica el número de operación."); return; }
     if (op.length > 30) { _cbError("El número de operación es demasiado largo."); return; }
@@ -829,7 +950,8 @@
     const fd = new FormData();
     fd.append("tenant_id", TENANT);
     fd.append("dni", verifiedDni);
-    fd.append("cci", cci);
+    fd.append("account_type", acctType);
+    fd.append("cuenta_destino", cuenta);
     fd.append("monto", monto);
     fd.append("nro_operacion", op);
     fd.append("file", file);
@@ -849,7 +971,7 @@
         _cbShowResult("err", `<strong>No pudimos registrarlo.</strong> ${escapeHtml(data.detail || "Inténtalo de nuevo.")}`);
         return;
       }
-      renderComprobanteResult(data, cci);
+      renderComprobanteResult(data, cuenta, acctType);
     } catch (e) {
       console.error("[pu-widget] comprobante upload failed", e);
       _cbShowResult("err", "<strong>Problema de conexión.</strong> Inténtalo de nuevo.");
@@ -862,8 +984,11 @@
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  function renderComprobanteResult(data, cci) {
-    const last4 = cci.slice(-4);
+  const _ACCT_LABEL = { cci: "CCI", cuenta: "Número de cuenta" };
+
+  function renderComprobanteResult(data, cuenta, acctType) {
+    const last4 = String(cuenta || "").slice(-4);
+    const acctLabel = _ACCT_LABEL[data.account_type || acctType] || "cuenta";
     const tipo = _TIPO_LABEL[data.tipo] || (data.tipo || "").toUpperCase();
     const credito = escapeHtml(data.credito || "");
     if (data.dedup_ok === false) {
@@ -875,8 +1000,8 @@
     // Success: green, with the classification.
     _cbShowResult("ok",
       `✓ <strong>Recibimos tu comprobante de pago.</strong> Lo registramos como <strong>${escapeHtml(tipo)}</strong> ` +
-      `sobre tu crédito ${credito}, cuenta CCI ···${escapeHtml(last4)}. Será validado y, de estar conforme, se aplicará a tu cuenta.`);
-    injectChatSummary(`Recibimos tu comprobante de pago. Lo registramos como ${tipo} sobre tu crédito ${data.credito || ""}, cuenta ···${last4}. Será validado y, de estar conforme, se aplicará a tu cuenta.`);
+      `sobre tu crédito ${credito}, ${escapeHtml(acctLabel)} ···${escapeHtml(last4)}. Será validado y, de estar conforme, se aplicará a tu cuenta.`);
+    injectChatSummary(`Recibimos tu comprobante de pago. Lo registramos como ${tipo} sobre tu crédito ${data.credito || ""}, ${acctLabel} ···${last4}. Será validado y, de estar conforme, se aplicará a tu cuenta.`);
     setTimeout(closeComprobante, 2600);
   }
 

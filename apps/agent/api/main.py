@@ -1448,20 +1448,27 @@ async def upload_comprobante(
     request: Request,
     tenant_id: str = Form(...),
     dni: str = Form(...),
-    cci: str = Form(...),
     monto: float = Form(...),
     nro_operacion: str = Form(...),
     file: UploadFile = File(...),
+    account_type: str = Form("cci"),
+    cuenta_destino: str | None = Form(None),
+    cci: str | None = Form(None),  # legacy alias for cuenta_destino
 ):
     """Accept a payment voucher: verify the DNI, store the image, validate + classify.
 
     The DNI MUST resolve to a borrower for the tenant (identity gate). The file
     is validated (type + size) and stored under
     COBRANZA_COMPROBANTE_DIR/<dni>/<nro_operacion>.<ext>. Then validar_comprobante()
-    runs (tipo classification against the DNI's credit + dedup) and an audit
-    record is appended. The CCI is stored as-is, NOT validated for pertenencia
-    (bank reconciliation is done later by a human). Returns the payload for the
-    widget.
+    runs (tipo classification against the DNI's credit by MONTO + dedup) and an
+    audit record is appended.
+
+    The destination account (``cuenta_destino``, with ``account_type`` =
+    "cuenta" | "cci") is stored as-is, NOT validated for pertenencia (bank
+    reconciliation is done later by a human). Only the FORMAT is checked: a CCI
+    must be exactly 20 digits; a número de cuenta is flexible (~8–20 digits).
+    The legacy ``cci`` field is accepted as an alias for ``cuenta_destino``.
+    Returns the payload for the widget.
     """
     from pathlib import Path as _CP
 
@@ -1497,6 +1504,25 @@ async def upload_comprobante(
         return JSONResponse(status_code=400, content={"detail": "Nº de operación inválido."})
     if monto <= 0:
         return JSONResponse(status_code=400, content={"detail": "Monto inválido."})
+
+    # --- Destination account: validate FORMAT only (not pertenencia). ---
+    acct_type = (account_type or "cci").strip().lower()
+    if acct_type not in ("cuenta", "cci"):
+        acct_type = "cci"
+    raw_cuenta = cuenta_destino if cuenta_destino is not None else (cci or "")
+    cuenta_norm = re.sub(r"\D", "", raw_cuenta or "")
+    if acct_type == "cci":
+        if len(cuenta_norm) != 20:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "El CCI debe tener exactamente 20 dígitos."},
+            )
+    else:  # número de cuenta — longitud flexible más corta
+        if not (8 <= len(cuenta_norm) <= 20):
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "El número de cuenta debe tener entre 8 y 20 dígitos."},
+            )
 
     declared_ext = _COMPROBANTE_EXT.get((file.content_type or "").lower())
     if declared_ext is None:
@@ -1540,12 +1566,16 @@ async def upload_comprobante(
     from tools.cobranza import validar_comprobante
 
     result = await validar_comprobante(
-        profile, cci=cci, monto=monto, nro_operacion=nro,
+        profile,
+        monto=monto,
+        nro_operacion=nro,
+        cuenta_destino=cuenta_norm,
+        account_type=acct_type,
     )
     logger.info(
-        "Comprobante uploaded: tenant={} dni={} op={} valida={} tipo={} dedup_ok={}",
+        "Comprobante uploaded: tenant={} dni={} op={} valida={} tipo={} acct_type={} dedup_ok={}",
         tenant_id, dni_norm, nro, result.get("cuenta_valida"),
-        result.get("tipo"), result.get("dedup_ok"),
+        result.get("tipo"), result.get("account_type"), result.get("dedup_ok"),
     )
     return result
 

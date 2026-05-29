@@ -705,33 +705,54 @@ def _save_comprobantes(items: list[dict]) -> None:
 
 _TIPO_LABELS = {"pago": "Pago", "abono": "Abono", "cancelacion": "Cancelación"}
 
+# Account-type labels for the destination account the user paid into. In Perú a
+# CCI (Código de Cuenta Interbancario) has exactly 20 digits and is used for
+# inter-bank transfers; a plain número de cuenta is shorter and used for
+# same-bank transfers. We store the type so the human reconciler knows which.
+_ACCOUNT_TYPE_LABELS = {"cci": "CCI", "cuenta": "Número de cuenta"}
+
+
+def _normalize_account_type(account_type: str | None) -> str:
+    """Coerce the destination-account type to 'cci' | 'cuenta' (default 'cci')."""
+    t = (account_type or "").strip().lower()
+    return t if t in _ACCOUNT_TYPE_LABELS else "cci"
+
 
 async def validar_comprobante(
     profile: dict,
-    cci: str,
     monto: float,
     nro_operacion: str,
+    cuenta_destino: str | None = None,
+    account_type: str = "cci",
+    cci: str | None = None,  # backward-compat alias for cuenta_destino
 ) -> dict:
     """Register a payment voucher for the verified borrower (PrestamYpe).
 
-    The CCI is NO LONGER validated for pertenencia: it is stored as-is as a
-    voucher attribute (the real bank reconciliation is done later by a human).
-    We never reject by CCI.
+    The destination account is NOT validated for pertenencia: it is stored
+    as-is as a voucher attribute (the real bank reconciliation is done later by
+    a human). We never reject by account number.
+
+    The account the user paid INTO can be entered as either a full CCI (Código
+    de Cuenta Interbancario, exactly 20 digits — inter-bank transfer) or a plain
+    número de cuenta (shorter — same-bank transfer). ``account_type`` records
+    which one it is; ``cuenta_destino`` is the number (digits only). The legacy
+    ``cci`` kwarg is still accepted as an alias for ``cuenta_destino``.
 
     Logic (against the server-injected ``profile`` = verified credit):
       (a) classify ``tipo`` from ``monto`` vs the DNI's credit cuota / saldo
           (±2% tolerance): ≈ cuota → "pago"; < cuota → "abono"; ≈ saldo total
-          → "cancelacion". The classification does NOT depend on the CCI.
+          → "cancelacion". The classification depends ONLY on the monto.
       (b) dedup ``nro_operacion`` against a local JSON store; if seen before →
           ``dedup_ok = False`` (duplicate flagged), no re-registration.
 
-    Identity/credit ALWAYS come from the verified ``profile`` — only the 3
-    voucher fields (cci, monto, nro_operacion) come from the user. The result
-    is queued for human reconciliation (the comprobante is an indicio, not an
-    auto-conciliation). ``cuenta_valida`` is always ``True`` (kept for the
-    widget contract); the only soft failure is a duplicate ``nro_operacion``.
+    Identity/credit ALWAYS come from the verified ``profile`` — only the voucher
+    fields (account_type, cuenta_destino, monto, nro_operacion) come from the
+    user. The result is queued for human reconciliation. ``cuenta_valida`` is
+    always ``True`` (kept for the widget contract); the only soft failure is a
+    duplicate ``nro_operacion``.
     """
-    cci_in = normalize_cci(cci)
+    account_type = _normalize_account_type(account_type)
+    cuenta_in = normalize_cci(cuenta_destino if cuenta_destino is not None else (cci or ""))
     credito = profile.get("account_id")
 
     # (a) tipo de operación — contra el crédito del DNI (NO depende de la CCI)
@@ -755,11 +776,15 @@ async def validar_comprobante(
             f"crédito {credito}. No lo registré de nuevo para evitar duplicados."
         )
     else:
-        # Register for human reconciliation.
+        # Register for human reconciliation. We store BOTH the account type
+        # (cci | cuenta) and the number; ``cci`` is kept for backward compat
+        # with any reader that still expects that key.
         items.append({
             "credito": credito,
             "dni": profile.get("dni"),
-            "cci": cci_in,
+            "account_type": account_type,
+            "cuenta_destino": cuenta_in,
+            "cci": cuenta_in,  # legacy alias (same value as cuenta_destino)
             "monto": float(monto or 0.0),
             "nro_operacion": nro,
             "tipo": tipo,
@@ -767,9 +792,10 @@ async def validar_comprobante(
             "created_at": datetime.now().isoformat(timespec="seconds"),
         })
         _save_comprobantes(items)
+        cuenta_label = _ACCOUNT_TYPE_LABELS.get(account_type, "cuenta")
         mensaje = (
             f"Recibimos tu comprobante de pago. Lo registramos como {tipo_label} "
-            f"sobre tu crédito {credito}, cuenta CCI ···{cci_in[-4:]}. "
+            f"sobre tu crédito {credito}, {cuenta_label} ···{cuenta_in[-4:]}. "
             f"Será validado y, de estar conforme, se aplicará a tu cuenta."
         )
 
@@ -777,6 +803,8 @@ async def validar_comprobante(
         "cuenta_valida": True,
         "credito": credito,
         "tipo": tipo,
+        "account_type": account_type,
+        "cuenta_destino": cuenta_in,
         "dedup_ok": dedup_ok,
         "mensaje": mensaje,
     }

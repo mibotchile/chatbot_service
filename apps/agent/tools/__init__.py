@@ -255,15 +255,27 @@ class ToolRegistry:
         )
 
     async def _validar_comprobante(
-        self, cci: str, monto: float, nro_operacion: str
+        self,
+        monto: float,
+        nro_operacion: str,
+        cuenta_destino: str | None = None,
+        account_type: str = "cci",
+        cci: str | None = None,
     ) -> dict:
         """Validate a payment voucher for the verified borrower (PrestamYpe).
 
         The credit/identity come from the verified ``debt_context``; only the
-        voucher fields (cci, monto, nro_operacion) come from the user.
+        voucher fields (account_type, cuenta_destino, monto, nro_operacion) come
+        from the user. ``cci`` is accepted as a legacy alias for
+        ``cuenta_destino``.
         """
         return await validar_comprobante(
-            self._debt_context, cci=cci, monto=monto, nro_operacion=nro_operacion
+            self._debt_context,
+            monto=monto,
+            nro_operacion=nro_operacion,
+            cuenta_destino=cuenta_destino,
+            account_type=account_type,
+            cci=cci,
         )
 
     async def _escalate_to_human(self, reason: str = "Cliente solicitó hablar con un asesor") -> dict:

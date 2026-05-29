@@ -128,3 +128,22 @@ def test_widget_dni_hint_natural_language():
     js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
     assert "match(/\\d+/g)" in js
     assert "longest >= 1 && longest <= 7" in js
+
+
+def test_widget_comprobante_account_type_selector():
+    """Jorge feedback: comprobante form lets the user pick Número de cuenta vs CCI."""
+    js = (_FRONTEND / "widget.js").read_text(encoding="utf-8")
+    # both labels, exactly as specified
+    assert "Número de cuenta" in js
+    assert "Código de Cuenta Interbancario (CCI)" in js
+    # radio selector wired + type-aware validation
+    assert 'name="pu-cb-acct"' in js
+    assert "_cbAcctType" in js
+    # destination-account copy (a quién pagaste, not your own account)
+    assert "destinatario del depósito" in js
+    # voucher example present + toggle
+    assert "VOUCHER_EXAMPLE_SVG" in js
+    assert "Ver ejemplo de voucher" in js
+    assert "<svg" in js and "var(--pu-brand)" in js
+    # backend payload uses the neutral fields
+    assert "account_type" in js and "cuenta_destino" in js

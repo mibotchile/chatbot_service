@@ -191,18 +191,25 @@ TOOL_DEFINITIONS = [
         "name": "validar_comprobante",
         "description": (
             "Valida un comprobante de pago del cliente YA IDENTIFICADO (PrestamYpe). "
-            "Pídele los 3 datos del voucher ANTES de llamar la tool: el CCI de la cuenta a la que "
-            "transfirió (20 dígitos), el monto y el número de operación. La tool verifica que la cuenta "
-            "(CCI) corresponda a su crédito, clasifica la operación en pago / abono / cancelación, y evita "
+            "Pídele los datos del voucher ANTES de llamar la tool: la cuenta DESTINO a la que "
+            "transfirió (la del destinatario del depósito, NO la suya), indicando si es un Número "
+            "de cuenta o un CCI (Código de Cuenta Interbancario, 20 dígitos), el monto y el número "
+            "de operación. La cuenta NO se valida contra el sistema (la concilia un humano); solo se "
+            "guarda. La tool clasifica la operación en pago / abono / cancelación según el MONTO y evita "
             "duplicados por número de operación. La identidad y el crédito salen de su cuenta verificada; "
-            "lo ÚNICO que viene del usuario son esos 3 datos del comprobante. No inventes ninguno."
+            "lo ÚNICO que viene del usuario son esos datos del comprobante. No inventes ninguno."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "cci": {
+                "account_type": {
                     "type": "string",
-                    "description": "CCI (Código de Cuenta Interbancario, 20 dígitos) de la cuenta a la que el usuario transfirió",
+                    "enum": ["cuenta", "cci"],
+                    "description": "Tipo de cuenta destino que ingresó el usuario: 'cuenta' (número de cuenta, más corto, mismo banco) o 'cci' (Código de Cuenta Interbancario, 20 dígitos, entre bancos)",
+                },
+                "cuenta_destino": {
+                    "type": "string",
+                    "description": "Número de la cuenta DESTINO (a la que el usuario transfirió). Si account_type='cci' son 20 dígitos; si 'cuenta' es más corto.",
                 },
                 "monto": {
                     "type": "number",
@@ -213,7 +220,7 @@ TOOL_DEFINITIONS = [
                     "description": "Número de operación del comprobante (para evitar cargas duplicadas)",
                 },
             },
-            "required": ["cci", "monto", "nro_operacion"],
+            "required": ["account_type", "cuenta_destino", "monto", "nro_operacion"],
         },
     },
     {
