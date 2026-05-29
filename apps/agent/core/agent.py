@@ -20,6 +20,34 @@ from core.response_builder import build_ui_actions
 from core.prospect_profile import build_prospect_profile, truncate_history
 from core import responses as responses_engine
 
+# ── Sticky LLM-flow (data-driven multi-turn tool gathering) ───────────────────
+# When a ``flow: true`` intent routes a turn to the LLM (e.g. validar_comprobante
+# needs monto + nro_operacion + cuenta across turns), the canned router is
+# bypassed on the next turns so a stray keyword ("cci") can't hijack the flow.
+_LLM_FLOW_KEY = "llm_flow"
+_LLM_FLOW_MAX_TURNS = 6  # anti-stuck cap: release the flow after this many turns
+
+
+def _llm_flow_active(session_state: dict | None) -> bool:
+    return bool(session_state and isinstance(session_state.get(_LLM_FLOW_KEY), dict))
+
+
+def _arm_llm_flow(session_state: dict | None, intent: str) -> None:
+    if session_state is None:
+        return
+    session_state[_LLM_FLOW_KEY] = {"intent": intent, "turns": 0}
+    logger.info("llm_flow armed (intent=%s)", intent)
+
+
+def _clear_llm_flow(session_state: dict | None) -> None:
+    if session_state is not None:
+        session_state.pop(_LLM_FLOW_KEY, None)
+
+
+def _intent_is_flow(spec, intent: str) -> bool:
+    cfg = (getattr(spec, "intents", {}) or {}).get(intent) or {}
+    return bool(cfg.get("flow"))
+
 
 class SoreliaAgent:
     """Core agent: context assembly → LLM with tools → tool execution → response."""
@@ -113,6 +141,16 @@ class SoreliaAgent:
 
             tool_pairs = [(tc.name, result) for tc, result in zip(data_tools, tool_results)]
             ui_actions = build_ui_actions(tool_pairs)
+
+            # Sticky flow resolved: a data tool ran successfully (not error/blocked)
+            # → the gathering flow is done, release the router bypass. If the LLM
+            # only conversed (no tool) the flag stays armed (still collecting).
+            if _llm_flow_active(session_state) and any(
+                isinstance(r, dict) and not r.get("error") and not r.get("blocked")
+                for r in tool_results
+            ):
+                logger.info("llm_flow resolved by tool → clearing")
+                _clear_llm_flow(session_state)
 
             # Re-add the assistant tool-call turn + tool results (neutral shape),
             # then call the model again for the final answer.
@@ -208,10 +246,33 @@ class SoreliaAgent:
         Layer 1 (keyword) is FREE. Layer 2 (hybrid) does ONE cheap classification
         call (short output) → canned. The verbatim/variant text + variable fill
         come from the engine; the LLM never authors the customer-facing copy here.
+
+        STICKY LLM FLOW: once a ``flow: true`` intent routes the turn to the LLM
+        (multi-turn data gathering for a tool, e.g. validar_comprobante), the
+        router is BYPASSED on following turns so an isolated word the user types
+        ("es un CCI") can't be hijacked by a keyword intent (donde_pagar). The
+        flag lives in ``session_state['llm_flow']``, persists across turns, is
+        capped to avoid getting stuck, and is cleared after a successful tool run
+        (see process_message).
         """
         spec = self._responses_spec()
         if spec is None or not spec.enabled:
             return None
+
+        # ── Sticky flow: bypass the router while an LLM flow is active ──
+        if _llm_flow_active(session_state):
+            flow = session_state["llm_flow"]
+            flow["turns"] = int(flow.get("turns", 0)) + 1
+            if flow["turns"] > _LLM_FLOW_MAX_TURNS:
+                # Anti-stuck cap: release the flow, resume normal routing.
+                logger.info("llm_flow cap reached (intent=%s) → releasing", flow.get("intent"))
+                _clear_llm_flow(session_state)
+            else:
+                logger.info(
+                    "llm_flow active (intent=%s turn=%s) → router bypass",
+                    flow.get("intent"), flow["turns"],
+                )
+                return None
 
         profile = self._verified_profile()
         verified = bool(getattr(self.tool_registry, "_identity_verified", False))
@@ -235,6 +296,11 @@ class SoreliaAgent:
                 )
                 if resolved.handled:
                     return await self._canned_result(resolved, spec)
+                # Not handled → this intent hands the turn to the LLM. If it's a
+                # ``flow`` intent, ARM the sticky flag so subsequent turns bypass
+                # the router until the tool resolves (or the cap fires).
+                if _intent_is_flow(spec, intent):
+                    _arm_llm_flow(session_state, intent)
         # No canned path → fall through to the full agent loop (free generation).
         return None
 

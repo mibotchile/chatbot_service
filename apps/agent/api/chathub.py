@@ -271,6 +271,9 @@ async def _run_chathub_engine_turn(
             lead_state=conv.lead.get_status(),
             page_context=page_context,
             channel=channel,
+            # Sticky LLM-flow + variant/credit memory live here and must persist
+            # across WhatsApp turns (the conv object is reused from the store).
+            session_state=conv.session_state,
         )
     except Exception:
         logger.opt(exception=True).error("chathub engine error: conv={}", conversation_id)

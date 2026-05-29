@@ -453,6 +453,103 @@ async def test_agent_hybrid_no_canned_falls_through_to_llm():
     assert provider.calls >= 2                          # classify + generate
 
 
+# ── Sticky LLM flow: router bypass while gathering tool data ─────────────────
+# Regression: in the middle of reporting a payment, "es un CCI" hit the keyword
+# "cci" → layer-1 hijacked the turn to donde_pagar → validar_comprobante never
+# ran. With an active llm_flow the router is bypassed deterministically.
+
+
+class _ToolProvider(LLMProvider):
+    """First agent call → validar_comprobante; follow-up → text. Answers the
+    classifier (system mentions 'clasificador') with the configured label."""
+
+    model = "claude-haiku-test"
+    name = "anthropic"
+
+    def __init__(self, classify_as: str | None = None):
+        self.calls = 0
+        self.agent_calls = 0
+        self._classify_as = classify_as
+
+    async def complete(self, *, system, messages, tools, model=None, max_tokens=1024, force_tool=None):
+        self.calls += 1
+        if "clasificador" in (system or "").lower():
+            return LLMResponse(text=self._classify_as or "ninguna", tool_calls=[])
+        self.agent_calls += 1
+        if self.agent_calls == 1:
+            return LLMResponse(text="", tool_calls=[ToolCall(
+                id="vc", name="validar_comprobante",
+                input={"monto": 462.14, "nro_operacion": "OP-STICKY",
+                       "cuenta_destino": "00389801338381007048", "account_type": "cci"},
+            )])
+        return LLMResponse(text="Tu comprobante quedó en revisión.", tool_calls=[])
+
+
+async def test_sticky_flow_bypasses_router_for_cci_keyword(monkeypatch, tmp_path):
+    # An active llm_flow must bypass layer-1 even for "es un cci" (which normally
+    # matches donde_pagar) → the turn reaches the LLM, NOT a canned reply.
+    import tools.cobranza as cobranza
+    monkeypatch.setattr(cobranza, "_COMPROBANTES_PATH", tmp_path / "c.json")
+    provider = _ToolProvider()
+    agent = _agent(provider, identity_dni=LUIS)
+    ss = {"llm_flow": {"intent": "comprobante_reportar", "turns": 1}}
+    res = await agent.process_message(
+        text="es un cci, la cuenta 00389801338381007048",
+        conversation_id="sf1", history=[], lead_state={}, page_context={},
+        session_state=ss,
+    )
+    # NOT canned donde_pagar → the LLM handled it (and ran the tool).
+    assert res["response_source"] == R.SOURCE_LLM
+    assert "validar_comprobante" in res["tools_called"]
+    # Tool succeeded → flag cleared.
+    assert "llm_flow" not in ss
+
+
+async def test_sticky_flow_cap_releases_after_max_turns():
+    # Past the cap, the flag is released and normal routing resumes (the same
+    # "es un cci" text then hits donde_pagar via layer-1).
+    provider = _CountingProvider()
+    agent = _agent(provider, identity_dni=LUIS)
+    ss = {"llm_flow": {"intent": "comprobante_reportar", "turns": 6}}  # next inc → 7 > cap
+    res = await agent.process_message(
+        text="es un cci", conversation_id="sf2", history=[],
+        lead_state={}, page_context={}, session_state=ss,
+    )
+    assert "llm_flow" not in ss                  # released by the cap
+    assert res["response_source"] == R.SOURCE_KEYWORD   # routed to donde_pagar
+    assert res["metadata"]["intent"] == "donde_pagar"
+
+
+async def test_sticky_flow_armed_when_flow_intent_classified():
+    # Classifying into comprobante_reportar (flow:true, identified, no template)
+    # falls through to the LLM AND arms the sticky flag for next turns.
+    provider = _CountingProvider(classify_as="comprobante_reportar")
+    agent = _agent(provider, identity_dni=LUIS)
+    ss: dict = {}
+    res = await agent.process_message(
+        text="ya hice mi transferencia, te paso los datos",
+        conversation_id="sf3", history=[], lead_state={}, page_context={},
+        session_state=ss,
+    )
+    assert res["response_source"] == R.SOURCE_LLM
+    assert ss.get("llm_flow", {}).get("intent") == "comprobante_reportar"
+
+
+async def test_sticky_flow_not_cleared_when_llm_only_converses():
+    # If the armed flow turn produces NO tool (LLM just asks for more data), the
+    # flag stays armed so the next turn is still bypassed.
+    provider = _CountingProvider()  # never returns a tool
+    agent = _agent(provider, identity_dni=LUIS)
+    ss = {"llm_flow": {"intent": "comprobante_reportar", "turns": 1}}
+    res = await agent.process_message(
+        text="es un cci", conversation_id="sf4", history=[],
+        lead_state={}, page_context={}, session_state=ss,
+    )
+    assert res["response_source"] == R.SOURCE_LLM
+    assert ss.get("llm_flow", {}).get("intent") == "comprobante_reportar"
+    assert ss["llm_flow"]["turns"] == 2          # incremented, still armed
+
+
 # ── identificar: typed DNI opens the gate (the bug this fix addresses) ────────
 
 def test_identificar_intent_is_an_identity_opener():

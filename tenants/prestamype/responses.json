@@ -164,7 +164,8 @@
 
   "comprobante_reportar": {
     "mode": "verbatim",
-    "doc": "El usuario REPORTA un pago que ya hizo (da/dará monto, número de operación y/o cuenta de destino). SIN template a propósito: clasifica pero renderiza vacío → el turno cae al agente LLM, que pide los datos faltantes y ejecuta la tool validar_comprobante. Este es el camino A (tipeado) del flujo 'subir pago'.",
+    "flow": true,
+    "doc": "El usuario REPORTA un pago que ya hizo (da/dará monto, número de operación y/o cuenta de destino). SIN template a propósito: clasifica pero renderiza vacío → el turno cae al agente LLM, que pide los datos faltantes y ejecuta la tool validar_comprobante. flow:true activa el sticky-flow: una vez clasificado, el router (layer-1/2) se bypassa en los turnos siguientes para que una palabra suelta ('es un cci') no secuestre el flujo a donde_pagar; el flag se libera al ejecutar la tool o tras 6 turnos. Camino A (tipeado) del flujo 'subir pago'.",
     "description": "El usuario avisa o reporta que YA hizo/realizó un pago, transferencia o depósito de su crédito (menciona monto, número de operación o a qué cuenta pagó). NO es preguntar dónde pagar; es informar un pago ya hecho.",
     "requires_identity": true
   },
