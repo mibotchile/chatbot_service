@@ -17,7 +17,7 @@ TENANT = "prestamype"
 LUIS_DNI = "44218903"
 LUIS_CCI = "00389801338381007048"
 LUIS_CUOTA = 462.14
-LUIS_SALDO = 23800.00
+LUIS_SALDO = 18420.00
 
 
 @pytest.fixture
@@ -62,27 +62,31 @@ def test_branding_prestamype_green_and_logo(client):
     assert b["logo_url"] == "https://d14bodb4yrsx8y.cloudfront.net/static/logo.svg"
     assert b["name"] == "PrestamYpe"
     assert b["footer"] == "Powered by Onbotgo"
-    # demo cards come from the fixture tokens (demo-1/2/3).
+    # 5 demo cards come from the fixture tokens (demo-1..5), one per casuística.
     tokens = {c["token"] for c in b["demo_tokens"]}
-    assert tokens == {"demo-1", "demo-2", "demo-3"}
+    assert tokens == {"demo-1", "demo-2", "demo-3", "demo-4", "demo-5"}
 
 
 def test_branding_demo_tokens_have_truthful_labels(client):
     b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
     by_token = {c["token"]: c for c in b["demo_tokens"]}
-    # demo-2 → P03650 → en mora, USD → "Crédito en dólares"
-    assert by_token["demo-2"]["status"] == "en_mora"
-    assert by_token["demo-2"]["currency"] == "USD"
-    assert "dólar" in by_token["demo-2"]["label"].lower()
     # demo-1 → P02137 → al día
     assert by_token["demo-1"]["status"] == "al_dia"
+    # demo-3 → P03650 → en mora, USD → "Crédito en dólares"
+    assert by_token["demo-3"]["status"] == "en_mora"
+    assert by_token["demo-3"]["currency"] == "USD"
+    assert "dólar" in by_token["demo-3"]["label"].lower()
+    # demo-4 → P05012 → multi-crédito (mismo DNI, varios créditos)
+    assert "más de una deuda" in by_token["demo-4"]["label"].lower()
+    # demo-5 → P05480 → crédito grupal con codeudores
+    assert "grupal" in by_token["demo-5"]["label"].lower()
 
 
-def test_branding_prestamype_hides_demo_cards(client):
-    # prestamype relies on DNI-first identification in the chat: the landing
-    # "Ingresa como uno de estos clientes" cards are hidden.
+def test_branding_prestamype_shows_demo_cards(client):
+    # The fixture is fully synthetic (no PII), so the 5 casuística cards are
+    # shown on the public landing again.
     b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
-    assert b["show_demo_cards"] is False
+    assert b["show_demo_cards"] is True
 
 
 def test_branding_demo_tokens_carry_no_pii(client):

@@ -33,7 +33,10 @@ _STATE_RULES: dict[str, str] = {
     ),
     VERIFIED: (
         "Eres Ada. El usuario está IDENTIFICADO. Acciones disponibles:\n"
-        "1. consultar_deuda — saldo, cuotas, próximo vencimiento, estado (al día / en mora).\n"
+        "1. consultar_deuda — saldo, cuotas, próximo vencimiento, estado (al día / en mora). "
+        "Si la respuesta trae 'credits' (varios créditos del mismo cliente), LÍSTALOS todos con su saldo "
+        "y estado. Si trae 'is_grupal' con 'codeudores', avísale que el crédito es COMPARTIDO e indícale "
+        "los codeudores por nombre (los DNI vienen enmascarados, no los reveles completos).\n"
         "2. registrar_reclamo — Libro de Reclamaciones (pide tipo y descripción antes de registrar).\n"
         "3. emitir_certificado_no_adeudo — SOLO si el saldo es CERO; si hay deuda, explica que no procede "
         "hasta cancelar el préstamo (no lo ofrezcas a quien tiene deuda). Cuando la herramienta devuelva "

@@ -3,7 +3,7 @@
   "id": "prestamype",
   "name": "PrestamYpe",
   "domain": "prestamype.com",
-  "data_source": "doris",
+  "data_source": "mock",
   "project_uid": "QUIdI0iwQY0l3pJwRKLB",
   "doris_schema": {
     "db": null,
@@ -35,10 +35,10 @@
     "primary_color": "#00b369",
     "logo_url": "https://d14bodb4yrsx8y.cloudfront.net/static/logo.svg",
     "favicon_url": "",
-    "show_demo_cards": false
+    "show_demo_cards": true
   },
   "content": {
-    "hero_headline": "Préstamos con garantía, financiados de persona a persona, con total transparencia"
+    "hero_headline": "Consulta tu préstamo y valida tus pagos, al instante."
   },
   "contact": {
     "email": "hola@prestamype.com",

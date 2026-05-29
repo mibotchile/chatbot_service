@@ -1262,12 +1262,30 @@ def _demo_tokens_for(tenant_id: str) -> list[dict]:
         prof = borrowers.get(account_id) or {}
         currency = prof.get("currency", "PEN")
         status = prof.get("status", "")
-        if status == "en_mora":
-            label = "Crédito en dólares" if currency == "USD" else "Cliente en mora"
-        elif (prof.get("balance") or 0) == 0:
-            label = "Sin deuda"
+        days = int(prof.get("days_overdue") or 0)
+        balance = prof.get("balance") or 0
+        cuota = prof.get("cuota_esperada") or prof.get("next_installment_amount") or 0
+        # A masked DNI hint is OK on the public card (first 2 digits + "…"): it's
+        # a synthetic demo number and helps the demo owner pick a case. The FULL
+        # DNI is never exposed — masking keeps the no-PII contract.
+        dni = str(prof.get("dni") or "")
+        dni_hint = f"DNI {dni[:2]}…" if len(dni) >= 2 else ""
+        # Casuística label, derived from the data so cards stay truthful.
+        if prof.get("additional_credits"):
+            casu = "Más de una deuda · varios créditos"
+        elif prof.get("is_grupal"):
+            casu = "Crédito grupal · con codeudores"
+        elif currency == "USD":
+            casu = "Crédito en dólares · con mora"
+        elif status != "en_mora" and balance > 0 and cuota > 0 and balance <= cuota * 1.5:
+            casu = "Casi cancelado · al día"
+        elif status == "en_mora" and days >= 60:
+            casu = "Mora severa"
+        elif status == "en_mora":
+            casu = "Mora leve"
         else:
-            label = "Crédito al día"
+            casu = "Al día"
+        label = f"{casu} · {dni_hint}" if dni_hint else casu
         cards.append({
             "token": token,
             "label": label,

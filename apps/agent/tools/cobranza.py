@@ -106,7 +106,59 @@ async def consultar_deuda(profile: dict) -> dict:
         "installment_history": profile.get("installment_history", []),
         "has_debt": (profile.get("balance", 0.0) or 0.0) > 0,
     }
+
+    # PrestamYpe casuística: un mismo DNI puede tener VARIOS créditos vigentes.
+    # Se exponen aquí para que el asistente los liste (saldo y estado de c/u).
+    extra = profile.get("additional_credits") or []
+    if extra:
+        credits = [_credit_brief(profile, sym)]
+        for c in extra:
+            credits.append(_credit_brief(c, c.get("currency_symbol", sym)))
+        summary["has_multiple_credits"] = True
+        summary["credits_count"] = len(credits)
+        summary["credits"] = credits
+
+    # PrestamYpe casuística: un crédito GRUPAL es compartido por varios codeudores.
+    # Se indica que el crédito es compartido y quiénes son los codeudores.
+    if profile.get("is_grupal") and profile.get("codeudores"):
+        summary["is_grupal"] = True
+        summary["codeudores"] = [
+            {
+                "borrower_name": c.get("borrower_name"),
+                "dni_masked": _mask_dni(c.get("dni")),
+                "rol": c.get("rol", "codeudor"),
+            }
+            for c in profile["codeudores"]
+        ]
+
     return summary
+
+
+def _credit_brief(c: dict, sym: str) -> dict:
+    """Compact view of a single credit (for the multi-credit casuística)."""
+    bal = c.get("balance", 0.0) or 0.0
+    return {
+        "account_id": c.get("account_id"),
+        "loan_number": c.get("loan_number"),
+        "currency": c.get("currency", "PEN"),
+        "currency_symbol": sym,
+        "balance": bal,
+        "balance_formatted": _fmt(bal, sym),
+        "status": c.get("status"),
+        "status_label": c.get("status_label"),
+        "days_overdue": c.get("days_overdue", 0),
+        "next_due_date": c.get("next_due_date"),
+        "next_installment_amount": c.get("next_installment_amount"),
+        "next_installment_formatted": _fmt(c.get("next_installment_amount", 0.0) or 0.0, sym),
+    }
+
+
+def _mask_dni(dni: str) -> str:
+    """Mask a DNI to first 2 + last 1 digit (e.g. 40****4) — never expose full."""
+    d = str(dni or "")
+    if len(d) < 4:
+        return ""
+    return f"{d[:2]}{'*' * (len(d) - 3)}{d[-1]}"
 
 
 # ── 2. Registrar reclamo (Libro de Reclamaciones — Indecopi) ───────────────

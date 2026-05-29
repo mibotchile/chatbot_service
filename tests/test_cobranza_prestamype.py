@@ -18,9 +18,12 @@ from tools import ToolRegistry
 TENANT = "prestamype"
 
 # Fixture borrowers (synthetic demo data). DNIs are 8-digit and fictitious.
-LUIS = "44218903"   # P02137, al día, cuota 462.14, saldo 23800, CCI 00389801338381007048
-SILVIA = "76310582"  # P03250, al día, cuota 856.30, saldo 34237.50
-ELMER = "08642195"  # P03650, en mora, USD, cuota 1397.71, saldo 96250
+# 5 casos de casuística distinta (demo-1..5).
+LUIS = "44218903"   # P02137, al día, PEN, cuota 462.14, saldo 23800, CCI 00389801338381007048
+LUCIA = "76310582"  # P03250, mora leve (8d), PEN, saldo 14620.50
+SANDRA = "46128750" # P04239, mora severa (97d), PEN, saldo alto 138720.84
+ELMER = "08642195"  # P03650, mora, USD, cuota 1397.71, saldo 31840
+ROSA = "40517264"   # P04880, casi cancelado / al día, PEN, saldo 845.60
 
 
 def _fixture() -> dict:
@@ -30,10 +33,10 @@ def _fixture() -> dict:
 
 # ── Fixture loads ─────────────────────────────────────────────────────────
 
-def test_fixture_loads_with_8_borrowers_and_tokens():
+def test_fixture_loads_with_5_borrowers_and_tokens():
     data = _fixture()
-    assert len(data["borrowers"]) == 8
-    assert set(data["tokens"]) == {"demo-1", "demo-2", "demo-3"}
+    assert len(data["borrowers"]) == 5
+    assert set(data["tokens"]) == {"demo-1", "demo-2", "demo-3", "demo-4", "demo-5"}
     # Every borrower has the standard + prestamype extra fields.
     for prof in data["borrowers"].values():
         for field in ("account_id", "dni", "balance", "status", "days_overdue"):
@@ -44,9 +47,9 @@ def test_fixture_loads_with_8_borrowers_and_tokens():
 
 def test_demo_tokens_point_at_distinct_credits():
     data = _fixture()
-    accounts = [data["tokens"][t] for t in ("demo-1", "demo-2", "demo-3")]
-    assert accounts == ["P02137", "P03650", "P04605"]
-    assert len(set(accounts)) == 3
+    accounts = [data["tokens"][t] for t in ("demo-1", "demo-2", "demo-3", "demo-4", "demo-5")]
+    assert accounts == ["P02137", "P04239", "P03650", "P05012", "P05480"]
+    assert len(set(accounts)) == 5
 
 
 # ── resolve_dni / resolve_token via the dispatcher (fixture fallback) ──────
@@ -62,7 +65,8 @@ def test_resolve_dni_fixture_fallback():
 
 
 def test_resolve_token_fixture_fallback():
-    prof = debt_source.resolve_token("demo-2", tenant_id=TENANT)
+    # demo-3 is the USD credit (Javier, mora leve en dólares).
+    prof = debt_source.resolve_token("demo-3", tenant_id=TENANT)
     assert prof is not None
     assert prof["account_id"] == "P03650"
     assert prof["currency"] == "USD"
@@ -71,6 +75,49 @@ def test_resolve_token_fixture_fallback():
 
 def test_resolve_dni_unknown_returns_none():
     assert debt_source.resolve_dni("00000000", tenant_id=TENANT) is None
+
+
+# ── PrestamYpe casuística: multi-crédito y crédito grupal ──────────────────
+
+async def test_consultar_deuda_lists_multiple_credits_same_dni():
+    from tools.cobranza import consultar_deuda
+
+    # demo-4: mismo DNI con 2 créditos vigentes (uno al día, otro en mora leve).
+    prof = debt_source.resolve_dni(LUCIA, tenant_id=TENANT)
+    assert prof["account_id"] == "P05012"
+    summary = await consultar_deuda(prof)
+    assert summary["has_multiple_credits"] is True
+    assert summary["credits_count"] == 2
+    accts = {c["account_id"] for c in summary["credits"]}
+    assert accts == {"P05012", "P05119"}
+    # ambos créditos exponen su saldo y estado
+    statuses = {c["status"] for c in summary["credits"]}
+    assert statuses == {"al_dia", "en_mora"}
+
+
+async def test_consultar_deuda_flags_grupal_with_codeudores():
+    from tools.cobranza import consultar_deuda
+
+    # demo-5: crédito grupal compartido por 2 codeudores, casi cancelado.
+    prof = debt_source.resolve_dni(ROSA, tenant_id=TENANT)
+    assert prof["account_id"] == "P05480"
+    summary = await consultar_deuda(prof)
+    assert summary["is_grupal"] is True
+    assert len(summary["codeudores"]) == 2
+    # DNIs de codeudores SIEMPRE enmascarados (no se expone el completo)
+    for c in summary["codeudores"]:
+        assert c["borrower_name"]
+        assert "*" in c["dni_masked"]
+        assert len(c["dni_masked"]) <= 8
+
+
+async def test_consultar_deuda_single_credit_has_no_multi_flags():
+    from tools.cobranza import consultar_deuda
+
+    prof = debt_source.resolve_dni(LUIS, tenant_id=TENANT)  # al día, 1 crédito
+    summary = await consultar_deuda(prof)
+    assert "has_multiple_credits" not in summary
+    assert "is_grupal" not in summary
 
 
 def test_prestaunion_still_uses_mock():
@@ -137,7 +184,7 @@ async def test_validar_comprobante_cancelacion(tmp_path, monkeypatch):
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {"cci": "00389801338381007048", "monto": 23800.00, "nro_operacion": "OP-003"},
+        {"cci": "00389801338381007048", "monto": 18420.00, "nro_operacion": "OP-003"},
     )
     assert r["cuenta_valida"] is True
     assert r["tipo"] == "cancelacion"
