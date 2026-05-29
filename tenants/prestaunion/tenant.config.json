@@ -4,12 +4,22 @@
   "name": "PrestaUnion",
   "domain": "demo.prestaunion.pe",
   "branding": {
-    "primary_color": "#f5c518",
+    "primary_color": "#0083E0",
     "logo_url": "",
-    "favicon_url": ""
+    "favicon_url": "",
+    "show_demo_cards": true
   },
   "content": {
-    "hero_headline": "Impulsamos el progreso de tu MYPE con financiamiento simple y transparente"
+    "kicker": "responde al instante, las 24 horas",
+    "hero_headline": "Resuelve tu préstamo hablando con Ada.",
+    "hero_subline": "Consulta tu saldo, regulariza una cuota, presenta un reclamo o pide tu certificado de no adeudo. Atención clara y en tu idioma, sin letra chica.",
+    "hero_note": "Elige un cliente o identifícate por DNI.",
+    "dni_hint": "Abre el chat sin entrar como un cliente y, cuando Ada te pida el DNI, escribe uno de estos:",
+    "features": [
+      { "title": "Consulta de deuda", "body": "Saldo, cuotas pagadas y pendientes, próximo vencimiento y estado del préstamo." },
+      { "title": "Libro de Reclamaciones", "body": "Registra reclamos y quejas con folio y respuesta en 15 días hábiles (Indecopi)." },
+      { "title": "Certificado de no adeudo", "body": "Emite el certificado en PDF al instante cuando el préstamo está cancelado." }
+    ]
   },
   "contact": {
     "email": "asesores@prestaunion.pe",

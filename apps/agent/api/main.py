@@ -1447,6 +1447,14 @@ async def tenant_branding(tenant_id: str):
         "logo_url": branding.get("logo_url", ""),
         "favicon_url": branding.get("favicon_url", ""),
         "hero_headline": content.get("hero_headline", ""),
+        # Landing content (data-driven, uniform for every tenant). Tenants that
+        # opt out of the rich landing (e.g. prestamype, minimalist) simply omit
+        # these in their config → empty defaults → the blocks render empty/hidden.
+        "kicker": content.get("kicker", ""),
+        "hero_subline": content.get("hero_subline", ""),
+        "hero_note": content.get("hero_note", ""),
+        "dni_hint": content.get("dni_hint", ""),
+        "features": content.get("features", []) or [],
         "agent_name": soul.get("name", "Ada"),
         "currency": soul.get("currency", "soles (S/)"),
         "footer": "Powered by Onbotgo",

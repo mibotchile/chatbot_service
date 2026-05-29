@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>PrestaUnion · Portal de clientes</title>
+  <title>Portal de clientes</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230083E0'/%3E%3Ctext x='16' y='22' font-family='Inter,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
@@ -32,6 +32,20 @@
         radial-gradient(ellipse 60% 40% at 0% 100%, rgba(197,228,249,0.30), transparent 60%);
     }
     .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Anti-flash gate. The page is branding-driven: NO tenant content is baked
+       into the static markup, so until applyBrand() runs we must not show the
+       (empty) content containers. <html> carries `branding-pending` from the
+       very first inline script; applyBrand() removes it once the tenant's own
+       data has been written. This is uniform for EVERY tenant (no privileged
+       default) — nobody's text ever flashes before its data lands.
+       ────────────────────────────────────────────────────────────────────── */
+    html.branding-pending .hero-copy,
+    html.branding-pending #cards,
+    html.branding-pending #dni-note,
+    html.branding-pending .features,
+    html.branding-pending h2.section-label { visibility: hidden; }
 
     header { border-bottom: 1px solid var(--vox-border-soft); position: sticky; top: 0; z-index: 20;
       background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
@@ -180,7 +194,7 @@
     body.tenant-prestamype .dni-note,
     body.tenant-prestamype h2.section-label:not(#acceso) { display: none; }   /* no heavy blocks / orphan labels */
     /* Máximo minimalismo: el hero solo ENMARCA los casos. Ocultamos kicker + CTA
-       vía CSS (no JS post-fetch) para que NO parpadee el hero de prestaunion. */
+       vía CSS (no JS post-fetch) para que NO parpadee. */
     body.tenant-prestamype .kicker,
     body.tenant-prestamype .hero-cta { display: none; }
 
@@ -243,25 +257,60 @@
       body.tenant-prestamype table.cases .c-dni { grid-column: 2; grid-row: 2; text-align: right; }
     }
   </style>
-</head>
-<body>
-  <!-- FOUC guard: apply the tenant theme class SYNCHRONOUSLY (before first paint),
-       so ?tenant=prestamype never flashes the prestaunion (Vox) branding while the
-       async /branding fetch is still in flight. The prestamype CSS is already inline
-       in <head> (scoped to body.tenant-prestamype); this just toggles the class up
-       front. applyBrand() re-adds it later (idempotent) for logo/text/cards.
-       No ?tenant or ?tenant=prestaunion → no class → native Vox theme (unchanged). -->
+
+  <!-- ────────────────────────────────────────────────────────────────────────
+       Anti-flash, NO privileged default. The base HTML is tenant-NEUTRAL: no
+       tenant's text, color or theme is baked in. Two things happen synchronously
+       before first paint so no tenant ever flashes another tenant's look:
+
+         1. <html> gets `branding-pending` → all content containers are hidden
+            (visibility:hidden) until applyBrand() writes this tenant's data.
+         2. A minimal per-tenant theme hint (brand color + body theme class) is
+            applied from THEME_HINTS so the chrome (FAB, header) paints in the
+            right color immediately — never the wrong tenant's color.
+
+       THEME_HINTS is a tiny first-paint cache (color + cssClass). The full,
+       authoritative branding still comes from GET /branding (applyBrand). A
+       tenant absent from THEME_HINTS just paints the neutral default color and
+       reveals content once /branding lands — still no cross-tenant flash.
+       ──────────────────────────────────────────────────────────────────────── -->
   <script>
     (() => {
+      "use strict";
+      // First-paint theme hints. Keys = tenant slug. color → --vox-brand vars,
+      // cssClass → body class for layout variants. Keep MINIMAL; authoritative
+      // branding arrives via /branding. (Adding a tenant here is optional — it
+      // only sharpens the very first paint; correctness comes from /branding.)
+      const THEME_HINTS = {
+        prestaunion: { color: "#0083E0", cssClass: "" },
+        prestamype:  { color: "#00b369", cssClass: "tenant-prestamype" },
+      };
       try {
-        var t = new URLSearchParams(location.search).get("tenant");
-        if (t === "prestamype") document.body.classList.add("tenant-prestamype");
+        document.documentElement.classList.add("branding-pending");
+        const t = (new URLSearchParams(location.search).get("tenant") || "prestaunion")
+          .replace(/[^a-z0-9_-]/gi, "");
+        const hint = THEME_HINTS[t];
+        if (hint) {
+          const root = document.documentElement.style;
+          root.setProperty("--vox-brand", hint.color);
+          root.setProperty("--vox-brand-hover", hint.color);
+          if (hint.cssClass) {
+            // body may not exist yet at <head> parse time; defer the class add.
+            document.addEventListener("DOMContentLoaded", () => {
+              document.body.classList.add(hint.cssClass);
+            });
+            // If body already parsed (script moved), add immediately too.
+            if (document.body) document.body.classList.add(hint.cssClass);
+          }
+        }
       } catch (e) {}
     })();
   </script>
+</head>
+<body>
   <header>
     <div class="wrap header-inner">
-      <div class="wordmark" id="wordmark">Presta<span class="accent">Union</span></div>
+      <div class="wordmark" id="wordmark"></div>
       <span class="status-chip"><span class="dot"></span> Asistente <span id="agent-name">Ada</span> · en línea</span>
     </div>
   </header>
@@ -269,41 +318,27 @@
   <main class="wrap">
     <section class="hero">
       <div class="hero-copy">
-        <span class="kicker"><span class="dot"></span> <span id="kicker-name">Ada</span> responde al instante, las 24 horas</span>
-        <h1 id="hero-h1">Resuelve tu préstamo hablando con <span class="accent">Ada</span>.</h1>
-        <p class="lead" id="hero-lead">Consulta tu saldo, regulariza una cuota, presenta un reclamo o pide tu certificado de no adeudo. Atención clara y en tu idioma, sin letra chica.</p>
-        <!-- FOUC guard (contenido): seteá el lead de prestamype AQUÍ, justo tras
-             parsear el <p>, de forma SÍNCRONA (antes del primer paint). Así el
-             texto del hero de prestaunion nunca llega a verse. El kicker y la CTA
-             se ocultan por CSS (body.tenant-prestamype). applyBrand() post-fetch
-             es idempotente. -->
-        <script>
-          (() => {
-            try {
-              if (new URLSearchParams(location.search).get("tenant") === "prestamype") {
-                var l = document.getElementById("hero-lead");
-                if (l) l.textContent = "Elige un caso de prueba y conversa con Ada.";
-              }
-            } catch (e) {}
-          })();
-        </script>
+        <span class="kicker"><span class="dot"></span> <span id="kicker"></span></span>
+        <h1 id="hero-h1"></h1>
+        <p class="lead" id="hero-lead"></p>
         <div class="hero-cta">
           <a class="btn-primary" href="#acceso">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
             Probar la demo
           </a>
-          <span class="hero-note">Elige un cliente o identifícate por DNI.</span>
+          <span class="hero-note" id="hero-note"></span>
         </div>
       </div>
 
-      <!-- Product in action: CSS phone mockup with a real Ada conversation (no external image). -->
+      <!-- Product in action: CSS phone mockup with a real Ada conversation (no external image).
+           Generic demo conversation — not tenant-specific PII; agent name is set by applyBrand. -->
       <div class="device-stage" aria-hidden="true">
         <div class="phone">
           <div class="phone-screen">
             <div class="ph-head">
               <div class="ph-avatar">A</div>
               <div>
-                <div class="ph-name">Ada · PrestaUnion</div>
+                <div class="ph-name" id="ph-name">Ada</div>
                 <div class="ph-status"><span class="dot"></span> En línea ahora</div>
               </div>
             </div>
@@ -333,70 +368,35 @@
     </section>
 
     <h2 class="section-label" id="acceso">Ingresa a la demo como uno de estos clientes</h2>
-    <div class="cards" id="cards">
-      <a class="card" href="?ct=demo-juan">
-        <div class="ico">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21V7a2 2 0 012-2h14a2 2 0 012 2v14M3 21h18M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"/></svg>
-        </div>
-        <div class="who">Juan Pérez Rojas</div>
-        <div class="biz">Bodega Don Juan E.I.R.L.</div>
-        <span class="badge aldia">Al día</span>
-        <span class="go">Entrar como Juan <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
-      </a>
-      <a class="card" href="?ct=demo-carlos">
-        <div class="ico">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-5.2-5.2M8 11h6"/></svg>
-        </div>
-        <div class="who">Carlos Huamán Flores</div>
-        <div class="biz">Ferretería El Tornillo S.A.C.</div>
-        <span class="badge mora">En mora</span>
-        <span class="go">Entrar como Carlos <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
-      </a>
-      <a class="card" href="?ct=demo-maria">
-        <div class="ico">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        </div>
-        <div class="who">María Quispe Mamani</div>
-        <div class="biz">Textiles María E.I.R.L.</div>
-        <span class="badge libre">Sin deuda</span>
-        <span class="go">Entrar como María <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
-      </a>
-    </div>
+    <div class="cards" id="cards"></div>
 
     <div class="dni-note" id="dni-note">
       <div class="dni-note-title">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 9h3m-3 4h2M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2zm4-13a2 2 0 11-4 0 2 2 0 014 0zM7 16a3 3 0 016 0v.5H7V16z"/></svg>
         DNIs de prueba (identifícate por DNI en el chat)
       </div>
-      <p>Abre el chat sin entrar como un cliente y, cuando Ada te pida el DNI, escribe uno de estos:</p>
-      <ul class="dni-list" id="dni-list">
-        <li><b>41785236</b> · Juan Pérez Rojas (al día)</li>
-        <li><b>09823514</b> · Carlos Huamán Flores (en mora)</li>
-        <li><b>72514893</b> · María Quispe Mamani (sin deuda)</li>
-      </ul>
+      <p id="dni-hint"></p>
+      <ul class="dni-list" id="dni-list"></ul>
     </div>
 
-    <h2 class="section-label">Qué puede hacer Ada</h2>
-    <div class="features">
-      <div class="feat"><h3>Consulta de deuda</h3><p>Saldo, cuotas pagadas y pendientes, próximo vencimiento y estado del préstamo.</p></div>
-      <div class="feat"><h3>Libro de Reclamaciones</h3><p>Registra reclamos y quejas con folio y respuesta en 15 días hábiles (Indecopi).</p></div>
-      <div class="feat"><h3>Certificado de no adeudo</h3><p>Emite el certificado en PDF al instante cuando el préstamo está cancelado.</p></div>
-    </div>
+    <h2 class="section-label" id="features-label">Qué puede hacer Ada</h2>
+    <div class="features" id="features"></div>
   </main>
 
   <footer class="wrap" id="footer">
-    PrestaUnion · Demostración con datos ficticios. <span id="footer-powered">Powered by Onbotgo</span>.
+    <span id="footer-disclaimer">Demostración con datos ficticios. </span><span id="footer-powered">Powered by Onbotgo</span>.
   </footer>
 
-  <!-- Tenant-aware branding. Default tenant = "prestaunion" (Vox theme, unchanged).
-       ?tenant=<slug> fetches /branding and re-skins the page (color, logo, name,
-       hero, demo cards) without touching the static prestaunion markup above. -->
+  <!-- Tenant-aware branding — UNIFORM, no privileged default. Every tenant
+       (prestaunion included) fetches /branding and the page is filled from that
+       data: color, logo, name, hero copy, demo cards / DNI-first table, features.
+       The base HTML above is tenant-NEUTRAL (empty content containers). Default
+       tenant = "prestaunion" only for URL back-compat (?tenant omitted). -->
   <script>
     (() => {
       "use strict";
       const qs = new URLSearchParams(location.search);
       const TENANT = (qs.get("tenant") || "prestaunion").replace(/[^a-z0-9_-]/gi, "");
-      const CT = qs.get("ct");
 
       // Derive the API base from this page's own path (works under a proxy prefix).
       const API = (() => {
@@ -404,26 +404,18 @@
         return (location.origin + path).replace(/\/$/, "");
       })();
 
-      // prestaunion = the page's native look; no fetch, no override needed.
-      if (TENANT === "prestaunion") return;
-
       const $ = (id) => document.getElementById(id);
 
       function applyBrand(b) {
         const color = b.primary_color || "#0083E0";
         const root = document.documentElement.style;
 
-        // PrestamYpe gets a minimalist, prestamype.com-inspired layout: a CSS
-        // class toggles the airy single-column overrides + hides heavy blocks.
-        if (TENANT === "prestamype") {
-          // Layout/colour + hero content (kicker/CTA hidden via CSS, lead text set
-          // synchronously in <head>/inline before first paint) are already applied
-          // — no FOUC. This idempotent re-add covers the no-?tenant edge and keeps
-          // applyBrand self-contained for logo/cards/branding fino below.
-          document.body.classList.add("tenant-prestamype");
-        }
-        // The whole page reads brand color from these CSS vars. Map the tenant
-        // color onto fills + accents (hover/accent kept = primary for simplicity).
+        // PrestamYpe-style minimalist tenants opt out of the rich landing via
+        // show_demo_cards=false + a cases table. The layout class is also set as
+        // a first-paint hint (THEME_HINTS) so this is idempotent / FOUC-free.
+        if (TENANT === "prestamype") document.body.classList.add("tenant-prestamype");
+
+        // The whole page reads brand color from these CSS vars.
         root.setProperty("--vox-brand", color);
         root.setProperty("--vox-brand-hover", color);
         root.setProperty("--vox-brand-soft", _tint(color, 0.12));
@@ -439,49 +431,92 @@
         }
         const agentName = b.agent_name || "Ada";
         $("agent-name").textContent = agentName;
-        $("kicker-name").textContent = agentName;
+        if ($("ph-name")) $("ph-name").textContent = agentName;
 
-        if (b.hero_headline) {
-          $("hero-h1").textContent = b.hero_headline;
-        }
+        // Hero copy (all data-driven).
+        if ($("kicker")) $("kicker").textContent = b.kicker ? `${agentName} ${b.kicker}` : "";
+        $("hero-h1").textContent = b.hero_headline || "";
+        if ($("hero-lead")) $("hero-lead").textContent = b.hero_subline || "";
+        if ($("hero-note")) $("hero-note").textContent = b.hero_note || "";
+
+        // Features ("Qué puede hacer Ada"). Empty → hide the block + its label.
+        renderFeatures(b.features, agentName);
+
+        // Footer.
         $("footer-powered").textContent = b.footer || "Powered by Onbotgo";
-        $("footer").firstChild.textContent = `${b.name} · Demostración con datos ficticios. `;
+        $("footer-disclaimer").textContent = `${b.name} · Demostración con datos ficticios. `;
 
+        // ── Identification UI ──
         // Some tenants hide the "Ingresa como uno de estos clientes" cards and
         // rely on DNI-first identification in the chat (e.g. prestamype).
         if (b.show_demo_cards === false) {
           hideDemoCards();
-          // The /branding endpoint no longer exposes borrower PII (name/DNI),
-          // so we can't (and must not) render real DNIs here. The prestaunion-
-          // specific hardcoded DNI list is hidden and replaced with a generic
-          // instruction; demo DNIs are shared out-of-band with the demo owner.
-          neutralizeDniList();
+          // No-PII contract: /branding never carries borrower DNIs/names, so the
+          // landing must not render any. Show a neutral instruction instead.
+          neutralizeDniNote(b.name);
+          revealContent();
           return;
         }
 
-        // PrestamYpe: NO clickable pre-identified cards (no magic links). Show an
-        // informational TABLE of test cases — the user reads a DNI and TYPES it in
-        // the chat to identify (DNI-first gate). Synthetic data only.
+        // PrestamYpe: NO clickable pre-identified cards. Informational TABLE of
+        // test cases — the user reads a DNI and TYPES it in the chat (DNI-first).
         if (TENANT === "prestamype" && Array.isArray(b.demo_cases) && b.demo_cases.length) {
           renderCasesTable(b.demo_cases, agentName);
           const note = $("dni-note");
           if (note) note.style.display = "none";
           const heading = $("acceso");
           if (heading) heading.textContent = "Casos de prueba";
+          revealContent();
           return;
         }
 
-        // Other tenants: clickable demo account cards (pre-identified tokens).
+        // Default tenants: clickable demo account cards (pre-identified tokens).
+        renderDniNote(b);
         if (Array.isArray(b.demo_tokens) && b.demo_tokens.length) {
           renderCards(b.demo_tokens, agentName);
+        }
+        revealContent();
+      }
+
+      // Remove the anti-flash gate now this tenant's data is written.
+      function revealContent() {
+        document.documentElement.classList.remove("branding-pending");
+      }
+
+      // Render the "Qué puede hacer" feature grid from data. Empty → hide block.
+      function renderFeatures(features, agentName) {
+        const grid = $("features");
+        const label = $("features-label");
+        if (!grid) return;
+        if (!Array.isArray(features) || !features.length) {
+          grid.style.display = "none";
+          if (label) label.style.display = "none";
+          return;
+        }
+        if (label) label.textContent = `Qué puede hacer ${agentName}`;
+        grid.innerHTML = features.map((f) =>
+          `<div class="feat"><h3>${_esc(f.title || "")}</h3><p>${_esc(f.body || "")}</p></div>`
+        ).join("");
+      }
+
+      // DNI note: title is fixed; the intro line + sample list come from data.
+      // The branding endpoint does NOT carry borrower DNIs (PII), so the sample
+      // list stays generic — real demo DNIs are shared by the demo owner or read
+      // from the visible demo cards.
+      function renderDniNote(b) {
+        const hint = $("dni-hint");
+        if (hint) hint.textContent = b.dni_hint || "";
+        // No PII in /branding → no hardcoded DNI list. The clickable demo cards
+        // (rendered below) are the identification path; the list stays empty.
+        const list = $("dni-list");
+        if (list && !b.dni_hint) {
           const note = $("dni-note");
           if (note) note.style.display = "none";
         }
       }
 
       // Informational table of test cases for DNI-first tenants. NOT clickable:
-      // the user copies a DNI into the chat to identify. Columns: caso, nombre,
-      // DNI, estado/moneda. Reuses the #cards container (re-styled as a table).
+      // the user copies a DNI into the chat to identify.
       function renderCasesTable(cases, agentName) {
         const wrap = $("cards");
         if (!wrap) return;
@@ -489,10 +524,10 @@
         const rows = cases.map((c) => {
           const moneda = c.currency === "USD" ? "US$" : "S/";
           return `<tr>
-            <td class="c-casu">${c.casuistica || c.status_label || ""}</td>
-            <td class="c-name">${c.name || ""}</td>
-            <td class="c-dni"><code>${c.dni || ""}</code></td>
-            <td class="c-estado"><span class="badge ${_badgeClass(c.status)}">${c.status_label || ""}</span> · ${moneda}</td>
+            <td class="c-casu">${_esc(c.casuistica || c.status_label || "")}</td>
+            <td class="c-name">${_esc(c.name || "")}</td>
+            <td class="c-dni"><code>${_esc(c.dni || "")}</code></td>
+            <td class="c-estado"><span class="badge ${_badgeClass(c.status)}">${_esc(c.status_label || "")}</span> · ${moneda}</td>
           </tr>`;
         }).join("");
         wrap.innerHTML = `
@@ -500,11 +535,10 @@
             <thead><tr><th>Casuística</th><th>Cliente</th><th>DNI</th><th>Estado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
-          <p class="cases-hint">Abre el chat con ${agentName} y escribe uno de estos DNI para identificarte.</p>`;
+          <p class="cases-hint">Abre el chat con ${_esc(agentName)} y escribe uno de estos DNI para identificarte.</p>`;
       }
 
-      // Hide the demo-account cards + their section heading. The DNI note stays
-      // (it's the identification path when cards are off).
+      // Hide the demo-account cards + their section heading.
       function hideDemoCards() {
         const heading = $("acceso");
         const cards = $("cards");
@@ -512,15 +546,12 @@
         if (cards) cards.style.display = "none";
       }
 
-      // Replace the prestaunion-specific DNI note (title + sample-DNI list)
-      // with a single neutral instruction. The branding API no longer carries
-      // borrower DNIs/names (PII), so the public landing must not render any
-      // DNI — test DNIs are shared out-of-band by the demo owner.
-      function neutralizeDniList() {
+      // Replace the DNI note with a single neutral instruction (no PII rendered).
+      function neutralizeDniNote(name) {
         const note = $("dni-note");
         if (note) {
           note.innerHTML =
-            '<p class="dni-note-instruction"><b>Pídele al equipo de PrestamYpe un DNI de prueba y escríbelo en el chat cuando Ada te lo solicite.</b></p>';
+            `<p class="dni-note-instruction"><b>Pídele al equipo de ${_esc(name || "la empresa")} un DNI de prueba y escríbelo en el chat cuando Ada te lo solicite.</b></p>`;
         }
       }
 
@@ -541,27 +572,29 @@
           a.className = "card";
           a.href = `?tenant=${TENANT}&ct=${encodeURIComponent(t.token)}`;
           // No-PII contract: the branding endpoint sends only a casuística label
-          // (incl. a masked DNI hint) + status + currency — never the name. The
-          // card headline IS the casuística so each of the 5 demo cases is clear.
+          // + status + currency — never the name. The card headline IS the
+          // casuística so each demo case is clear.
           const parts = String(t.label || "").split("·").map((s) => s.trim());
           const casu = parts[0] || t.status_label || "Caso demo";
           const hint = parts.slice(1).join(" · ");
           a.innerHTML = `
             <div class="ico">${ico}</div>
-            <div class="who">${casu}</div>
-            <div class="biz">${hint || (t.currency === "USD" ? "Dólares (US$)" : "Soles (S/)")}</div>
-            <span class="badge ${_badgeClass(t.status)}">${t.status_label || casu}</span>
+            <div class="who">${_esc(casu)}</div>
+            <div class="biz">${_esc(hint || (t.currency === "USD" ? "Dólares (US$)" : "Soles (S/)"))}</div>
+            <span class="badge ${_badgeClass(t.status)}">${_esc(t.status_label || casu)}</span>
             <span class="go">Entrar como este caso ${arrow}</span>`;
           wrap.appendChild(a);
         });
       }
 
-      // Title-case a possibly ALL-CAPS fixture name.
-      function _title(s) {
-        return String(s || "").toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+      // Escape user/data-driven strings before injecting as HTML.
+      function _esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
       }
 
-      // Light mint tint of a hex color for soft backgrounds (icon chips, badges).
+      // Light tint of a hex color for soft backgrounds (icon chips, badges).
       function _tint(hex, alphaToWhite) {
         const m = /^#?([0-9a-f]{6})$/i.exec(hex);
         if (!m) return "#e7fff3";
@@ -573,8 +606,11 @@
 
       fetch(`${API}/api/v1/tenant/${TENANT}/branding`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((b) => { if (b) applyBrand(b); })
-        .catch((e) => console.error("[branding] fetch failed", e));
+        .then((b) => {
+          if (b) { applyBrand(b); }
+          else { revealContent(); }  // unknown tenant: still reveal neutral page
+        })
+        .catch((e) => { console.error("[branding] fetch failed", e); revealContent(); });
     })();
   </script>
 

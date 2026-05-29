@@ -67,6 +67,17 @@ def test_branding_prestamype_green_and_logo(client):
     assert tokens == {"demo-1", "demo-2", "demo-3", "demo-4", "demo-5"}
 
 
+def test_branding_prestamype_minimalist_content_stays_empty(client):
+    # PrestamYpe opts OUT of the rich landing: it omits kicker/hero_subline/
+    # features in its config so those blocks render empty/hidden. This guards
+    # that the data-driven refactor did NOT inject prestaunion-style content
+    # into prestamype (its minimalist green look must be unchanged).
+    b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
+    assert b["kicker"] == ""
+    assert b["hero_subline"] == ""
+    assert b["features"] == []
+
+
 def test_branding_demo_tokens_have_truthful_labels(client):
     b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
     by_token = {c["token"]: c for c in b["demo_tokens"]}
@@ -115,13 +126,22 @@ def test_branding_demo_tokens_carry_no_pii(client):
         assert set(t).issubset({"token", "label", "status", "status_label", "currency"})
 
 
-def test_branding_prestaunion_keeps_its_own_theme(client):
+def test_branding_prestaunion_is_data_driven(client):
+    # After the refactor, prestaunion is NO LONGER the hardcoded default: its
+    # look (Vox blue, name, hero, features) is served data-driven from config,
+    # exactly like every other tenant. primary_color is the REAL rendered blue
+    # (#0083E0) — previously the config carried an unused #f5c518 that never
+    # painted because the HTML was hardcoded prestaunion.
     b = client.get("/api/v1/tenant/prestaunion/branding").json()
     assert b["name"] == "PrestaUnion"
-    assert b["primary_color"] == "#f5c518"  # NOT prestamype green
+    assert b["primary_color"] == "#0083E0"  # Vox blue, NOT prestamype green
     assert b["footer"] == "Powered by Onbotgo"
     # prestaunion keeps its demo cards (default = shown).
     assert b["show_demo_cards"] is True
+    # Landing content is now data-driven (not baked in the HTML).
+    assert b["hero_headline"]
+    assert b["hero_subline"]
+    assert isinstance(b["features"], list) and len(b["features"]) == 3
 
 
 def test_branding_unknown_tenant_404(client):
