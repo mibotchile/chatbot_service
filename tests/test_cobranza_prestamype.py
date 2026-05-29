@@ -120,6 +120,81 @@ async def test_consultar_deuda_single_credit_has_no_multi_flags():
     assert "is_grupal" not in summary
 
 
+# ── Side panel: structured cards in the consultar_deuda response ───────────
+# The widget paints a contextual side panel from ui_actions["panel"], built by
+# build_ui_actions for the consultar_deuda tool result. Tenant-agnostic / core.
+
+
+async def test_consultar_deuda_exposes_bank_and_masked_cci():
+    from tools.cobranza import consultar_deuda
+
+    prof = debt_source.resolve_dni(LUIS, tenant_id=TENANT)
+    summary = await consultar_deuda(prof)
+    assert summary["banco"] == "INTERBANK"
+    # CCI is masked to its last 4 digits — the full 20-digit CCI is never exposed.
+    assert summary["cci_masked"] == "···7048"
+    assert prof["cci"] not in summary["cci_masked"]
+
+
+async def test_build_panel_single_credit():
+    from tools.cobranza import consultar_deuda
+    from core.response_builder import build_ui_actions
+
+    prof = debt_source.resolve_dni(LUIS, tenant_id=TENANT)  # al día, 1 crédito
+    summary = await consultar_deuda(prof)
+    actions = build_ui_actions([("consultar_deuda", summary)])
+    panel = actions["panel"]
+    assert panel["type"] == "debt"
+    assert panel["count"] == 1
+    card = panel["cards"][0]
+    assert card["loan_number"] == "P02137"
+    assert card["balance_formatted"] == "S/ 18,420.00"
+    assert card["next_due_date"] == "2026-06-18"
+    assert card["banco"] == "INTERBANK"
+    assert card["cci_masked"] == "···7048"
+    assert card["badge"]["kind"] == "aldia"
+
+
+async def test_build_panel_mora_badge_has_days():
+    from tools.cobranza import consultar_deuda
+    from core.response_builder import build_ui_actions
+
+    prof = debt_source.resolve_dni(SANDRA, tenant_id=TENANT)  # mora 97d
+    summary = await consultar_deuda(prof)
+    panel = build_ui_actions([("consultar_deuda", summary)])["panel"]
+    badge = panel["cards"][0]["badge"]
+    assert badge["kind"] == "mora"
+    assert "97 día" in badge["label"]
+
+
+async def test_build_panel_multi_credit_one_card_each():
+    from tools.cobranza import consultar_deuda
+    from core.response_builder import build_ui_actions
+
+    prof = debt_source.resolve_dni(LUCIA, tenant_id=TENANT)  # 2 créditos
+    summary = await consultar_deuda(prof)
+    panel = build_ui_actions([("consultar_deuda", summary)])["panel"]
+    assert panel["count"] == 2
+    loans = {c["loan_number"] for c in panel["cards"]}
+    assert loans == {"P05012", "P05119"}
+    badges = {c["badge"]["kind"] for c in panel["cards"]}
+    assert badges == {"aldia", "mora"}
+
+
+async def test_build_panel_grupal_attaches_codeudores():
+    from tools.cobranza import consultar_deuda
+    from core.response_builder import build_ui_actions
+
+    prof = debt_source.resolve_dni(ROSA, tenant_id=TENANT)  # crédito grupal
+    summary = await consultar_deuda(prof)
+    panel = build_ui_actions([("consultar_deuda", summary)])["panel"]
+    assert panel["count"] == 1
+    card = panel["cards"][0]
+    assert card["is_grupal"] is True
+    assert len(card["codeudores"]) == 2
+    assert all(g.get("borrower_name") for g in card["codeudores"])
+
+
 def test_prestaunion_still_uses_mock():
     # Backward-compat: prestaunion has no data_source → mock backend.
     prof = debt_source.resolve_token("demo-juan", tenant_id="prestaunion")

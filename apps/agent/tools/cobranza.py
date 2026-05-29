@@ -112,6 +112,9 @@ async def consultar_deuda(profile: dict) -> dict:
         "days_overdue": profile.get("days_overdue", 0),
         "installment_history": profile.get("installment_history", []),
         "has_debt": (profile.get("balance", 0.0) or 0.0) > 0,
+        # Bank + masked CCI for the side-panel card (never the full CCI).
+        "banco": profile.get("banco"),
+        "cci_masked": _mask_cci(profile.get("cci")),
     }
 
     # PrestamYpe casuística: un mismo DNI puede tener VARIOS créditos vigentes.
@@ -157,7 +160,17 @@ def _credit_brief(c: dict, sym: str) -> dict:
         "next_due_date": c.get("next_due_date"),
         "next_installment_amount": c.get("next_installment_amount"),
         "next_installment_formatted": _fmt(c.get("next_installment_amount", 0.0) or 0.0, sym),
+        "banco": c.get("banco"),
+        "cci_masked": _mask_cci(c.get("cci")),
     }
+
+
+def _mask_cci(cci: str | None) -> str:
+    """Mask a CCI to its last 4 digits (···7048) — never expose the full 20."""
+    d = re.sub(r"\D", "", str(cci or ""))
+    if len(d) < 4:
+        return ""
+    return f"···{d[-4:]}"
 
 
 def _mask_dni(dni: str) -> str:

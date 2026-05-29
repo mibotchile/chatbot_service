@@ -260,64 +260,119 @@
   #pu-widget-root .pu-action:hover { filter: brightness(0.97); }
   #pu-widget-root .pu-action svg { width: 16px; height: 16px; }
 
-  /* Overlay + panel sit ABSOLUTE inside the widget root (not the page). */
-  #pu-widget-root .pu-modal-ov { position: absolute; inset: 0; background: rgba(10,13,18,0.32);
-    display: none; align-items: flex-end; z-index: 10; }
-  #pu-widget-root .pu-modal-ov.show { display: flex; }
-  #pu-widget-root .pu-modal { width: 100%; background: #fff; border-radius: 12px 12px 0 0;
-    padding: 16px; box-shadow: 0 -8px 30px -10px rgba(10,13,18,0.25); max-height: 92%; overflow-y: auto;
-    animation: pu-slideup .22s ease-out; }
-  @keyframes pu-slideup { from { transform: translateY(24px); opacity: .6; } to { transform: translateY(0); opacity: 1; } }
-  #pu-widget-root .pu-modal h3 { margin: 0 0 2px; font-size: 16px; font-weight: 800; color: #181d27; }
-  #pu-widget-root .pu-modal .pu-msub { margin: 0 0 14px; font-size: 12.5px; color: #535862; line-height: 1.4; }
-  #pu-widget-root .pu-field { margin-bottom: 11px; }
-  #pu-widget-root .pu-field label { display: block; font-size: 12px; font-weight: 600; color: #414651; margin-bottom: 5px; }
-  #pu-widget-root .pu-field input {
+  /* ── Side panel (contextual): debt cards + comprobante upload ──
+     Sits to the LEFT of the floating chat, same vertical band. It's its OWN
+     fixed element inside the shadow root (a sibling of the chat panel), so the
+     chat layout is untouched. Hidden until content is shown; collapsible. */
+  #pu-sidepanel {
+    --pu-brand: #0083E0; --pu-brand-hover: #0070bf; --pu-brand-soft: #C5E4F9;
+    position: fixed; bottom: 96px; right: calc(24px + 384px + 12px); z-index: 2147482999;
+    width: 360px; max-width: calc(100vw - 32px); height: 600px; max-height: calc(100vh - 120px);
+    background: #ffffff; border: 1px solid #D7D8DB; border-radius: 18px;
+    display: flex; flex-direction: column; overflow: hidden; color: #1A1A1C;
+    box-shadow: 0 24px 60px -12px rgba(19,53,77,0.22), 0 6px 18px rgba(19,53,77,0.08);
+    opacity: 0; transform: translateX(16px) scale(0.98); pointer-events: none;
+    transition: opacity .25s ease, transform .25s ease;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  #pu-sidepanel, #pu-sidepanel * { box-sizing: border-box; }
+  #pu-sidepanel.pu-open { opacity: 1; transform: translateX(0) scale(1); pointer-events: auto; }
+  #pu-sidepanel .pu-sp-head {
+    display: flex; align-items: center; gap: 10px; padding: 13px 14px; flex-shrink: 0;
+    background: var(--pu-brand-hover); color: #fff; }
+  #pu-sidepanel .pu-sp-title { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; }
+  #pu-sidepanel .pu-sp-close {
+    position: relative; width: 30px; height: 30px; border-radius: 8px; border: 0; cursor: pointer;
+    background: rgba(255,255,255,0.12); color: #fff; display: flex; align-items: center; justify-content: center; transition: background .15s; }
+  #pu-sidepanel .pu-sp-close::before { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 44px; height: 44px; }
+  #pu-sidepanel .pu-sp-close:hover { background: rgba(255,255,255,0.26); }
+  #pu-sidepanel .pu-sp-close svg { width: 15px; height: 15px; }
+  #pu-sidepanel .pu-sp-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  #pu-sidepanel .pu-sp-body::-webkit-scrollbar { width: 6px; }
+  #pu-sidepanel .pu-sp-body::-webkit-scrollbar-thumb { background: #D7D8DB; border-radius: 3px; }
+
+  /* Debt cards */
+  #pu-sidepanel .pu-card { border: 1px solid #e4e7ec; border-radius: 14px; padding: 14px; background: #fff;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04); animation: pu-fade .35s ease-out; }
+  #pu-sidepanel .pu-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  #pu-sidepanel .pu-card-loan { font-size: 11px; font-weight: 700; color: #667085; letter-spacing: .02em; }
+  #pu-sidepanel .pu-card-bank { font-size: 12px; color: #98a2b3; margin-top: 2px; }
+  #pu-sidepanel .pu-card-badge { font-size: 10.5px; font-weight: 700; padding: 4px 9px; border-radius: 9999px; white-space: nowrap; }
+  #pu-sidepanel .pu-card-badge.aldia { background: rgba(16,185,129,0.12); color: #059669; }
+  #pu-sidepanel .pu-card-badge.mora  { background: rgba(239,68,68,0.12);  color: #dc2626; }
+  #pu-sidepanel .pu-card-badge.libre { background: var(--pu-brand-soft); color: var(--pu-brand-hover); }
+  #pu-sidepanel .pu-card-balance-lbl { font-size: 11px; color: #667085; }
+  #pu-sidepanel .pu-card-balance { font-size: 26px; font-weight: 800; color: #181d27; line-height: 1.15; margin-top: 1px; }
+  #pu-sidepanel .pu-card-rows { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #f2f4f7; padding-top: 11px; }
+  #pu-sidepanel .pu-card-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+  #pu-sidepanel .pu-card-row .k { color: #667085; }
+  #pu-sidepanel .pu-card-row .v { font-weight: 700; color: #1a1a1c; text-align: right; }
+  #pu-sidepanel .pu-card-grupal { margin-top: 11px; padding-top: 10px; border-top: 1px solid #f2f4f7; }
+  #pu-sidepanel .pu-card-grupal .gtitle { font-size: 11px; font-weight: 700; color: var(--pu-brand-hover); margin-bottom: 5px; }
+  #pu-sidepanel .pu-card-grupal .gco { font-size: 12px; color: #475467; display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  #pu-sidepanel .pu-card-grupal .gco .grol { color: #98a2b3; font-size: 11px; }
+
+  /* Comprobante form intro line (now hosted in the side panel). */
+  #pu-sidepanel .pu-msub { margin: 0 0 14px; font-size: 12.5px; color: #535862; line-height: 1.4; }
+  /* Comprobante form styles are SHARED by the chat root and the side panel
+     (the form was moved out of the modal into the side panel). */
+  #pu-widget-root .pu-field, #pu-sidepanel .pu-field { margin-bottom: 11px; }
+  #pu-widget-root .pu-field label, #pu-sidepanel .pu-field label { display: block; font-size: 12px; font-weight: 600; color: #414651; margin-bottom: 5px; }
+  #pu-widget-root .pu-field input, #pu-sidepanel .pu-field input {
     width: 100%; font-size: 14px; color: #181d27; padding: 10px 12px; min-height: 44px;
     border: 1px solid #d5d7da; border-radius: 8px; background: #fff; outline: 0; transition: border-color .15s, box-shadow .15s; }
-  #pu-widget-root .pu-field input:focus { border-color: var(--pu-brand); box-shadow: 0 0 0 3px var(--pu-brand-soft); }
-  #pu-widget-root .pu-field input[type=file] { padding: 9px 12px; font-size: 12.5px; }
-  #pu-widget-root .pu-field .pu-row2 { display: flex; gap: 10px; }
-  #pu-widget-root .pu-field .pu-row2 > div { flex: 1; }
-  #pu-widget-root .pu-modal-acts { display: flex; gap: 8px; margin-top: 6px; }
-  #pu-widget-root .pu-btn-primary { flex: 1; min-height: 44px; border: 0; border-radius: 8px; cursor: pointer;
+  #pu-widget-root .pu-field input:focus, #pu-sidepanel .pu-field input:focus { border-color: var(--pu-brand); box-shadow: 0 0 0 3px var(--pu-brand-soft); }
+  #pu-widget-root .pu-field input[type=file], #pu-sidepanel .pu-field input[type=file] { padding: 9px 12px; font-size: 12.5px; }
+  #pu-widget-root .pu-field .pu-row2, #pu-sidepanel .pu-field .pu-row2 { display: flex; gap: 10px; }
+  #pu-widget-root .pu-field .pu-row2 > div, #pu-sidepanel .pu-field .pu-row2 > div { flex: 1; }
+  #pu-widget-root .pu-modal-acts, #pu-sidepanel .pu-modal-acts { display: flex; gap: 8px; margin-top: 6px; }
+  #pu-widget-root .pu-btn-primary, #pu-sidepanel .pu-btn-primary { flex: 1; min-height: 44px; border: 0; border-radius: 8px; cursor: pointer;
     background: var(--pu-brand); color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 1px 2px 0 rgba(10,13,18,.05); transition: filter .15s; }
-  #pu-widget-root .pu-btn-primary:hover { filter: brightness(0.96); }
-  #pu-widget-root .pu-btn-primary:disabled { opacity: .55; cursor: not-allowed; }
-  #pu-widget-root .pu-btn-ghost { min-height: 44px; padding: 0 16px; border: 1px solid #d5d7da; border-radius: 8px;
+  #pu-widget-root .pu-btn-primary:hover, #pu-sidepanel .pu-btn-primary:hover { filter: brightness(0.96); }
+  #pu-widget-root .pu-btn-primary:disabled, #pu-sidepanel .pu-btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+  #pu-widget-root .pu-btn-ghost, #pu-sidepanel .pu-btn-ghost { min-height: 44px; padding: 0 16px; border: 1px solid #d5d7da; border-radius: 8px;
     background: #fff; color: #414651; font-size: 14px; font-weight: 600; cursor: pointer; }
-  #pu-widget-root .pu-cb-err { font-size: 12px; color: #d92d20; margin: 4px 0 8px; min-height: 0; }
+  #pu-widget-root .pu-cb-err, #pu-sidepanel .pu-cb-err { font-size: 12px; color: #d92d20; margin: 4px 0 8px; min-height: 0; }
   /* Inline per-field format hints (turn red on invalid, green when valid). */
-  #pu-widget-root .pu-cb-fieldhint { font-size: 11.5px; margin-top: 4px; min-height: 0; color: #535862; }
-  #pu-widget-root .pu-cb-fieldhint.err { color: #d92d20; }
-  #pu-widget-root .pu-cb-fieldhint.ok  { color: #079455; }
-  #pu-widget-root .pu-field input.pu-invalid { border-color: #f04438; box-shadow: 0 0 0 3px rgba(240,68,56,.12); }
-  /* Inline result chips (success / warn / error) shown inside the panel. */
-  #pu-widget-root .pu-cb-result { font-size: 13px; line-height: 1.5; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
-  #pu-widget-root .pu-cb-result.ok   { background: #ecfff6; border: 1px solid #b3ffdf; color: #079455; }
-  #pu-widget-root .pu-cb-result.warn { background: #fffaeb; border: 1px solid #fdb022; color: #b54708; }
-  #pu-widget-root .pu-cb-result.err  { background: #fef3f2; border: 1px solid #f04438; color: #d92d20; }
-  #pu-widget-root .pu-cb-result strong { font-weight: 800; }
+  #pu-widget-root .pu-cb-fieldhint, #pu-sidepanel .pu-cb-fieldhint { font-size: 11.5px; margin-top: 4px; min-height: 0; color: #535862; }
+  #pu-widget-root .pu-cb-fieldhint.err, #pu-sidepanel .pu-cb-fieldhint.err { color: #d92d20; }
+  #pu-widget-root .pu-cb-fieldhint.ok, #pu-sidepanel .pu-cb-fieldhint.ok  { color: #079455; }
+  #pu-widget-root .pu-field input.pu-invalid, #pu-sidepanel .pu-field input.pu-invalid { border-color: #f04438; box-shadow: 0 0 0 3px rgba(240,68,56,.12); }
+  /* Inline result chips (success / warn / error) shown inside the form. */
+  #pu-widget-root .pu-cb-result, #pu-sidepanel .pu-cb-result { font-size: 13px; line-height: 1.5; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+  #pu-widget-root .pu-cb-result.ok, #pu-sidepanel .pu-cb-result.ok   { background: #ecfff6; border: 1px solid #b3ffdf; color: #079455; }
+  #pu-widget-root .pu-cb-result.warn, #pu-sidepanel .pu-cb-result.warn { background: #fffaeb; border: 1px solid #fdb022; color: #b54708; }
+  #pu-widget-root .pu-cb-result.err, #pu-sidepanel .pu-cb-result.err  { background: #fef3f2; border: 1px solid #f04438; color: #d92d20; }
+  #pu-widget-root .pu-cb-result strong, #pu-sidepanel .pu-cb-result strong { font-weight: 800; }
   /* Account-type selector (cuenta / CCI). */
-  #pu-widget-root .pu-cb-segch { display: flex; flex-direction: column; gap: 6px; }
-  #pu-widget-root .pu-cb-seg { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid #d5d7da; border-radius: 8px;
+  #pu-widget-root .pu-cb-segch, #pu-sidepanel .pu-cb-segch { display: flex; flex-direction: column; gap: 6px; }
+  #pu-widget-root .pu-cb-seg, #pu-sidepanel .pu-cb-seg { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid #d5d7da; border-radius: 8px;
     cursor: pointer; font-size: 13px; color: #414651; font-weight: 600; transition: border-color .15s, background .15s; }
-  #pu-widget-root .pu-cb-seg:hover { border-color: var(--pu-brand-hover); }
-  #pu-widget-root .pu-cb-seg input { width: 16px; height: 16px; min-height: 0; accent-color: var(--pu-brand); margin: 0; flex: 0 0 auto; }
-  #pu-widget-root .pu-cb-seg:has(input:checked) { border-color: var(--pu-brand); background: var(--pu-brand-soft); color: var(--pu-brand-hover); }
+  #pu-widget-root .pu-cb-seg:hover, #pu-sidepanel .pu-cb-seg:hover { border-color: var(--pu-brand-hover); }
+  #pu-widget-root .pu-cb-seg input, #pu-sidepanel .pu-cb-seg input { width: 16px; height: 16px; min-height: 0; accent-color: var(--pu-brand); margin: 0; flex: 0 0 auto; }
+  #pu-widget-root .pu-cb-seg:has(input:checked), #pu-sidepanel .pu-cb-seg:has(input:checked) { border-color: var(--pu-brand); background: var(--pu-brand-soft); color: var(--pu-brand-hover); }
   /* Helper + example. */
-  #pu-widget-root .pu-cb-help { font-size: 11.5px; color: #535862; margin-top: 5px; line-height: 1.4; }
-  #pu-widget-root .pu-cb-help b { color: #181d27; font-weight: 700; }
-  #pu-widget-root .pu-cb-egtoggle { margin-top: 7px; background: none; border: 0; padding: 0; cursor: pointer;
+  #pu-widget-root .pu-cb-help, #pu-sidepanel .pu-cb-help { font-size: 11.5px; color: #535862; margin-top: 5px; line-height: 1.4; }
+  #pu-widget-root .pu-cb-help b, #pu-sidepanel .pu-cb-help b { color: #181d27; font-weight: 700; }
+  #pu-widget-root .pu-cb-egtoggle, #pu-sidepanel .pu-cb-egtoggle { margin-top: 7px; background: none; border: 0; padding: 0; cursor: pointer;
     font-size: 12px; font-weight: 700; color: var(--pu-brand-hover); text-decoration: underline; }
-  #pu-widget-root .pu-cb-egfig { margin: 9px 0 0; padding: 8px; border: 1px solid #eef0f3; border-radius: 10px; background: #fbfdfc; }
-  #pu-widget-root .pu-cb-egcap { font-size: 10.5px; color: #667085; margin-top: 6px; line-height: 1.4; }
-  #pu-widget-root .pu-cb-egcap b { color: var(--pu-brand-hover); font-weight: 700; }
+  #pu-widget-root .pu-cb-egfig, #pu-sidepanel .pu-cb-egfig { margin: 9px 0 0; padding: 8px; border: 1px solid #eef0f3; border-radius: 10px; background: #fbfdfc; }
+  #pu-widget-root .pu-cb-egcap, #pu-sidepanel .pu-cb-egcap { font-size: 10.5px; color: #667085; margin-top: 6px; line-height: 1.4; }
+  #pu-widget-root .pu-cb-egcap b, #pu-sidepanel .pu-cb-egcap b { color: var(--pu-brand-hover); font-weight: 700; }
 
-  /* Mobile: near fullscreen */
+  /* ── Responsive: tablet — side panel can't fit left of the chat. Dock it
+     to the same right edge, stacked ABOVE the chat (so both are reachable). */
+  @media (max-width: 900px) {
+    #pu-sidepanel { right: 24px; bottom: calc(96px + 600px + 12px);
+      bottom: min(calc(96px + 600px + 12px), calc(100vh - 280px)); height: auto; max-height: 46vh; }
+  }
+  /* Mobile: chat + side panel both near-fullscreen overlays. The side panel
+     covers the chat (full-width) and its close button returns to the chat. */
   @media (max-width: 480px) {
     #pu-widget-root { right: 0; bottom: 0; width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 16px 16px 0 0; border-bottom: 0; }
     #pu-fab { right: 16px; bottom: 16px; }
+    #pu-sidepanel { right: 0; left: 0; bottom: 0; top: 0; width: 100vw; max-width: 100vw;
+      height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; z-index: 2147483001; }
   }
   `;
 
@@ -359,7 +414,64 @@
     download: '<svg class="pu-dl-ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>',
     alert: '<svg class="pu-sys-ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.3 3.86l-8.1 14A1 1 0 003 19.5h18a1 1 0 00.86-1.5l-8.1-14a1 1 0 00-1.72 0z"/></svg>',
     upload: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>',
+    close2: '<svg fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>',
   };
+
+  // Comprobante upload form (lives in the side panel, NOT a modal). Same fields,
+  // same ids, same validation as before — only the host container changed.
+  // Built lazily by a function (not a const) so it can reference
+  // VOUCHER_EXAMPLE_SVG, which is declared further down (avoids a TDZ error).
+  const comprobanteFormHtml = () => `
+    <p class="pu-msub">Sube tu constancia de transferencia y dinos a qué cuenta pagaste. La clasificamos al instante; queda en revisión.</p>
+    <div class="pu-cb-result" id="pu-cb-result" style="display:none;"></div>
+    <form id="pu-cb-form">
+      <div class="pu-field">
+        <label for="pu-cb-file">Imagen o PDF del comprobante</label>
+        <input type="file" id="pu-cb-file" accept="image/jpeg,image/png,application/pdf" required />
+      </div>
+      <div class="pu-field">
+        <label id="pu-cb-acct-lbl">¿Qué dato de la cuenta destino vas a ingresar?</label>
+        <div class="pu-cb-segch" role="radiogroup" aria-labelledby="pu-cb-acct-lbl">
+          <label class="pu-cb-seg">
+            <input type="radio" name="pu-cb-acct" value="cuenta" checked />
+            <span>Número de cuenta</span>
+          </label>
+          <label class="pu-cb-seg">
+            <input type="radio" name="pu-cb-acct" value="cci" />
+            <span>Código de Cuenta Interbancario (CCI)</span>
+          </label>
+        </div>
+      </div>
+      <div class="pu-field">
+        <label for="pu-cb-cci" id="pu-cb-cci-lbl">Número de cuenta destino</label>
+        <input type="text" id="pu-cb-cci" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="Ej. 1320268376" required aria-describedby="pu-cb-cci-hint" />
+        <div class="pu-cb-help" id="pu-cb-cci-help">Es la cuenta del <b>destinatario del depósito</b> (a quién le pagaste / PrestamYpe), no tu propia cuenta.</div>
+        <div class="pu-cb-fieldhint" id="pu-cb-cci-hint"></div>
+        <button type="button" class="pu-cb-egtoggle" id="pu-cb-eg-toggle" aria-expanded="false" aria-controls="pu-cb-eg">Ver ejemplo de voucher</button>
+        <div class="pu-cb-eg" id="pu-cb-eg" hidden>${VOUCHER_EXAMPLE_SVG}</div>
+      </div>
+      <div class="pu-field">
+        <div class="pu-row2">
+          <div>
+            <label for="pu-cb-monto" id="pu-cb-monto-lbl">Monto</label>
+            <input type="number" id="pu-cb-monto" inputmode="decimal" step="0.01" min="0.01" placeholder="0.00" required />
+          </div>
+          <div>
+            <label for="pu-cb-op">Nº de operación</label>
+            <input type="text" id="pu-cb-op" inputmode="text" autocomplete="off" maxlength="30" placeholder="Ej. 0012345" required />
+          </div>
+        </div>
+      </div>
+      <div class="pu-field">
+        <label for="pu-cb-fecha">Fecha de pago (opcional)</label>
+        <input type="date" id="pu-cb-fecha" />
+      </div>
+      <div class="pu-cb-err" id="pu-cb-err"></div>
+      <div class="pu-modal-acts">
+        <button type="button" class="pu-btn-ghost" id="pu-cb-cancel">Cancelar</button>
+        <button type="submit" class="pu-btn-primary" id="pu-cb-submit">Enviar comprobante</button>
+      </div>
+    </form>`;
 
   // Illustrative voucher mockup (FICTITIOUS data) shown via "Ver ejemplo". It
   // points to where the "Número de cuenta" and the "CCI" appear on a typical
@@ -403,6 +515,10 @@
   let verifiedDni = null;
 
   let fab, root, $messages, $form, $input, $send;
+  // Side panel (debt cards / comprobante form) + its body/title nodes.
+  let sidePanel, $spBody, $spTitle;
+  // What the side panel currently shows: null | "debt" | "comprobante".
+  let spMode = null;
 
   function build() {
     // FAB
@@ -441,63 +557,25 @@
           <button type="submit" class="pu-sendbtn" id="pu-send" aria-label="Enviar">${ICONS.send}</button>
         </form>
         <div class="pu-footer">Powered by <b>Onbotgo</b> · demo con datos ficticios</div>
-      </div>
-      <div class="pu-modal-ov" id="pu-modal-ov">
-        <div class="pu-modal" role="dialog" aria-modal="true" aria-label="Subir comprobante de pago">
-          <h3>Subir comprobante de pago</h3>
-          <p class="pu-msub">Sube tu constancia de transferencia y dinos a qué cuenta pagaste. La clasificamos al instante; queda en revisión.</p>
-          <div class="pu-cb-result" id="pu-cb-result" style="display:none;"></div>
-          <form id="pu-cb-form">
-            <div class="pu-field">
-              <label for="pu-cb-file">Imagen o PDF del comprobante</label>
-              <input type="file" id="pu-cb-file" accept="image/jpeg,image/png,application/pdf" required />
-            </div>
-            <div class="pu-field">
-              <label id="pu-cb-acct-lbl">¿Qué dato de la cuenta destino vas a ingresar?</label>
-              <div class="pu-cb-segch" role="radiogroup" aria-labelledby="pu-cb-acct-lbl">
-                <label class="pu-cb-seg">
-                  <input type="radio" name="pu-cb-acct" value="cuenta" checked />
-                  <span>Número de cuenta</span>
-                </label>
-                <label class="pu-cb-seg">
-                  <input type="radio" name="pu-cb-acct" value="cci" />
-                  <span>Código de Cuenta Interbancario (CCI)</span>
-                </label>
-              </div>
-            </div>
-            <div class="pu-field">
-              <label for="pu-cb-cci" id="pu-cb-cci-lbl">Número de cuenta destino</label>
-              <input type="text" id="pu-cb-cci" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="Ej. 1320268376" required aria-describedby="pu-cb-cci-hint" />
-              <div class="pu-cb-help" id="pu-cb-cci-help">Es la cuenta del <b>destinatario del depósito</b> (a quién le pagaste / PrestamYpe), no tu propia cuenta.</div>
-              <div class="pu-cb-fieldhint" id="pu-cb-cci-hint"></div>
-              <button type="button" class="pu-cb-egtoggle" id="pu-cb-eg-toggle" aria-expanded="false" aria-controls="pu-cb-eg">Ver ejemplo de voucher</button>
-              <div class="pu-cb-eg" id="pu-cb-eg" hidden>${VOUCHER_EXAMPLE_SVG}</div>
-            </div>
-            <div class="pu-field">
-              <div class="pu-row2">
-                <div>
-                  <label for="pu-cb-monto" id="pu-cb-monto-lbl">Monto</label>
-                  <input type="number" id="pu-cb-monto" inputmode="decimal" step="0.01" min="0.01" placeholder="0.00" required />
-                </div>
-                <div>
-                  <label for="pu-cb-op">Nº de operación</label>
-                  <input type="text" id="pu-cb-op" inputmode="text" autocomplete="off" maxlength="30" placeholder="Ej. 0012345" required />
-                </div>
-              </div>
-            </div>
-            <div class="pu-field">
-              <label for="pu-cb-fecha">Fecha de pago (opcional)</label>
-              <input type="date" id="pu-cb-fecha" />
-            </div>
-            <div class="pu-cb-err" id="pu-cb-err"></div>
-            <div class="pu-modal-acts">
-              <button type="button" class="pu-btn-ghost" id="pu-cb-cancel">Cancelar</button>
-              <button type="submit" class="pu-btn-primary" id="pu-cb-submit">Enviar comprobante</button>
-            </div>
-          </form>
-        </div>
       </div>`;
     shadow.appendChild(root);
+
+    // ── Side panel (contextual): sibling of the chat, NOT a child of the chat
+    // root. Hosts the debt cards OR the comprobante form (moved out of a modal).
+    sidePanel = document.createElement("div");
+    sidePanel.id = "pu-sidepanel";
+    sidePanel.setAttribute("role", "complementary");
+    sidePanel.setAttribute("aria-label", "Panel de información");
+    sidePanel.innerHTML = `
+      <div class="pu-sp-head">
+        <div class="pu-sp-title" id="pu-sp-title">Tu crédito</div>
+        <button type="button" class="pu-sp-close" id="pu-sp-close" aria-label="Cerrar panel">${ICONS.close2}</button>
+      </div>
+      <div class="pu-sp-body" id="pu-sp-body"></div>`;
+    shadow.appendChild(sidePanel);
+    sidePanel.querySelector("#pu-sp-close").addEventListener("click", closeSidePanel);
+    $spBody = sidePanel.querySelector("#pu-sp-body");
+    $spTitle = sidePanel.querySelector("#pu-sp-title");
 
     $messages = root.querySelector("#pu-messages");
     $form = root.querySelector("#pu-form");
@@ -507,20 +585,6 @@
     root.querySelector("#pu-min").addEventListener("click", () => setOpen(false));
     root.querySelector("#pu-reset").addEventListener("click", requestReset);
     root.querySelector("#pu-comprobante-btn").addEventListener("click", openComprobante);
-    root.querySelector("#pu-cb-cancel").addEventListener("click", closeComprobante);
-    root.querySelector("#pu-cb-form").addEventListener("submit", (e) => { e.preventDefault(); submitComprobante(); });
-    // Live FORMAT validation: re-evaluate on every keystroke / file pick.
-    ["#pu-cb-cci", "#pu-cb-monto", "#pu-cb-op", "#pu-cb-file"].forEach((sel) => {
-      root.querySelector(sel).addEventListener("input", _cbValidate);
-      root.querySelector(sel).addEventListener("change", _cbValidate);
-    });
-    // Account-type selector: relabel the field + re-validate when it changes.
-    root.querySelectorAll('input[name="pu-cb-acct"]').forEach((r) => {
-      r.addEventListener("change", _cbOnAcctChange);
-    });
-    // "Ver ejemplo de voucher" toggle.
-    root.querySelector("#pu-cb-eg-toggle").addEventListener("click", _cbToggleExample);
-    root.querySelector("#pu-modal-ov").addEventListener("click", (e) => { if (e.target.id === "pu-modal-ov") closeComprobante(); });
     $form.addEventListener("submit", (e) => { e.preventDefault(); submit(); });
     $input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
     $input.addEventListener("input", () => {
@@ -528,7 +592,13 @@
       maybeDniHint();
     });
     // Esc closes the panel (keyboard-discoverable, not mouse-only).
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) setOpen(false); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        // Escape closes the side panel first (if open), then the chat.
+        if (sidePanel && sidePanel.classList.contains("pu-open")) { closeSidePanel(); return; }
+        if (open) setOpen(false);
+      }
+    });
 
     renderIdentity();
     renderWelcome();
@@ -679,6 +749,8 @@
     open = v;
     root.classList.toggle("pu-open", v);
     fab.classList.toggle("pu-open", v);
+    // Closing the chat also tucks away the side panel (they travel together).
+    if (!v && sidePanel) sidePanel.classList.remove("pu-open");
     if (v) { setTimeout(() => $input && $input.focus(), 250); scroll(); }
   }
   function toggle() { setOpen(!open); }
@@ -800,6 +872,10 @@
         ? msg.quick_replies.buttons.map((b) => b.label)
         : (Array.isArray(msg.suggested_replies) ? msg.suggested_replies : []);
       fillAgent(typingEl, msg.content || "Disculpa, no pude procesar eso.", chips, msg.document);
+      // Contextual side panel: debt cards (consultar_deuda → ui_actions.panel).
+      // The chat text still carries the curated message; the panel is additive.
+      const panel = msg.ui_actions && msg.ui_actions.panel;
+      if (panel && panel.type === "debt") renderDebtPanel(panel);
     } catch (e) {
       console.error("[pu-widget] send failed", e);
       showSystemError(typingEl, "Tuve un problema de conexión con el servicio. Inténtalo de nuevo.");
@@ -829,38 +905,114 @@
   // a one-line summary into the chat so the conversation reflects the action.
   let _cbBusy = false;
 
+  // Shadow-wide query: the comprobante form may live in the side panel, so its
+  // helpers search the whole shadow root (not just the chat root).
+  function $q(sel) { return shadow.querySelector(sel); }
+  function $qa(sel) { return shadow.querySelectorAll(sel); }
+
+  // ── Side panel open/close + content renderers ──
+  function openSidePanel(mode, title) {
+    spMode = mode;
+    if ($spTitle) $spTitle.textContent = title || ($spTitle.textContent);
+    sidePanel.classList.add("pu-open");
+  }
+
+  function closeSidePanel() {
+    sidePanel.classList.remove("pu-open");
+    spMode = null;
+  }
+
+  // Render the debt cards into the side panel from a `panel` payload (built by
+  // the backend `consultar_deuda` → ui_actions.panel). Pure presentation.
+  function renderDebtPanel(panel) {
+    if (!panel || !Array.isArray(panel.cards) || !panel.cards.length) return;
+    openSidePanel("debt", panel.title || "Tu crédito");
+    $spBody.innerHTML = panel.cards.map(_debtCardHtml).join("");
+    scrollSidePanel();
+  }
+
+  const _BADGE_CLS = { aldia: "aldia", mora: "mora", libre: "libre" };
+
+  function _debtCardHtml(c) {
+    const badge = c.badge || { kind: "aldia", label: "Al día" };
+    const badgeCls = _BADGE_CLS[badge.kind] || "aldia";
+    const bank = c.banco ? `<div class="pu-card-bank">${escapeHtml(c.banco)}</div>` : "";
+    const rows = [];
+    if (c.next_installment_formatted) {
+      rows.push(`<div class="pu-card-row"><span class="k">Próxima cuota</span><span class="v">${escapeHtml(c.next_installment_formatted)}</span></div>`);
+    }
+    if (c.next_due_date) {
+      rows.push(`<div class="pu-card-row"><span class="k">Vence</span><span class="v">${escapeHtml(c.next_due_date)}</span></div>`);
+    }
+    if (c.cci_masked) {
+      rows.push(`<div class="pu-card-row"><span class="k">CCI</span><span class="v">${escapeHtml(c.cci_masked)}</span></div>`);
+    }
+    let grupal = "";
+    if (c.is_grupal && Array.isArray(c.codeudores) && c.codeudores.length) {
+      const cos = c.codeudores.map((g) =>
+        `<div class="gco"><span>${escapeHtml(g.borrower_name || "")}</span><span class="grol">${escapeHtml(g.rol || "codeudor")}</span></div>`
+      ).join("");
+      grupal = `<div class="pu-card-grupal"><div class="gtitle">Crédito grupal · codeudores</div>${cos}</div>`;
+    }
+    return `
+      <div class="pu-card">
+        <div class="pu-card-top">
+          <div>
+            <div class="pu-card-loan">Crédito ${escapeHtml(c.loan_number || "")}</div>
+            ${bank}
+          </div>
+          <span class="pu-card-badge ${badgeCls}">${escapeHtml(badge.label || "")}</span>
+        </div>
+        <div class="pu-card-balance-lbl">Saldo pendiente</div>
+        <div class="pu-card-balance">${escapeHtml(c.balance_formatted || "")}</div>
+        ${rows.length ? `<div class="pu-card-rows">${rows.join("")}</div>` : ""}
+        ${grupal}
+      </div>`;
+  }
+
+  function scrollSidePanel() { requestAnimationFrame(() => { if ($spBody) $spBody.scrollTop = 0; }); }
+
+  // Comprobante upload — now rendered INTO the side panel (not a modal).
   function openComprobante() {
-    const ov = root.querySelector("#pu-modal-ov");
-    root.querySelector("#pu-cb-err").textContent = "";
-    const res = root.querySelector("#pu-cb-result");
-    res.style.display = "none"; res.textContent = "";
-    root.querySelector("#pu-cb-form").reset();
+    openSidePanel("comprobante", "Subir comprobante de pago");
+    $spBody.innerHTML = comprobanteFormHtml();
+    _wireComprobanteForm();
     // Collapse the example + sync the label to the (reset) default account type.
-    root.querySelector("#pu-cb-eg").setAttribute("hidden", "");
-    const egBtn = root.querySelector("#pu-cb-eg-toggle");
+    $q("#pu-cb-eg").setAttribute("hidden", "");
+    const egBtn = $q("#pu-cb-eg-toggle");
     egBtn.setAttribute("aria-expanded", "false");
     egBtn.textContent = "Ver ejemplo de voucher";
     _cbOnAcctChange();
-    ov.classList.add("show");
-    setTimeout(() => root.querySelector("#pu-cb-file").focus(), 80);
+    setTimeout(() => { const f = $q("#pu-cb-file"); if (f) f.focus(); }, 80);
   }
 
-  function closeComprobante() {
-    root.querySelector("#pu-modal-ov").classList.remove("show");
+  // Attach the form listeners after the comprobante form is injected.
+  function _wireComprobanteForm() {
+    $q("#pu-cb-cancel").addEventListener("click", closeComprobante);
+    $q("#pu-cb-form").addEventListener("submit", (e) => { e.preventDefault(); submitComprobante(); });
+    ["#pu-cb-cci", "#pu-cb-monto", "#pu-cb-op", "#pu-cb-file"].forEach((sel) => {
+      const el = $q(sel);
+      el.addEventListener("input", _cbValidate);
+      el.addEventListener("change", _cbValidate);
+    });
+    $qa('input[name="pu-cb-acct"]').forEach((r) => r.addEventListener("change", _cbOnAcctChange));
+    $q("#pu-cb-eg-toggle").addEventListener("click", _cbToggleExample);
   }
+
+  function closeComprobante() { closeSidePanel(); }
 
   // ── Account-type selector ──────────────────────────────────────────────
   // CCI = 20 dígitos exactos (entre bancos). Número de cuenta = más corto y
   // flexible (8–20 dígitos, mismo banco). El selector decide qué validar.
   function _cbAcctType() {
-    const r = root.querySelector('input[name="pu-cb-acct"]:checked');
+    const r = $q('input[name="pu-cb-acct"]:checked');
     return r ? r.value : "cuenta";
   }
 
   function _cbOnAcctChange() {
     const type = _cbAcctType();
-    const lbl = root.querySelector("#pu-cb-cci-lbl");
-    const inp = root.querySelector("#pu-cb-cci");
+    const lbl = $q("#pu-cb-cci-lbl");
+    const inp = $q("#pu-cb-cci");
     if (type === "cci") {
       lbl.textContent = "CCI destino (20 dígitos)";
       inp.placeholder = "00000000000000000000";
@@ -874,8 +1026,8 @@
   }
 
   function _cbToggleExample() {
-    const eg = root.querySelector("#pu-cb-eg");
-    const btn = root.querySelector("#pu-cb-eg-toggle");
+    const eg = $q("#pu-cb-eg");
+    const btn = $q("#pu-cb-eg-toggle");
     const show = eg.hasAttribute("hidden");
     if (show) { eg.removeAttribute("hidden"); } else { eg.setAttribute("hidden", ""); }
     btn.setAttribute("aria-expanded", String(show));
@@ -893,12 +1045,12 @@
 
   function _cbValidate() {
     const type = _cbAcctType();
-    const cciEl = root.querySelector("#pu-cb-cci");
-    const montoEl = root.querySelector("#pu-cb-monto");
-    const opEl = root.querySelector("#pu-cb-op");
-    const fileEl = root.querySelector("#pu-cb-file");
-    const submitBtn = root.querySelector("#pu-cb-submit");
-    const cciHint = root.querySelector("#pu-cb-cci-hint");
+    const cciEl = $q("#pu-cb-cci");
+    const montoEl = $q("#pu-cb-monto");
+    const opEl = $q("#pu-cb-op");
+    const fileEl = $q("#pu-cb-file");
+    const submitBtn = $q("#pu-cb-submit");
+    const cciHint = $q("#pu-cb-cci-hint");
 
     const cuenta = _cbDigits(cciEl, 20);
     const monto = Number(montoEl.value);
@@ -936,11 +1088,12 @@
   }
 
   function _cbError(text) {
-    root.querySelector("#pu-cb-err").textContent = text;
+    const e = $q("#pu-cb-err"); if (e) e.textContent = text;
   }
 
   function _cbShowResult(kind, html) {
-    const res = root.querySelector("#pu-cb-result");
+    const res = $q("#pu-cb-result");
+    if (!res) return;
     res.className = `pu-cb-result ${kind}`;
     res.innerHTML = html;
     res.style.display = "block";
@@ -953,11 +1106,11 @@
     _cbError("");
     if (!verifiedDni) { _cbError("Necesitamos identificarte antes de subir un comprobante."); return; }
 
-    const fileEl = root.querySelector("#pu-cb-file");
+    const fileEl = $q("#pu-cb-file");
     const acctType = _cbAcctType();
-    const cuenta = root.querySelector("#pu-cb-cci").value.replace(/\D/g, "");
-    const monto = root.querySelector("#pu-cb-monto").value;
-    const op = root.querySelector("#pu-cb-op").value.trim();
+    const cuenta = $q("#pu-cb-cci").value.replace(/\D/g, "");
+    const monto = $q("#pu-cb-monto").value;
+    const op = $q("#pu-cb-op").value.trim();
     const file = fileEl.files && fileEl.files[0];
 
     if (!file) { _cbError("Adjunta la imagen o PDF del comprobante."); return; }
@@ -981,7 +1134,7 @@
     fd.append("file", file);
 
     _cbBusy = true;
-    const submitBtn = root.querySelector("#pu-cb-submit");
+    const submitBtn = $q("#pu-cb-submit");
     submitBtn.disabled = true; submitBtn.textContent = "Enviando…";
     try {
       const r = await fetch(`${API}/api/v1/comprobante`, {
