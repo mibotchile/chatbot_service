@@ -399,7 +399,7 @@
               </div>
             </div>
             <div class="pu-field">
-              <label for="pu-cb-fecha">Fecha de operación (opcional)</label>
+              <label for="pu-cb-fecha">Fecha de pago (opcional)</label>
               <input type="date" id="pu-cb-fecha" />
             </div>
             <div class="pu-cb-err" id="pu-cb-err"></div>
