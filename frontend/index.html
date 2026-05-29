@@ -199,6 +199,45 @@
     body.tenant-prestamype .card .who { font-size: 15.5px; letter-spacing: -0.01em; }
     body.tenant-prestamype .card .biz { font-size: 12.5px; }
     body.tenant-prestamype footer { margin-top: clamp(48px,7vw,80px); border-top-color: #eef2f0; }
+
+    /* DNI-first test-case TABLE (no clickable cards). Clean, airy, minimal. */
+    body.tenant-prestamype #cards.cases-table {
+      display: block; grid-template-columns: none; max-width: 760px; margin: 0 auto; gap: 0;
+    }
+    body.tenant-prestamype table.cases {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      background: var(--vox-surface); border: 1px solid #e8ecea; border-radius: 14px;
+      overflow: hidden; box-shadow: 0 2px 12px -8px rgba(0,80,45,0.14); font-size: 14px;
+    }
+    body.tenant-prestamype table.cases thead th {
+      text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--vox-text-subtle); background: var(--vox-surface-2); padding: 12px 16px;
+      border-bottom: 1px solid #e8ecea;
+    }
+    body.tenant-prestamype table.cases td { padding: 13px 16px; border-bottom: 1px solid #f0f3f1; vertical-align: middle; }
+    body.tenant-prestamype table.cases tbody tr:last-child td { border-bottom: none; }
+    body.tenant-prestamype table.cases .c-casu { font-weight: 600; color: var(--vox-text); }
+    body.tenant-prestamype table.cases .c-name { color: var(--vox-text-muted); }
+    body.tenant-prestamype table.cases .c-dni code {
+      font-family: ui-monospace, monospace; font-size: 13.5px; font-weight: 600; color: var(--vox-brand-hover);
+      background: var(--vox-brand-soft); padding: 3px 8px; border-radius: 7px;
+    }
+    body.tenant-prestamype table.cases .c-estado { font-size: 12.5px; color: var(--vox-text-muted); white-space: nowrap; }
+    body.tenant-prestamype .cases-hint {
+      text-align: center; font-size: 13.5px; color: var(--vox-text-subtle); margin: 18px auto 0; max-width: 560px;
+    }
+    @media (max-width: 600px) {
+      body.tenant-prestamype table.cases { font-size: 13px; }
+      body.tenant-prestamype table.cases thead { display: none; }
+      body.tenant-prestamype table.cases tbody tr {
+        display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 12px 14px; border-bottom: 1px solid #f0f3f1;
+      }
+      body.tenant-prestamype table.cases td { display: block; padding: 2px 0; border: none; }
+      body.tenant-prestamype table.cases .c-casu { grid-column: 1; }
+      body.tenant-prestamype table.cases .c-estado { grid-column: 2; grid-row: 1; text-align: right; }
+      body.tenant-prestamype table.cases .c-name { grid-column: 1; }
+      body.tenant-prestamype table.cases .c-dni { grid-column: 2; grid-row: 2; text-align: right; }
+    }
   </style>
 </head>
 <body>
@@ -391,17 +430,48 @@
           return;
         }
 
-        // Demo account cards from the branding endpoint (truthful labels).
-        if (Array.isArray(b.demo_tokens) && b.demo_tokens.length) {
-          renderCards(b.demo_tokens, agentName);
-          // prestamype demo DNIs live in the fixture; hide the prestaunion-specific
-          // hardcoded DNI list to avoid showing the wrong numbers.
+        // PrestamYpe: NO clickable pre-identified cards (no magic links). Show an
+        // informational TABLE of test cases — the user reads a DNI and TYPES it in
+        // the chat to identify (DNI-first gate). Synthetic data only.
+        if (TENANT === "prestamype" && Array.isArray(b.demo_cases) && b.demo_cases.length) {
+          renderCasesTable(b.demo_cases, agentName);
           const note = $("dni-note");
           if (note) note.style.display = "none";
-          // Cleaner section label for the 5 casuística cards.
           const heading = $("acceso");
-          if (heading && TENANT === "prestamype") heading.textContent = "Casos de prueba";
+          if (heading) heading.textContent = "Casos de prueba";
+          return;
         }
+
+        // Other tenants: clickable demo account cards (pre-identified tokens).
+        if (Array.isArray(b.demo_tokens) && b.demo_tokens.length) {
+          renderCards(b.demo_tokens, agentName);
+          const note = $("dni-note");
+          if (note) note.style.display = "none";
+        }
+      }
+
+      // Informational table of test cases for DNI-first tenants. NOT clickable:
+      // the user copies a DNI into the chat to identify. Columns: caso, nombre,
+      // DNI, estado/moneda. Reuses the #cards container (re-styled as a table).
+      function renderCasesTable(cases, agentName) {
+        const wrap = $("cards");
+        if (!wrap) return;
+        wrap.classList.add("cases-table");
+        const rows = cases.map((c) => {
+          const moneda = c.currency === "USD" ? "US$" : "S/";
+          return `<tr>
+            <td class="c-casu">${c.casuistica || c.status_label || ""}</td>
+            <td class="c-name">${c.name || ""}</td>
+            <td class="c-dni"><code>${c.dni || ""}</code></td>
+            <td class="c-estado"><span class="badge ${_badgeClass(c.status)}">${c.status_label || ""}</span> · ${moneda}</td>
+          </tr>`;
+        }).join("");
+        wrap.innerHTML = `
+          <table class="cases">
+            <thead><tr><th>Casuística</th><th>Cliente</th><th>DNI</th><th>Estado</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <p class="cases-hint">Abre el chat con ${agentName} y escribe uno de estos DNI para identificarte.</p>`;
       }
 
       // Hide the demo-account cards + their section heading. The DNI note stays

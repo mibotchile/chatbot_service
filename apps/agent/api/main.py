@@ -1238,62 +1238,96 @@ async def download_certificate(filename: str):
 
 
 # ── Tenant branding (drives the tenant-aware frontend) ──
-def _demo_tokens_for(tenant_id: str) -> list[dict]:
-    """Build demo account cards from the tenant's borrowers fixture.
+def _casuistica_label(prof: dict) -> str:
+    """Human casuística label derived from the borrower profile (truthful to data)."""
+    currency = prof.get("currency", "PEN")
+    status = prof.get("status", "")
+    days = int(prof.get("days_overdue") or 0)
+    balance = prof.get("balance") or 0
+    cuota = prof.get("cuota_esperada") or prof.get("next_installment_amount") or 0
+    if prof.get("additional_credits"):
+        return "Más de una deuda"
+    if prof.get("is_grupal"):
+        return "Crédito grupal (codeudores)"
+    if currency == "USD":
+        return "Crédito en dólares (con mora)"
+    if status != "en_mora" and balance > 0 and cuota > 0 and balance <= cuota * 1.5:
+        return "Casi cancelado (al día)"
+    if status == "en_mora" and days >= 60:
+        return "Mora severa"
+    if status == "en_mora":
+        return "Mora leve"
+    return "Al día"
 
-    Returns [{token, label, status, status_label, currency}] for each demo
-    token. NO PII (name/DNI/email/phone) is ever included — the public
-    /branding endpoint must not disclose borrower identity. Labels are derived
-    from the borrower status so cards stay truthful to the data.
-    """
+
+def _load_fixture(tenant_id: str) -> dict:
+    """Load the borrowers fixture for a tenant ({} if absent/invalid)."""
     import json as _j
 
     fixture_path = _tenant_dir(tenant_id) / "mock" / "borrowers.json"
     if not fixture_path.exists():
-        return []
+        return {}
     try:
-        data = _j.loads(fixture_path.read_text(encoding="utf-8"))
+        return _j.loads(fixture_path.read_text(encoding="utf-8"))
     except (ValueError, OSError):
-        return []
+        return {}
+
+
+def _demo_tokens_for(tenant_id: str) -> list[dict]:
+    """Build demo account cards from the tenant's borrowers fixture.
+
+    Returns [{token, label, status, status_label, currency}] for each demo
+    token. NO PII (name/DNI/email/phone) is ever included here. Kept for tenants
+    that still use clickable pre-identified cards; prestamype now uses the
+    informational DNI-first table (see ``_demo_cases_for``).
+    """
+    data = _load_fixture(tenant_id)
     tokens = data.get("tokens") or {}
     borrowers = data.get("borrowers") or {}
     cards: list[dict] = []
     for token, account_id in tokens.items():
         prof = borrowers.get(account_id) or {}
-        currency = prof.get("currency", "PEN")
-        status = prof.get("status", "")
-        days = int(prof.get("days_overdue") or 0)
-        balance = prof.get("balance") or 0
-        cuota = prof.get("cuota_esperada") or prof.get("next_installment_amount") or 0
-        # A masked DNI hint is OK on the public card (first 2 digits + "…"): it's
-        # a synthetic demo number and helps the demo owner pick a case. The FULL
-        # DNI is never exposed — masking keeps the no-PII contract.
-        dni = str(prof.get("dni") or "")
-        dni_hint = f"DNI {dni[:2]}…" if len(dni) >= 2 else ""
-        # Casuística label, derived from the data so cards stay truthful.
-        if prof.get("additional_credits"):
-            casu = "Más de una deuda · varios créditos"
-        elif prof.get("is_grupal"):
-            casu = "Crédito grupal · con codeudores"
-        elif currency == "USD":
-            casu = "Crédito en dólares · con mora"
-        elif status != "en_mora" and balance > 0 and cuota > 0 and balance <= cuota * 1.5:
-            casu = "Casi cancelado · al día"
-        elif status == "en_mora" and days >= 60:
-            casu = "Mora severa"
-        elif status == "en_mora":
-            casu = "Mora leve"
-        else:
-            casu = "Al día"
-        label = f"{casu} · {dni_hint}" if dni_hint else casu
         cards.append({
             "token": token,
-            "label": label,
-            "status": status or "al_dia",
+            "label": _casuistica_label(prof),
+            "status": prof.get("status", "") or "al_dia",
             "status_label": prof.get("status_label", ""),
-            "currency": currency,
+            "currency": prof.get("currency", "PEN"),
         })
     return cards
+
+
+def _demo_cases_for(tenant_id: str) -> list[dict]:
+    """Informational test-case table for DNI-first demo tenants (e.g. prestamype).
+
+    Returns [{name, dni, casuistica, status, status_label, currency}] from the
+    SYNTHETIC fixture. The user reads a DNI from this table and TYPES it into the
+    chat to identify — there are NO pre-identified magic links. This is only safe
+    because the fixture is 100% fictitious (no real PII); the tenant must opt in
+    via ``branding.show_demo_cards`` so a Doris-backed tenant never leaks identity.
+    """
+    data = _load_fixture(tenant_id)
+    tokens = data.get("tokens") or {}
+    borrowers = data.get("borrowers") or {}
+    rows: list[dict] = []
+    for account_id in tokens.values():
+        prof = borrowers.get(account_id) or {}
+        if not prof:
+            continue
+        rows.append({
+            "name": _title_case(prof.get("borrower_name", "")),
+            "dni": str(prof.get("dni") or ""),
+            "casuistica": _casuistica_label(prof),
+            "status": prof.get("status", "") or "al_dia",
+            "status_label": prof.get("status_label", ""),
+            "currency": prof.get("currency", "PEN"),
+        })
+    return rows
+
+
+def _title_case(s: str) -> str:
+    """Title-case an ALL-CAPS fixture name (CARLOS MENDOZA -> Carlos Mendoza)."""
+    return " ".join(w.capitalize() for w in str(s or "").split())
 
 
 @app.get("/api/v1/tenant/{tenant_id}/branding")
@@ -1320,6 +1354,11 @@ async def tenant_branding(tenant_id: str):
         "currency": soul.get("currency", "soles (S/)"),
         "footer": "Powered by Onbotgo",
         "demo_tokens": _demo_tokens_for(tenant_id),
+        # DNI-first tenants (e.g. prestamype) show an INFORMATIONAL table of test
+        # cases (name + synthetic DNI + casuística); the user types the DNI in the
+        # chat to identify — no pre-identified magic links. Only emitted when the
+        # tenant opted in (show_demo_cards) AND the data is the synthetic fixture.
+        "demo_cases": _demo_cases_for(tenant_id) if branding.get("show_demo_cards", True) else [],
         # Some tenants (e.g. prestamype) hide the demo-account cards and rely on
         # DNI-first identification in the chat. Defaults to shown.
         "show_demo_cards": branding.get("show_demo_cards", True),

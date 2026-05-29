@@ -89,6 +89,22 @@ def test_branding_prestamype_shows_demo_cards(client):
     assert b["show_demo_cards"] is True
 
 
+def test_branding_demo_cases_table_has_5_synthetic_rows(client):
+    # DNI-first table: name + synthetic DNI + casuística per test case. The user
+    # types one of these DNIs in the chat to identify (no magic links).
+    b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
+    cases = b["demo_cases"]
+    assert len(cases) == 5
+    for c in cases:
+        assert set(c) == {"name", "dni", "casuistica", "status", "status_label", "currency"}
+        assert len(c["dni"]) == 8 and c["dni"].isdigit()  # synthetic 8-digit DNI
+        assert c["name"]  # title-cased fictitious name shown in the table
+    casuisticas = {c["casuistica"] for c in cases}
+    assert "Más de una deuda" in casuisticas         # multi-crédito (mismo DNI)
+    assert "Crédito grupal (codeudores)" in casuisticas  # multi-deudor (grupal)
+    assert any("dólar" in c.lower() for c in casuisticas)
+
+
 def test_branding_demo_tokens_carry_no_pii(client):
     # CRIT-01: the public /branding endpoint must NEVER expose borrower PII.
     b = client.get(f"/api/v1/tenant/{TENANT}/branding").json()
