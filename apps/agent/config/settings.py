@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     # COBRANZA_ENABLE_DOCS=false in prod to disable API surface enumeration.
     enable_docs: bool = True
 
+    # Global CORS allowlist (always permitted, every tenant). The demo origin is
+    # always allowed. Per-tenant embed origins (the client's own website domains)
+    # are declared in each tenants/<id>/tenant.config.json under `embed_origins`
+    # and merged on top of this at startup — see build_cors_origin_regex().
     cors_origins: list[str] = [
         "https://demos.mibot.cl",
     ]

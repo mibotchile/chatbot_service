@@ -716,9 +716,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
+# CORS allowlist = global origins ∪ every tenant's `embed_origins` (so the
+# widget can be embedded on a client's own website). Compiled to ONE regex and
+# given to Starlette via allow_origin_regex — credentialed requests require the
+# exact Origin echoed back (no `*`), which the regex echo path does correctly.
+# demos.mibot.cl is always in the global list, so the same-origin demo is safe.
+from config.cors import build_cors_origin_regex
+
+_cors_origin_regex = build_cors_origin_regex(settings.cors_origins)
+logger.info("CORS allow_origin_regex={}", _cors_origin_regex)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "X-CSRF-Token", "X-Session-Token", "X-Dashboard-Key"],

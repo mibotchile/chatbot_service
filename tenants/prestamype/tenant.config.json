@@ -4,6 +4,11 @@
   "name": "PrestamYpe",
   "domain": "prestamype.com",
   "data_source": "mock",
+  "embed_origins": [
+    "https://demos.mibot.cl",
+    "http://localhost:*",
+    "http://127.0.0.1:*"
+  ],
   "response_mode": "hybrid",
   "project_uid": "QUIdI0iwQY0l3pJwRKLB",
   "doris_schema": {

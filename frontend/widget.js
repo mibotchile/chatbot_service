@@ -1,22 +1,35 @@
-/* PrestaUnion — embeddable floating chat widget (Vox light theme).
+/* PrestaUnion / PrestamYpe — embeddable floating chat widget (Vox light theme).
  *
- * Drop-in: include <script src="widget.js"></script> on any page. It injects
- * its own styles + a Floating Action Button (FAB) bottom-right that opens a
- * floating chat panel (Nexo-style behavior, Vox light theming).
+ * TWO WAYS to use it:
+ *   1. Same-origin demo landing — include <script src="widget.js"></script>.
+ *      The widget auto-mounts: it creates its OWN shadow-host + Shadow DOM and
+ *      renders inside it (config read from the <script> data-* / ?query).
+ *   2. External embed (Intercom/Drift style) — the loader `embed.js` creates a
+ *      host element, attaches a Shadow DOM, loads THIS file, and calls
+ *      `window.PubotWidget.mount({ shadowRoot, api, tenant, ct })`. When a
+ *      mount target is provided the auto-mount is skipped.
+ *
+ * SHADOW DOM ISOLATION (key): the FAB + panel + ALL their styles live inside a
+ * shadow root, never in the host page's document. The client's CSS can't bleed
+ * into the widget and the widget's CSS can't touch the client's page. The only
+ * thing that still goes on the host document is the Inter @font-face <link>
+ * (fonts must be reachable from the document to apply; harmless and global-safe)
+ * and a global Escape keydown listener (acts only while the panel is open).
  *
  * Talks to the cobranza backend: security handshake (session + CSRF), then
  * POST /api/v1/chat with the demo campaign_token read from ?ct=. The hard
  * identity gate lives server-side; this is just the chat surface.
  *
- * Config via the script tag's data-* attributes or query params:
+ * Config via the script tag's data-* attributes / query params (or mount opts):
  *   data-api   | ?api=  → backend base URL override (default: auto)
- *   data-ct    | ?ct=   → demo token: demo-juan | demo-carlos | demo-maria
+ *   data-ct    | ?ct=   → demo token (e.g. demo-juan / demo-1)
+ *   data-tenant| ?tenant=→ tenant slug (default "prestaunion")
  *
  * BASE PATH (reverse proxy): all API URLs are built against a base derived
  * from the URL of THIS script. Served at /widget.js → base "" (local); served
  * at /pubot-gj5w2a0p/widget.js (behind Traefik strip-prefix) → base
  * "https://host/pubot-gj5w2a0p". Works in both without code changes. An
- * explicit data-api / ?api= still wins (e.g. external embed on another origin).
+ * explicit api / ?api= still wins (e.g. external embed on another origin).
  */
 (() => {
   "use strict";
@@ -25,9 +38,9 @@
   const scriptEl = document.currentScript;
   const qs = new URLSearchParams(location.search);
 
-  function _deriveApiBase() {
-    // 1) explicit override (external embed)
-    const override = (scriptEl && scriptEl.dataset.api) || qs.get("api");
+  function _deriveApiBase(override) {
+    // 1) explicit override (external embed / mount opts)
+    override = override || (scriptEl && scriptEl.dataset.api) || qs.get("api");
     if (override) return override.replace(/\/$/, "");
     // 2) derive from this script's own URL: origin + everything up to /widget.js
     try {
@@ -42,12 +55,21 @@
     return location.origin.replace(/\/$/, "");
   }
 
-  const API = _deriveApiBase();
-  const CT = (scriptEl && scriptEl.dataset.ct) || qs.get("ct") || null;
-  // Tenant-aware: ?tenant=<slug> selects which tenant the widget talks to and
-  // skins for. Default "prestaunion" keeps the original Vox theme untouched.
-  const TENANT = ((scriptEl && scriptEl.dataset.tenant) || qs.get("tenant") || "prestaunion")
-    .replace(/[^a-z0-9_-]/gi, "");
+  // Resolved at mount() time so the loader (embed.js) can override api/ct/tenant
+  // without depending on document.currentScript (which is null when injected).
+  let API, CT, TENANT;
+  // The shadow root the widget renders into. ALL DOM queries go through it.
+  let shadow = null;
+
+  function _resolveConfig(opts) {
+    opts = opts || {};
+    API = _deriveApiBase(opts.api);
+    CT = opts.ct || (scriptEl && scriptEl.dataset.ct) || qs.get("ct") || null;
+    // Tenant-aware: selects which tenant the widget talks to and skins for.
+    // Default "prestaunion" keeps the original Vox theme untouched.
+    TENANT = (opts.tenant || (scriptEl && scriptEl.dataset.tenant) || qs.get("tenant") || "prestaunion")
+      .replace(/[^a-z0-9_-]/gi, "");
+  }
 
   // Branding (fetched for non-default tenants). Drives header name/logo, brand
   // color CSS vars, and footer. Null until the fetch resolves.
@@ -319,11 +341,13 @@
   }
 
   function injectStyles() {
-    if (document.getElementById("pu-widget-styles")) return;
+    // Styles live INSIDE the shadow root (scoped), never in the host document.
+    if (shadow.getElementById && shadow.getElementById("pu-widget-styles")) return;
+    if (shadow.querySelector("#pu-widget-styles")) return;
     const style = document.createElement("style");
     style.id = "pu-widget-styles";
     style.textContent = CSS;
-    document.head.appendChild(style);
+    shadow.appendChild(style);
   }
 
   const ICONS = {
@@ -387,7 +411,7 @@
     fab.setAttribute("aria-label", "Abrir chat de PrestaUnion");
     fab.innerHTML = `${ICONS.chat}${ICONS.close}<span class="pu-badge"></span>`;
     fab.addEventListener("click", toggle);
-    document.body.appendChild(fab);
+    shadow.appendChild(fab);
 
     // Panel
     root = document.createElement("div");
@@ -473,7 +497,7 @@
           </form>
         </div>
       </div>`;
-    document.body.appendChild(root);
+    shadow.appendChild(root);
 
     $messages = root.querySelector("#pu-messages");
     $form = root.querySelector("#pu-form");
@@ -1100,7 +1124,8 @@
   }
 
   // ── Boot ──
-  function init() {
+  function init(opts) {
+    _resolveConfig(opts);
     ensureInterFont();
     injectStyles();
     build();
@@ -1108,11 +1133,49 @@
     // Non-default tenant: fetch branding, then refresh the welcome (header/avatar
     // were re-skinned by applyBranding; the welcome uses AGENT/COMPANY too).
     loadBranding().then(() => { if (TENANT !== "prestaunion" && !started) renderWelcome(); });
-    if (qs.get("demo") === "open") setTimeout(seedDemo, 60);
+    const wantDemo = (opts && opts.demo === "open") || qs.get("demo") === "open";
+    if (wantDemo) setTimeout(seedDemo, 60);
   }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
+
+  // ── Public mount API ──
+  // mount(opts): render the widget into a Shadow DOM. Idempotent — a second
+  // call is a no-op (so including the snippet twice never double-mounts).
+  //   opts.shadowRoot — an existing ShadowRoot to render into (embed.js passes
+  //     one created on a host the client controls). If absent, the widget makes
+  //     its OWN host <div> + shadow root and appends it to <body> (landing demo).
+  //   opts.api / opts.ct / opts.tenant / opts.demo — config overrides.
+  let _mounted = false;
+  function mount(opts) {
+    if (_mounted) return;
+    _mounted = true;
+    opts = opts || {};
+    if (opts.shadowRoot) {
+      shadow = opts.shadowRoot;
+    } else {
+      const host = document.createElement("div");
+      host.id = "pu-widget-host";
+      // The host is a 0-size anchor; the FAB/panel inside are position:fixed.
+      host.style.cssText = "position:fixed;z-index:2147483000;width:0;height:0;";
+      document.body.appendChild(host);
+      shadow = host.attachShadow({ mode: "open" });
+    }
+    init(opts);
+  }
+
+  // Expose the mount API for the external loader (embed.js).
+  window.PubotWidget = window.PubotWidget || { mount };
+
+  // ── Auto-mount (same-origin landing) ──
+  // Skipped when data-no-automount is set (embed.js sets it: it owns the host +
+  // shadow and calls mount() itself). The landing demo includes this file with
+  // a plain <script src="widget.js"> → auto-mount with its own Shadow DOM.
+  const _noAutomount = scriptEl && scriptEl.dataset && "noAutomount" in scriptEl.dataset;
+  if (!_noAutomount) {
+    const _auto = () => mount();
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", _auto);
+    } else {
+      _auto();
+    }
   }
 })();

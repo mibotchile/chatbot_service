@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Instalá el chat de Ada en tu web · PrestamYpe</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2300b369'/%3E%3Ctext x='16' y='22' font-family='Inter,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* Deliberately DIFFERENT chrome from the demo landing — this page pretends to
+       be "the client's own website" so the embedded widget is shown in context,
+       isolated by its Shadow DOM. */
+    :root { --ink:#0f172a; --muted:#475569; --line:#e2e8f0; --bg:#f8fafc; --code:#0b1220; --accent:#00b369; }
+    * { box-sizing: border-box; font-family: Inter, system-ui, sans-serif; }
+    html, body { margin: 0; background: var(--bg); color: var(--ink); }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 120px; }
+    .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+    h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; letter-spacing: -.02em; margin: 10px 0 12px; }
+    .lead { font-size: 17px; color: var(--muted); line-height: 1.6; margin: 0 0 32px; max-width: 620px; }
+    h2 { font-size: 18px; margin: 36px 0 12px; }
+    p { color: var(--muted); line-height: 1.6; }
+    ol { color: var(--muted); line-height: 1.8; padding-left: 20px; }
+    code.inline { background: #eef2f7; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink); }
+
+    .snippet { position: relative; }
+    pre { background: var(--code); color: #e2e8f0; border-radius: 12px; padding: 18px 18px; overflow-x: auto;
+      font-family: ui-monospace, monospace; font-size: 13.5px; line-height: 1.6; margin: 0; }
+    pre .tag { color: #7dd3fc; } pre .attr { color: #fcd34d; } pre .val { color: #86efac; }
+    .copy { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .copy:hover { background: rgba(255,255,255,.2); }
+    .copy.ok { color: #86efac; border-color: #86efac; }
+
+    .note { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 16px 18px; margin-top: 20px; }
+    .note b { color: #047857; }
+    .opts { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+    .opts th, .opts td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .opts th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .opts code { font-family: ui-monospace, monospace; color: var(--accent); font-weight: 600; }
+    footer { color: #94a3b8; font-size: 12px; margin-top: 56px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="eyebrow">Instalación · Widget embebible</div>
+    <h1>Poné el chat de Ada en tu sitio web</h1>
+    <p class="lead">Copiá una línea de código y pegala antes de <code class="inline">&lt;/body&gt;</code> en tu web.
+      El chat flotante de Ada aparece abajo a la derecha. Funciona en cualquier sitio: el widget se aísla
+      en un <b>Shadow DOM</b>, así tus estilos no lo rompen y los suyos no tocan tu página.</p>
+
+    <h2>1. Pegá este snippet</h2>
+    <div class="snippet">
+      <button class="copy" id="copyBtn">Copiar</button>
+      <pre id="snippet"><span class="tag">&lt;script</span> <span class="attr">src</span>=<span class="val">"__SRC__"</span> <span class="attr">data-tenant</span>=<span class="val">"prestamype"</span> <span class="attr">async</span><span class="tag">&gt;&lt;/script&gt;</span></pre>
+    </div>
+
+    <div class="note">
+      <p style="margin:0"><b>Para producción:</b> avisanos los dominios reales de tu web (ej.
+        <code class="inline">https://prestamype.com</code>) para habilitarlos. Mientras tanto el widget
+        funciona desde <code class="inline">demos.mibot.cl</code> y desde <code class="inline">localhost</code>
+        (cualquier puerto) para que lo pruebes localmente.</p>
+    </div>
+
+    <h2>2. Opciones (atributos del &lt;script&gt;)</h2>
+    <table class="opts">
+      <thead><tr><th>Atributo</th><th>Para qué sirve</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-tenant</code></td><td>Identifica tu marca/configuración. Requerido. Aquí: <code>prestamype</code>.</td></tr>
+        <tr><td><code>data-ct</code></td><td>Opcional. Token de campaña para identidad por enlace (ej. campañas de cobranza).</td></tr>
+        <tr><td><code>data-api</code></td><td>Opcional. Sobrescribe la URL base del backend (por defecto se deriva del <code>src</code>).</td></tr>
+      </tbody>
+    </table>
+
+    <h2>3. Probalo acá mismo</h2>
+    <p>Esta página <em>simula tu sitio</em>: el snippet de arriba ya está cargado abajo. Buscá el botón verde
+      flotante en la esquina inferior derecha, abrilo y escribí un DNI de prueba (ej. <code class="inline">44218903</code>)
+      para identificarte.</p>
+
+    <footer>PrestamYpe · Demostración con datos ficticios. Powered by Onbotgo.</footer>
+  </main>
+
+  <!-- Fill the snippet src from THIS page's own location so the copy block is
+       always correct regardless of host/prefix; then load the embed loader. -->
+  <script>
+    (function () {
+      // Base = origin + path up to this file's directory (strip /embed-demo.html).
+      var base = (location.origin + location.pathname.replace(/\/[^/]*$/, "")).replace(/\/+$/, "");
+      var src = base + "/embed.js";
+      var pre = document.getElementById("snippet");
+      // Replace the placeholder in both the visible code and the copy payload.
+      pre.innerHTML = pre.innerHTML.replace("__SRC__", src);
+      var snippetText = '<script src="' + src + '" data-tenant="prestamype" async><\/script>';
+      document.getElementById("copyBtn").addEventListener("click", function () {
+        navigator.clipboard.writeText(snippetText).then(function () {
+          var b = document.getElementById("copyBtn");
+          b.textContent = "¡Copiado!"; b.classList.add("ok");
+          setTimeout(function () { b.textContent = "Copiar"; b.classList.remove("ok"); }, 1800);
+        });
+      });
+      // Live preview: load the real loader (same flow the client gets).
+      var s = document.createElement("script");
+      s.src = src; s.async = true;
+      s.setAttribute("data-tenant", "prestamype");
+      document.body.appendChild(s);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+/* PubotWidget embed loader — the ~minimal snippet a client pastes on their site.
+ *
+ *   <script src="https://demos.mibot.cl/pubot-c02e78e1/embed.js"
+ *           data-tenant="prestamype" async></script>
+ *
+ * What it does (Intercom/Drift style):
+ *   1. Reads its OWN config from the <script> tag: data-tenant / data-ct /
+ *      data-api (document.currentScript at parse time, captured up front).
+ *   2. Derives the backend base URL from its own src (origin + path up to
+ *      /embed.js), e.g. https://demos.mibot.cl/pubot-c02e78e1. data-api wins.
+ *   3. Creates a host <div> on the client page and attaches a Shadow DOM
+ *      (mode:"open") — this ISOLATES the widget's CSS/JS from the client site
+ *      (their styles can't break the widget; the widget's can't touch them).
+ *   4. Loads widget.js once (with data-no-automount so it doesn't make its own
+ *      host) and calls window.PubotWidget.mount({ shadowRoot, api, tenant, ct }).
+ *   5. Idempotent: including the snippet twice mounts only once.
+ *
+ * Framework-free, no build step. Served alongside widget.js from the demo
+ * container; minify with a ?v= cache-bust if needed (see embed-demo.html).
+ */
+(function () {
+  "use strict";
+
+  // currentScript is reliable while this file is being parsed (sync or async).
+  var self = document.currentScript;
+
+  // Guard: never mount twice (snippet pasted more than once, SPA re-injects…).
+  if (window.__pubotEmbedLoaded) return;
+  window.__pubotEmbedLoaded = true;
+
+  function attr(name, fallback) {
+    var v = self && self.getAttribute && self.getAttribute(name);
+    return v != null && v !== "" ? v : fallback;
+  }
+
+  // ── Backend base URL: data-api wins, else derive from THIS script's src. ──
+  function deriveApi() {
+    var override = attr("data-api", null);
+    if (override) return override.replace(/\/+$/, "");
+    try {
+      var u = new URL(self.src, location.href);
+      // strip the trailing /embed.js (and any ?v= cache-bust) → the base path
+      var prefix = u.pathname.replace(/\/embed\.js$/, "");
+      return (u.origin + prefix).replace(/\/+$/, "");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  var api = deriveApi();
+  var tenant = attr("data-tenant", "prestaunion");
+  var ct = attr("data-ct", null);
+
+  // ── Host element + Shadow DOM (the isolation boundary). ──
+  function makeShadowHost() {
+    var host = document.getElementById("pubot-embed-host");
+    if (host && host.shadowRoot) return host.shadowRoot; // already created
+    host = document.createElement("div");
+    host.id = "pubot-embed-host";
+    // 0-size fixed anchor: the FAB + panel inside are position:fixed (viewport),
+    // so the host doesn't reserve layout space on the client page.
+    host.style.cssText = "position:fixed;z-index:2147483000;width:0;height:0;border:0;margin:0;padding:0;";
+    document.body.appendChild(host);
+    return host.attachShadow({ mode: "open" });
+  }
+
+  function boot() {
+    var shadowRoot = makeShadowHost();
+
+    function doMount() {
+      if (!window.PubotWidget || !window.PubotWidget.mount) return false;
+      window.PubotWidget.mount({ shadowRoot: shadowRoot, api: api, tenant: tenant, ct: ct });
+      return true;
+    }
+
+    // widget.js may already be present (e.g. same page loaded both). If so, mount
+    // immediately; otherwise inject it once and mount on load.
+    if (doMount()) return;
+
+    var existing = document.querySelector('script[data-pubot-widget="1"]');
+    if (existing) {
+      existing.addEventListener("load", doMount);
+      return;
+    }
+    var s = document.createElement("script");
+    s.src = api + "/widget.js";
+    s.async = true;
+    s.setAttribute("data-pubot-widget", "1");
+    // Tell widget.js NOT to auto-mount its own host — the loader owns the shadow.
+    s.setAttribute("data-no-automount", "");
+    s.addEventListener("load", doMount);
+    document.head.appendChild(s);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
