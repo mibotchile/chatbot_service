@@ -682,10 +682,17 @@ def classifier_menu(spec: ResponsesSpec) -> dict[str, str]:
 
     The Layer-2 LLM classifier picks from THIS menu — the catalog is data-driven,
     never hard-coded. Falls back to the intent name when no ``description`` is set.
+
+    An intent can opt OUT of being classifiable with ``"classifiable": false``
+    (default true). This is for intents whose template is rendered by another
+    path (a tool result or a non-LLM flow, e.g. ``comprobante_resultado``, that is
+    the voucher acuse) and must NEVER be picked by the LLM for a fresh user turn —
+    otherwise it would hijack the turn with a false confirmation.
     """
     return {
         intent: (cfg.get("description") or intent)
         for intent, cfg in spec.intents.items()
+        if cfg.get("classifiable", True)
     }
 
 

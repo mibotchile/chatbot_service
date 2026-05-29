@@ -165,6 +165,7 @@
   "comprobante_resultado": {
     "mode": "verbatim",
     "requires_identity": true,
+    "classifiable": false,
     "chips": ["Ver mi deuda", "Datos de pago", "Hablar con un asesor"],
     "template": "Recibí tu comprobante sobre el crédito {loan}. Quedó registrado y EN REVISIÓN: un asesor lo concilia contra el banco y, de estar conforme, se aplica a tu cuenta."
   },

@@ -207,10 +207,45 @@ def test_requires_identity_gate_passes_when_verified():
 def test_classifier_menu_is_data_driven_from_json():
     spec = _spec()
     menu = R.classifier_menu(spec)
-    # every intent contributes a {name: description}; nothing hard-coded.
+    # every classifiable intent contributes a {name: description}; nothing hard-coded.
     assert "consulta_deuda" in menu
     assert menu["consulta_deuda"]   # has a description string
-    assert set(menu) == set(spec.intents)
+    # The menu is the classifiable subset of the spec's intents.
+    classifiable = {i for i, c in spec.intents.items() if c.get("classifiable", True)}
+    assert set(menu) == classifiable
+
+
+def test_comprobante_resultado_not_in_classifier_menu():
+    """Regression (deterministic, no LLM): a payment-report turn must reach the
+    tool-loop (validar_comprobante), not be hijacked by the acuse intent.
+
+    ``comprobante_resultado`` is the voucher ACUSE — its template is rendered by
+    the photo path / tool result, never picked by the LLM classifier for a fresh
+    user message. With ``classifiable: false`` it must be ABSENT from the menu;
+    otherwise (via the ``description or intent`` fallback) it re-enters the menu
+    under its own name and confirms a payment in false without registering it.
+    """
+    spec = _spec()
+    menu = R.classifier_menu(spec)
+    assert "comprobante_resultado" not in menu
+    # But the intent still EXISTS in the spec (its template is used elsewhere).
+    assert "comprobante_resultado" in spec.intents
+
+
+def test_classifiable_flag_defaults_true_and_can_opt_out():
+    """``classifiable`` is data-driven: absent → in menu; false → excluded."""
+    spec = ResponsesSpec(
+        response_mode="hybrid",
+        intents={
+            "a": {"description": "intent a", "template": "A"},
+            "b": {"description": "intent b", "template": "B", "classifiable": False},
+            "c": {"template": "C"},  # no description, classifiable by default
+        },
+    )
+    menu = R.classifier_menu(spec)
+    assert "a" in menu
+    assert "b" not in menu
+    assert menu["c"] == "c"  # falls back to the intent name
 
 
 def test_intent_tool_and_requires_identity_read_from_json():
