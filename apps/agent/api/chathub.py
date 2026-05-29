@@ -46,6 +46,90 @@ def _tenant_exists(tenant_id: str) -> bool:
     return m._load_tenant_config(tenant_id) is not None
 
 
+_PHOTO_ACK_FALLBACK = (
+    "Recibí tu comprobante. Quedó EN REVISIÓN: un asesor lo concilia contra el "
+    "banco y, de estar conforme, se aplica a tu cuenta."
+)
+_PHOTO_IDENTITY_PROMPT = (
+    "Recibí tu imagen. Para registrar tu comprobante necesito identificarte "
+    "primero: por favor, indícame tu número de DNI."
+)
+
+
+def _photo_ack_text(tenant_config, profile: dict) -> str:
+    """Acuse honesto para una foto de comprobante (camino B).
+
+    Reutiliza el template ``comprobante_resultado`` del tenant (rellenando
+    {loan} etc. desde el perfil verificado) cuando existe; si no, usa un acuse
+    genérico. NUNCA afirma que el pago fue validado — solo que se RECIBIÓ y
+    quedó en revisión."""
+    spec = getattr(tenant_config, "responses", None)
+    if spec is not None and getattr(spec, "intents", {}).get("comprobante_resultado"):
+        from core import responses as responses_engine
+
+        res = responses_engine.render_intent(
+            spec, "comprobante_resultado", profile or {},
+            source=responses_engine.SOURCE_KEYWORD,
+        )
+        if res and res.text:
+            return res.text
+    return _PHOTO_ACK_FALLBACK
+
+
+async def _handle_voucher_photo(
+    *,
+    tenant_id: str,
+    conv,
+    media_url: str,
+    tenant_config,
+    has_text: bool,
+) -> dict | None:
+    """Manejo de la foto del voucher (camino B, SIN OCR).
+
+    - Deudor NO identificado → pide DNI (NO acusa el pago, NO registra).
+    - Deudor identificado → registra la foto (constancia para conciliación
+      manual) y, si NO hay texto en el turno, devuelve el acuse honesto. Cuando
+      hay texto, registra la foto pero devuelve None para que el agente corra el
+      camino A (validar_comprobante conversacional) con la imagen ya adjunta.
+    """
+    if not conv.identity_verified or not conv.debt_context:
+        # Sin identidad: pedir DNI, no acusar ni registrar.
+        if has_text:
+            return None  # hay texto → que el agente pida identidad / responda
+        logger.info("chathub voucher photo without identity: conv={}", conv.conversation_id)
+        return {
+            "content": _PHOTO_IDENTITY_PROMPT,
+            "ui_actions": {},
+            "tool_pairs": [],
+            "usage": {},
+        }
+
+    # Identificado → registrar la foto para conciliación manual.
+    try:
+        from tools.cobranza import registrar_comprobante_foto
+
+        reg = registrar_comprobante_foto(conv.debt_context, media_url)
+        logger.info(
+            "chathub voucher photo registered: conv={} credito={} dup={} url={}",
+            conv.conversation_id, reg.get("credito"), reg.get("duplicate"), media_url,
+        )
+    except Exception:
+        logger.opt(exception=True).warning(
+            "chathub voucher photo registration failed (non-blocking): conv={}",
+            conv.conversation_id,
+        )
+
+    if has_text:
+        return None  # texto manda → camino A; la foto ya quedó registrada.
+
+    return {
+        "content": _photo_ack_text(tenant_config, conv.debt_context),
+        "ui_actions": {},
+        "tool_pairs": [],
+        "usage": {},
+    }
+
+
 async def _run_chathub_engine_turn(
     *,
     text: str,
@@ -56,6 +140,7 @@ async def _run_chathub_engine_turn(
     chathub_conversation_id: str,
     chathub_project_id: str,
     channel_id: str,
+    media_url: str | None = None,
 ) -> dict:
     """Run one engine turn for a chathub message — reuses the /api/v1/chat core.
 
@@ -115,6 +200,35 @@ async def _run_chathub_engine_turn(
     def _persist_identity(profile: dict) -> None:
         conv.identity_verified = True
         conv.debt_context = profile
+
+    # ── Camino B: foto del voucher (sin OCR) ──
+    # Si llega una imagen Y NO hay texto, no pasamos por el LLM: damos un acuse
+    # honesto y registramos la foto para conciliación manual. Si llega imagen Y
+    # texto, el texto manda (camino A, validar_comprobante conversacional) y la
+    # imagen queda adjunta al mismo reporte — la registramos aquí y seguimos al
+    # agente con el texto.
+    if media_url:
+        photo_result = await _handle_voucher_photo(
+            tenant_id=tenant_id,
+            conv=conv,
+            media_url=media_url,
+            tenant_config=tenant_config,
+            has_text=bool(text),
+        )
+        if photo_result is not None:
+            content = guard_response(
+                photo_result.get("content", ""), conv.history, conv.lead.get_status()
+            )
+            photo_result["content"] = content
+            await conv.add_assistant_message_async(content)
+            m._spawn_analytics(
+                tenant_id=tenant_id,
+                session_id=conv.conversation_id,
+                channel=channel,
+                user_text=text or "[comprobante: imagen]",
+                result=photo_result,
+            )
+            return photo_result
 
     api_key = resolve_api_key(tenant_id)
     download_base = m.settings.public_base_url.rstrip("/")

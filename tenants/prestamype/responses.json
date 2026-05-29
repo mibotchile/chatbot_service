@@ -164,7 +164,6 @@
 
   "comprobante_resultado": {
     "mode": "verbatim",
-    "description": "El usuario ya envió los datos del comprobante (CCI, monto, número de operación) para registrarlo.",
     "requires_identity": true,
     "chips": ["Ver mi deuda", "Datos de pago", "Hablar con un asesor"],
     "template": "Recibí tu comprobante sobre el crédito {loan}. Quedó registrado y EN REVISIÓN: un asesor lo concilia contra el banco y, de estar conforme, se aplica a tu cuenta."

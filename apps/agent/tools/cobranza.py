@@ -736,6 +736,48 @@ def _normalize_account_type(account_type: str | None) -> str:
     return t if t in _ACCOUNT_TYPE_LABELS else "cci"
 
 
+def registrar_comprobante_foto(profile: dict, media_url: str) -> dict:
+    """Register a voucher PHOTO (no OCR) for the verified borrower (PrestamYpe).
+
+    Camino B del flujo "subir pago por WhatsApp": el deudor manda la FOTO del
+    voucher en lugar de tipear los datos. NO hay OCR, así que NO clasificamos
+    monto ni tipo: solo dejamos constancia de la imagen recibida, asociada al
+    crédito verificado, para conciliación MANUAL posterior. ``estado`` queda en
+    ``en_revision`` igual que el camino tipeado.
+
+    Identity/credit ALWAYS come from the verified ``profile``. The ONLY input is
+    the ``media_url`` (the chathub-hosted image). Dedup por media_url + crédito
+    para no duplicar si el deudor reenvía la misma foto. Never raises.
+    """
+    credito = profile.get("account_id")
+    url = (media_url or "").strip()
+    items = _load_comprobantes()
+    duplicate = any(
+        r.get("media_url") == url and r.get("credito") == credito and url
+        for r in items
+    )
+    if not duplicate:
+        items.append({
+            "credito": credito,
+            "dni": profile.get("dni"),
+            "media_url": url,
+            "source": "foto",
+            "monto": None,
+            "nro_operacion": None,
+            "tipo": None,
+            "estado": "en_revision",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        })
+        _save_comprobantes(items)
+    return {
+        "registered": not duplicate,
+        "duplicate": duplicate,
+        "credito": credito,
+        "media_url": url,
+        "estado": "en_revision",
+    }
+
+
 async def validar_comprobante(
     profile: dict,
     monto: float,

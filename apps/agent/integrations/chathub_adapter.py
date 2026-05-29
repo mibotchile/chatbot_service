@@ -287,10 +287,12 @@ class ChathubChatAdapter:
         text = normalize_message(body.message)
         token = extract_ct_token(body.message)
         conversation_id = self.conversation_id_for(tenant_id, body.chathub_conversation_id)
+        media_url = (body.url or "").strip() or None
 
         logger.info(
-            "chathub turn | tenant={} conv={} token={} chars={}",
+            "chathub turn | tenant={} conv={} token={} chars={} media={}",
             tenant_id, conversation_id, "yes" if token else "no", len(text),
+            "yes" if media_url else "no",
         )
 
         engine_result = await self._run_engine(
@@ -302,6 +304,7 @@ class ChathubChatAdapter:
             chathub_conversation_id=body.chathub_conversation_id,
             chathub_project_id=body.chathub_project_id,
             channel_id=body.channel_id,
+            media_url=media_url,
         )
 
         return build_chathub_response(
