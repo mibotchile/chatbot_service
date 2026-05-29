@@ -219,7 +219,7 @@ class SoreliaAgent:
             text, spec, prof, session_state=session_state, identity_verified=verified,
         )
         if outcome.handled:
-            return await self._canned_result(outcome)
+            return await self._canned_result(outcome, spec)
 
         if outcome.needs_llm_classification:
             intent = await self._classify_intent(text, spec)
@@ -228,7 +228,7 @@ class SoreliaAgent:
                     intent, spec, prof, session_state=session_state, identity_verified=verified,
                 )
                 if resolved.handled:
-                    return await self._canned_result(resolved)
+                    return await self._canned_result(resolved, spec)
         # No canned path → fall through to the full agent loop (free generation).
         return None
 
@@ -264,7 +264,7 @@ class SoreliaAgent:
             logger.opt(exception=True).debug("intent classification failed (non-blocking)")
         return None
 
-    async def _canned_result(self, outcome) -> dict[str, Any]:
+    async def _canned_result(self, outcome, spec=None) -> dict[str, Any]:
         """Build the standard process_message result dict for a canned reply.
 
         When the matched intent declares a ``tool`` (data-driven, in responses.json)
@@ -273,20 +273,32 @@ class SoreliaAgent:
         voucher) and the UI/analytics see the tool. ``response_source``
         (canned_keyword | canned_intent) is surfaced so analytics can measure the
         % of turns resolved without LLM generation. Usage is zero (no generation).
+
+        Args parsed from the message (``outcome.tool_args``, e.g. a typed DNI) are
+        passed to the tool. For an identification intent, the tool OPENS the gate
+        server-side: when it succeeds the confirmation copy is (re)rendered with
+        the now-verified profile; when it reports the value wasn't found the
+        intent's ``not_found`` canned text is returned instead — never a 500.
         """
         tool_pairs: list[tuple[str, dict]] = []
         ui_actions: dict = {}
+        content = outcome.text
         if outcome.run_tool and self.tool_registry.has_tool(outcome.run_tool):
             try:
-                tool_result = await self.tool_registry.execute(outcome.run_tool, {})
+                tool_result = await self.tool_registry.execute(
+                    outcome.run_tool, outcome.tool_args or {}
+                )
                 tool_pairs = [(outcome.run_tool, tool_result)]
                 ui_actions = build_ui_actions(tool_pairs)
+                content = self._content_after_tool(
+                    outcome, tool_result, spec, fallback=content
+                )
             except Exception:
                 logger.opt(exception=True).warning(
                     "canned intent tool '%s' failed (non-blocking)", outcome.run_tool
                 )
         return {
-            "content": outcome.text,
+            "content": content,
             "conversation_id": "",
             "response_id": f"canned_{outcome.intent}",
             "metadata": {"response_source": outcome.source, "intent": outcome.intent},
@@ -303,6 +315,39 @@ class SoreliaAgent:
             "tools_called": [name for name, _ in tool_pairs],
             "response_source": outcome.source,
         }
+
+    def _content_after_tool(self, outcome, tool_result: dict, spec, fallback: str) -> str:
+        """Resolve the customer-facing text once a canned intent's tool has run.
+
+        Generic for identification-style intents (those whose tool opens the
+        gate). The canned text was first rendered with an empty profile (the user
+        wasn't verified yet), so:
+          - on success → re-render the intent template with the now-verified
+            profile so ``{nombre}`` etc. are filled from real data;
+          - on failure (tool reports ``identified``/``found`` false) → use the
+            intent's ``not_found`` canned text if declared.
+        Any other intent keeps its already-rendered ``fallback`` text.
+        """
+        if not isinstance(tool_result, dict):
+            return fallback
+        intent = outcome.intent
+        cfg = (getattr(spec, "intents", {}) or {}).get(intent, {}) if spec else {}
+        # Only identity-opening intents (declare capture+tool, not gated) reshape
+        # their copy from the tool outcome — everything else is unchanged.
+        if not (cfg.get("capture") and cfg.get("tool")):
+            return fallback
+        succeeded = tool_result.get("identified", tool_result.get("found", True))
+        if succeeded:
+            profile = self._verified_profile() or {}
+            res = responses_engine.render_intent(
+                spec, intent, profile, source=outcome.source,
+            )
+            return res.text if res else fallback
+        # Not found → tenant's canned not_found copy, else the tool's safe message.
+        not_found = cfg.get("not_found")
+        if not_found:
+            return responses_engine.render_template(not_found, {})
+        return tool_result.get("message") or fallback
 
     async def _force_chip_generation(
         self,

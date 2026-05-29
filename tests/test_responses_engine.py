@@ -387,3 +387,124 @@ async def test_agent_hybrid_no_canned_falls_through_to_llm():
     )
     assert res["response_source"] == R.SOURCE_LLM
     assert provider.calls >= 2                          # classify + generate
+
+
+# ── identificar: typed DNI opens the gate (the bug this fix addresses) ────────
+
+def test_identificar_intent_is_an_identity_opener():
+    spec = _spec()
+    # data-driven: requires_identity=false + capture + tool → it can open the gate
+    assert "identificar" in R.identity_opening_intents(spec)
+    assert R.intent_requires_identity(spec, "identificar") is False
+    assert R.intent_tool(spec, "identificar") == "identificar_cliente"
+
+
+def test_typed_dni_routes_to_identificar_not_gate_when_unverified():
+    spec = _spec()
+    # Unverified user types a bare DNI → must hit `identificar` (capture the DNI),
+    # NOT fall into the identidad_requerida gate.
+    out = R.route_layer1("76310582", spec, {}, session_state={}, identity_verified=False)
+    assert out.handled is True
+    assert out.intent == "identificar"
+    assert out.run_tool == "identificar_cliente"
+    assert out.tool_args == {"dni": "76310582"}
+    assert out.source == R.SOURCE_KEYWORD               # zero LLM
+
+
+def test_typed_dni_prioritized_over_gated_intent_when_unverified():
+    spec = _spec()
+    # A message that carries BOTH a DNI and gated-intent keywords ("cuánto debo"):
+    # while unverified, identification must win so the gate actually opens.
+    out = R.route_layer1(
+        "cuánto debo, mi dni es 44218903", spec, {},
+        session_state={}, identity_verified=False,
+    )
+    assert out.intent == "identificar"
+    assert out.tool_args == {"dni": "44218903"}
+    assert out.intent != "identidad_requerida"
+
+
+def test_typed_dni_capture_extracts_value_via_named_group():
+    spec = _spec()
+    match = R.match_keyword_intent("mi documento 40517264", spec,
+                                   only_intents={"identificar"})
+    assert match is not None
+    intent, captured = match
+    assert intent == "identificar"
+    assert captured == "40517264"
+
+
+@pytest.mark.parametrize(
+    "dni,first_name,must_contain",
+    [
+        (LUIS, "Carlos", ["P02137"]),                       # single credit
+        (LUCIA, "Lucia", ["P05012", "P05119", "2 créditos"]),  # multi-credit list
+        (ROSA, "Rosa", ["grupal"]),                         # grupal w/ codeudores
+    ],
+)
+async def test_agent_typed_dni_identifies_then_allows_consulta(dni, first_name, must_contain):
+    provider = _CountingProvider()
+    agent = _agent(provider, identity_dni=None)             # starts UNVERIFIED
+    session: dict = {}
+
+    # Turn 1: user types the DNI → identifies with ZERO LLM, gate opens.
+    r1 = await agent.process_message(
+        text=dni, conversation_id="id1", history=[],
+        lead_state={}, page_context={}, session_state=session,
+    )
+    assert provider.calls == 0
+    assert r1["metadata"]["intent"] == "identificar"
+    assert r1["tools_called"] == ["identificar_cliente"]
+    assert first_name in r1["content"]                      # confirmation w/ real name
+    assert agent.tool_registry._identity_verified is True   # gate now open
+
+    # Turn 2: same session asks for the debt → gated intent now passes the gate.
+    r2 = await agent.process_message(
+        text="cuánto debo", conversation_id="id1", history=[],
+        lead_state={}, page_context={}, session_state=session,
+    )
+    assert provider.calls == 0
+    assert r2["metadata"]["intent"] == "consulta_deuda"
+    for token in must_contain:
+        assert token in r2["content"]
+
+
+async def test_agent_typed_unknown_dni_returns_canned_not_found_no_500():
+    provider = _CountingProvider()
+    agent = _agent(provider, identity_dni=None)
+    res = await agent.process_message(
+        text="99999999", conversation_id="idx", history=[],
+        lead_state={}, page_context={}, session_state={},
+    )
+    assert provider.calls == 0
+    assert res["metadata"]["intent"] == "identificar"
+    assert "no encontré" in res["content"].lower()
+    assert agent.tool_registry._identity_verified is False  # gate stays closed
+
+
+async def test_token_identity_flow_still_works_with_verified_profile():
+    # The pre-existing token path: identity already verified (as chathub sets it
+    # from ?ct=demo-N) → consulta_deuda passes the gate, no DNI typed.
+    provider = _CountingProvider()
+    agent = _agent(provider, identity_dni=LUIS)             # verified upfront
+    res = await agent.process_message(
+        text="cuánto debo", conversation_id="tok1", history=[],
+        lead_state={}, page_context={}, session_state={},
+    )
+    assert provider.calls == 0
+    assert res["metadata"]["intent"] == "consulta_deuda"
+    assert "P02137" in res["content"]
+
+
+def test_tenant_without_identificar_intent_unchanged():
+    # A tenant whose spec declares no identity-opener keeps the old behavior:
+    # a gated intent while unverified → identidad_requerida (no priority pass).
+    import copy
+    spec = _spec()
+    stripped = ResponsesSpec(
+        intents={k: v for k, v in copy.deepcopy(spec.intents).items() if k != "identificar"},
+        response_mode="hybrid",
+    )
+    assert R.identity_opening_intents(stripped) == set()
+    out = R.route_layer1("cuánto debo", stripped, {}, session_state={}, identity_verified=False)
+    assert out.intent == "identidad_requerida"

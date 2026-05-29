@@ -354,7 +354,9 @@ def render_intent(
 
 # ── Layer 1 router: keyword/pattern matching (FREE — no LLM) ──────────────────
 
-def match_keyword_intent(text: str, spec: ResponsesSpec) -> str | None:
+def match_keyword_intent(
+    text: str, spec: ResponsesSpec, *, only_intents: set[str] | None = None,
+) -> tuple[str, str | None] | None:
     """Match the user text to an intent via the spec's ``keywords``/``patterns``.
 
     Layer 1 is 100% data-driven: each intent declares its own matchers in the
@@ -362,17 +364,26 @@ def match_keyword_intent(text: str, spec: ResponsesSpec) -> str | None:
       - ``keywords``: case-insensitive substrings (e.g. "saldo", "cuánto debo").
       - ``patterns``: regex strings (case-insensitive), for richer matching.
     The most specific match wins (longest keyword / a regex hit scores by its
-    matched span). Returns the intent name or None.
+    matched span).
+
+    Returns ``(intent, captured)`` or None. ``captured`` is the value extracted
+    from a winning regex match when the intent declares a ``capture`` config
+    (see ``_capture_from_match``) — this is what lets an intent pass a value
+    parsed from the message (e.g. a typed DNI) to its ``tool``, fully generically.
+    ``only_intents`` restricts the search to a subset (used to prioritize the
+    identification intents while a user is unverified).
     """
     if not text:
         return None
     low = text.lower().strip()
-    best: tuple[int, str] | None = None  # (match_score, intent)
+    best: tuple[int, str, str | None] | None = None  # (score, intent, captured)
     for intent, cfg in spec.intents.items():
+        if only_intents is not None and intent not in only_intents:
+            continue
         for kw in cfg.get("keywords") or []:
             k = str(kw).lower().strip()
             if k and k in low and (best is None or len(k) > best[0]):
-                best = (len(k), intent)
+                best = (len(k), intent, None)
         for pat in cfg.get("patterns") or []:
             try:
                 m = re.search(str(pat), text, re.IGNORECASE)
@@ -382,8 +393,34 @@ def match_keyword_intent(text: str, spec: ResponsesSpec) -> str | None:
             if m:
                 span = max(1, m.end() - m.start())
                 if best is None or span > best[0]:
-                    best = (span, intent)
-    return best[1] if best else None
+                    best = (span, intent, _capture_from_match(cfg, m))
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
+def _capture_from_match(cfg: dict, m: re.Match) -> str | None:
+    """Extract the value an intent captures from its matched pattern, if declared.
+
+    Data-driven: an intent opts in by setting ``"capture"`` in its config to the
+    name of the tool argument to fill (e.g. ``"capture": "dni"``). The value is
+    taken from the named regex group ``capture`` if present, else group 1, else
+    the whole match. Returns None when the intent declares no capture.
+    """
+    name = cfg.get("capture")
+    if not name:
+        return None
+    try:
+        if name in (m.groupdict() or {}) and m.group(name) is not None:
+            return str(m.group(name)).strip()
+    except (IndexError, re.error):  # named group absent
+        pass
+    try:
+        if m.lastindex:
+            return str(m.group(1)).strip()
+    except (IndexError, re.error):
+        pass
+    return str(m.group(0)).strip()
 
 
 # ── The router (orchestrates layers per response_mode) ────────────────────────
@@ -399,6 +436,7 @@ class RouterOutcome:
     variant_index: int = -1
     needs_llm_classification: bool = False  # hybrid miss → let the agent classify
     run_tool: str | None = None         # tool the agent must execute before replying
+    tool_args: dict = field(default_factory=dict)  # args parsed from the message (e.g. {"dni": "..."})
 
 
 def route_layer1(
@@ -425,11 +463,34 @@ def route_layer1(
     if not spec.enabled:
         return RouterOutcome(handled=False, source=SOURCE_LLM)
 
-    intent = match_keyword_intent(text, spec)
-    if intent:
+    # ── Identification priority (data-driven): while the user is UNVERIFIED, an
+    # identification intent (requires_identity=false + a capture + a tool) must
+    # win over any gated intent. Otherwise a typed DNI that also looks like a
+    # gated request would fall into the identity gate and never identify. We try
+    # those intents FIRST, restricted to the matcher set — fully tenant-agnostic:
+    # a tenant with no such intent simply has an empty set and nothing changes. ──
+    if not identity_verified:
+        opener_intents = identity_opening_intents(spec)
+        if opener_intents:
+            match = match_keyword_intent(text, spec, only_intents=opener_intents)
+            if match:
+                intent, captured = match
+                out = _emit_intent(
+                    intent, spec, profile, SOURCE_KEYWORD,
+                    session_state=session_state, identity_verified=identity_verified,
+                    captured=captured,
+                )
+                if out is not None:
+                    logger.info("responses: layer1 identification intent={} (no LLM)", intent)
+                    return out
+
+    match = match_keyword_intent(text, spec)
+    if match:
+        intent, captured = match
         out = _emit_intent(
             intent, spec, profile, SOURCE_KEYWORD,
             session_state=session_state, identity_verified=identity_verified,
+            captured=captured,
         )
         if out is not None:
             logger.info("responses: layer1 hit intent={} (no LLM)", intent)
@@ -484,11 +545,15 @@ def _emit_intent(
     *,
     session_state: dict | None,
     identity_verified: bool,
+    captured: str | None = None,
 ) -> RouterOutcome | None:
     """Shared resolver for both layers: gate → render → attach tool.
 
     Returns a handled RouterOutcome, or None when the intent renders empty (the
-    caller then falls through to LLM generation).
+    caller then falls through to LLM generation). ``captured`` is the value
+    parsed from the matched pattern (when the intent declares a ``capture``); it
+    becomes the named argument passed to the intent's ``tool`` (e.g. the typed
+    DNI → ``identificar_cliente(dni=...)``).
     """
     # Data-driven identity gate: a gated intent for an unverified user → ask DNI.
     if intent_requires_identity(spec, intent) and not identity_verified:
@@ -506,9 +571,18 @@ def _emit_intent(
     if not result:
         return None
     _remember_variant(session_state, intent, result.variant_index)
+
+    # Build the tool args: if the intent captures a value, pass it as the named
+    # argument (the ``capture`` name == the tool's parameter name, data-driven).
+    tool_args: dict = {}
+    capture_name = (spec.intents.get(intent) or {}).get("capture")
+    if capture_name and captured:
+        tool_args[str(capture_name)] = captured
+
     return RouterOutcome(
         handled=True, text=result.text, intent=intent, source=source,
         variant_index=result.variant_index, run_tool=intent_tool(spec, intent),
+        tool_args=tool_args,
     )
 
 
@@ -532,6 +606,22 @@ def classifier_menu(spec: ResponsesSpec) -> dict[str, str]:
 def intent_requires_identity(spec: ResponsesSpec, intent: str) -> bool:
     """Whether ``intent`` needs a verified identity (data-driven gate flag)."""
     return bool((spec.intents.get(intent) or {}).get("requires_identity"))
+
+
+def identity_opening_intents(spec: ResponsesSpec) -> set[str]:
+    """Intents that can OPEN the identity gate (data-driven, tenant-agnostic).
+
+    An opener is any intent that does NOT require identity, captures a value from
+    its pattern, and declares a tool to run with it — i.e. the identification
+    intent(s). Used to prioritize identification over gated intents while the
+    user is unverified, so a typed DNI never falls into the identity gate.
+    Empty for tenants that declare no such intent (behavior unchanged for them).
+    """
+    out: set[str] = set()
+    for intent, cfg in spec.intents.items():
+        if not cfg.get("requires_identity") and cfg.get("capture") and cfg.get("tool"):
+            out.add(intent)
+    return out
 
 
 def intent_tool(spec: ResponsesSpec, intent: str) -> str | None:

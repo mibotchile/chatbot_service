@@ -48,6 +48,17 @@
     "template": "Para mostrarte los datos de tu cuenta necesito identificarte primero. Por favor, indícame tu número de DNI (8 dígitos)."
   },
 
+  "identificar": {
+    "mode": "verbatim",
+    "description": "El usuario escribe su número de DNI (8 dígitos) para identificarse.",
+    "requires_identity": false,
+    "tool": "identificar_cliente",
+    "capture": "dni",
+    "patterns": ["\\b(?P<dni>\\d{8})\\b"],
+    "template": "Listo, {nombre}. Verifiqué tu identidad. ¿Quieres ver tu deuda o validar un comprobante de pago?",
+    "not_found": "No encontré una cuenta con ese DNI. Verifica el número (son 8 dígitos) o, si prefieres, te derivo con un asesor."
+  },
+
   "consulta_deuda": {
     "mode": "verbatim",
     "description": "El usuario pregunta por su deuda, saldo, cuota, vencimiento o estado de su préstamo.",
