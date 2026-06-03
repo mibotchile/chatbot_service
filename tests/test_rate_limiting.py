@@ -244,7 +244,7 @@ def test_daily_cost_is_per_ip():
 
 def test_cost_cap_uses_real_pricing_table():
     """The cap accumulates the SAME cost_usd the analytics sink records."""
-    from config.pricing import compute_cost_usd
+    from tenancy.pricing import compute_cost_usd
 
     clock = FakeClock()
     rl = _limiter(clock, daily_cost_cap_usd=0.01)

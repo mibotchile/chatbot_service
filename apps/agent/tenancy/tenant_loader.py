@@ -10,8 +10,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config.soul import AgentSoul
-from core.responses import ResponsesSpec
+from tenancy.soul import AgentSoul
+from tenancy.responses_spec import ResponsesSpec
 
 
 @dataclass

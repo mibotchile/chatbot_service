@@ -18,10 +18,10 @@ from pathlib import Path
 
 import pytest
 
-from config import pricing
+from tenancy import pricing
 from core.agent import SoreliaAgent
 from shared.llm import LLMProvider, LLMResponse
-from core.tenant_loader import TenantConfig as TC
+from tenancy.tenant_loader import TenantConfig as TC
 from integrations import analytics_sink
 
 _DT_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")

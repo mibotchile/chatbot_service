@@ -983,7 +983,7 @@ async def chat(request: Request, body: ChatRequest):
     # Load tenant config if specified
     _tenant_config = None
     if body.tenant_id:
-        from core.tenant_loader import TenantConfig
+        from tenancy.tenant_loader import TenantConfig
         from pathlib import Path as _TPath
         # Check both /app/tenants (Docker) and relative path (dev)
         _tdir = _TPath("/app/tenants") / body.tenant_id
@@ -1103,7 +1103,7 @@ async def chat(request: Request, body: ChatRequest):
         # Accumulate this turn's LLM cost on the IP's daily bucket (same pricing
         # the analytics sink uses). Read by check_daily_cost on the NEXT request.
         try:
-            from config.pricing import compute_cost_usd
+            from tenancy.pricing import compute_cost_usd
 
             _usage = result.get("usage") or {}
             _cost = compute_cost_usd(

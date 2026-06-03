@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-from config.soul import AgentSoul
+from tenancy.soul import AgentSoul
 from core.conversation_fsm import detect_state, get_state_rules
 
 _GUARDRAILS = (Path(__file__).parent / "guardrails.md").read_text()

@@ -30,7 +30,7 @@ from typing import Any
 
 from loguru import logger
 
-from config.pricing import compute_cost_usd
+from tenancy.pricing import compute_cost_usd
 from shared.config.settings import settings
 
 _INTERACTIONS_TABLE = "bot_interactions"

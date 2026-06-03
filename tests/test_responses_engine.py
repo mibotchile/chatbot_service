@@ -18,7 +18,7 @@ import pytest
 
 from core import responses as R
 from core.responses import ResponsesSpec
-from core.tenant_loader import TenantConfig
+from tenancy.tenant_loader import TenantConfig
 from integrations import debt_source
 
 TENANT = "prestamype"

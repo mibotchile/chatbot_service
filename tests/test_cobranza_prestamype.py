@@ -398,7 +398,7 @@ async def test_validar_comprobante_dedup_by_nro_operacion_independent_of_type(tm
 # ── scope: prestamype acotado a 2 capacidades (consulta + comprobante) ──────
 
 def _tenant_config():
-    from core.tenant_loader import TenantConfig
+    from tenancy.tenant_loader import TenantConfig
 
     root = Path(__file__).resolve().parent.parent / "tenants" / TENANT
     return TenantConfig.from_directory(root)

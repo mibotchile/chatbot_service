@@ -19,7 +19,7 @@ def test_app_imports():
 
 def test_empty_tenant_loads():
     """The _template tenant loads via the engine loader with empty knowledge."""
-    from core.tenant_loader import TenantConfig
+    from tenancy.tenant_loader import TenantConfig
 
     tenant = TenantConfig.from_directory(_TENANTS / "_template")
 

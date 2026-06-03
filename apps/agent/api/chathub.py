@@ -166,7 +166,7 @@ async def _run_chathub_engine_turn(
     cfg = m._load_tenant_config(tenant_id)
     if cfg is not None:
         try:
-            from core.tenant_loader import TenantConfig
+            from tenancy.tenant_loader import TenantConfig
 
             tenant_config = TenantConfig.from_directory(m._tenant_dir(tenant_id))
         except Exception:
