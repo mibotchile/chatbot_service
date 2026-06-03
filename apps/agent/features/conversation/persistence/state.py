@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from features.conversation.hooks import extract_implicit_data
-from features.conversation.debtor_state import LeadMachine
+from features.conversation.debtor_state import DebtorState
 
 if TYPE_CHECKING:
     import asyncpg
@@ -38,10 +38,10 @@ class ConversationState:
         self.db_schema = db_schema
         self.visitor_id = visitor_id
         self.history: list[dict] = list(history) if history else []
-        self.lead = LeadMachine(initial_data=lead_data)
+        self.debtor = DebtorState(initial_data=lead_data)
         self.page_context: dict = {}
         self.brochures_sent: set[str] = set()  # project slugs already emailed
-        self.lead_notified: bool = False  # sales team already notified
+        self.debtor_notified: bool = False  # sales team already notified
         # Identity gate (cobranza): resolved server-side from the campaign token.
         # debt_context holds the verified borrower profile (incl. account_id).
         self.identity_verified: bool = False
@@ -56,7 +56,7 @@ class ConversationState:
         self.history.append({"role": "user", "content": text})
         extracted = extract_implicit_data(text)
         if extracted:
-            self.lead.update(extracted)
+            self.debtor.update(extracted)
 
     def add_assistant_message(self, content: str) -> None:
         self.history.append({"role": "assistant", "content": content})
@@ -84,8 +84,8 @@ class ConversationState:
                 self.conversation_id,
                 visitor_id=self.visitor_id,
                 history=self.history,
-                lead_data=self.lead.collected,
-                lead_level=self.lead.level,
+                lead_data=self.debtor.collected,
+                lead_level=self.debtor.level,
                 page_context=self.page_context,
             )
         except Exception:

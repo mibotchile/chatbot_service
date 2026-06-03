@@ -213,7 +213,7 @@ async def test_agent_aggregates_usage_and_latency():
     agent = SoreliaAgent(provider=_UsageProvider())
     result = await agent.process_message(
         text="hola", conversation_id="c1", history=[],
-        lead_state={"level": "cold", "collected": {}}, page_context={}, channel="web",
+        debtor_state={"level": "cold", "collected": {}}, page_context={}, channel="web",
     )
     usage = result["usage"]
     # First call (100/40) + forced-chip call (7/3) are both accumulated.

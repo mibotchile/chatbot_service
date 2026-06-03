@@ -393,7 +393,7 @@ async def test_agent_keyword_saludo_resolves_with_zero_llm_calls():
         text="hola buenas",
         conversation_id="c1",
         history=[],
-        lead_state={},
+        debtor_state={},
         page_context={},
         session_state={},
     )
@@ -407,7 +407,7 @@ async def test_agent_consulta_deuda_keyword_uses_real_data_no_llm():
     agent = _agent(provider, identity_dni=LUCIA)         # multi-deuda
     res = await agent.process_message(
         text="cuánto debo", conversation_id="c2", history=[],
-        lead_state={}, page_context={}, session_state={},
+        debtor_state={}, page_context={}, session_state={},
     )
     assert provider.calls == 0
     assert "P05012" in res["content"] and "P05119" in res["content"]
@@ -420,7 +420,7 @@ async def test_agent_gated_intent_without_identity_asks_for_dni_no_llm():
     agent = _agent(provider, identity_dni=None)          # unverified
     res = await agent.process_message(
         text="cuánto debo", conversation_id="c5", history=[],
-        lead_state={}, page_context={}, session_state={},
+        debtor_state={}, page_context={}, session_state={},
     )
     assert provider.calls == 0
     assert res["metadata"]["intent"] == "identidad_requerida"
@@ -434,7 +434,7 @@ async def test_agent_hybrid_miss_classifies_then_canned():
     agent = _agent(provider, identity_dni=LUIS)
     res = await agent.process_message(
         text="necesito los datos para abonar", conversation_id="c3", history=[],
-        lead_state={}, page_context={}, session_state={},
+        debtor_state={}, page_context={}, session_state={},
     )
     assert provider.calls == 1                          # only the classifier
     assert res["response_source"] == R.SOURCE_INTENT
@@ -447,7 +447,7 @@ async def test_agent_hybrid_no_canned_falls_through_to_llm():
     agent = _agent(provider, identity_dni=LUIS)
     res = await agent.process_message(
         text="cuéntame un chiste sobre finanzas", conversation_id="c4", history=[],
-        lead_state={}, page_context={}, session_state={},
+        debtor_state={}, page_context={}, session_state={},
     )
     assert res["response_source"] == R.SOURCE_LLM
     assert provider.calls >= 2                          # classify + generate
@@ -495,7 +495,7 @@ async def test_sticky_flow_bypasses_router_for_cci_keyword(monkeypatch, tmp_path
     ss = {"llm_flow": {"intent": "comprobante_reportar", "turns": 1}}
     res = await agent.process_message(
         text="es un cci, la cuenta 00389801338381007048",
-        conversation_id="sf1", history=[], lead_state={}, page_context={},
+        conversation_id="sf1", history=[], debtor_state={}, page_context={},
         session_state=ss,
     )
     # NOT canned donde_pagar → the LLM handled it (and ran the tool).
@@ -513,7 +513,7 @@ async def test_sticky_flow_cap_releases_after_max_turns():
     ss = {"llm_flow": {"intent": "comprobante_reportar", "turns": 6}}  # next inc → 7 > cap
     res = await agent.process_message(
         text="es un cci", conversation_id="sf2", history=[],
-        lead_state={}, page_context={}, session_state=ss,
+        debtor_state={}, page_context={}, session_state=ss,
     )
     assert "llm_flow" not in ss                  # released by the cap
     assert res["response_source"] == R.SOURCE_KEYWORD   # routed to donde_pagar
@@ -528,7 +528,7 @@ async def test_sticky_flow_armed_when_flow_intent_classified():
     ss: dict = {}
     res = await agent.process_message(
         text="ya hice mi transferencia, te paso los datos",
-        conversation_id="sf3", history=[], lead_state={}, page_context={},
+        conversation_id="sf3", history=[], debtor_state={}, page_context={},
         session_state=ss,
     )
     assert res["response_source"] == R.SOURCE_LLM
@@ -543,7 +543,7 @@ async def test_sticky_flow_not_cleared_when_llm_only_converses():
     ss = {"llm_flow": {"intent": "comprobante_reportar", "turns": 1}}
     res = await agent.process_message(
         text="es un cci", conversation_id="sf4", history=[],
-        lead_state={}, page_context={}, session_state=ss,
+        debtor_state={}, page_context={}, session_state=ss,
     )
     assert res["response_source"] == R.SOURCE_LLM
     assert ss.get("llm_flow", {}).get("intent") == "comprobante_reportar"
@@ -611,7 +611,7 @@ async def test_agent_typed_dni_identifies_then_allows_consulta(dni, first_name, 
     # Turn 1: user types the DNI → identifies with ZERO LLM, gate opens.
     r1 = await agent.process_message(
         text=dni, conversation_id="id1", history=[],
-        lead_state={}, page_context={}, session_state=session,
+        debtor_state={}, page_context={}, session_state=session,
     )
     assert provider.calls == 0
     assert r1["metadata"]["intent"] == "identificar"
@@ -622,7 +622,7 @@ async def test_agent_typed_dni_identifies_then_allows_consulta(dni, first_name, 
     # Turn 2: same session asks for the debt → gated intent now passes the gate.
     r2 = await agent.process_message(
         text="cuánto debo", conversation_id="id1", history=[],
-        lead_state={}, page_context={}, session_state=session,
+        debtor_state={}, page_context={}, session_state=session,
     )
     assert provider.calls == 0
     assert r2["metadata"]["intent"] == "consulta_deuda"
@@ -635,7 +635,7 @@ async def test_agent_typed_unknown_dni_returns_canned_not_found_no_500():
     agent = _agent(provider, identity_dni=None)
     res = await agent.process_message(
         text="99999999", conversation_id="idx", history=[],
-        lead_state={}, page_context={}, session_state={},
+        debtor_state={}, page_context={}, session_state={},
     )
     assert provider.calls == 0
     assert res["metadata"]["intent"] == "identificar"
@@ -650,7 +650,7 @@ async def test_token_identity_flow_still_works_with_verified_profile():
     agent = _agent(provider, identity_dni=LUIS)             # verified upfront
     res = await agent.process_message(
         text="cuánto debo", conversation_id="tok1", history=[],
-        lead_state={}, page_context={}, session_state={},
+        debtor_state={}, page_context={}, session_state={},
     )
     assert provider.calls == 0
     assert res["metadata"]["intent"] == "consulta_deuda"

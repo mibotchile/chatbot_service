@@ -275,16 +275,16 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
     await conv.add_user_message_async(text)
 
     # Auto-collect phone + name from WhatsApp (we already have them!)
-    if phone and "phone" not in conv.lead.collected:
-        conv.lead.collected["phone"] = phone
-    if sender_name and "name" not in conv.lead.collected:
-        conv.lead.collected["name"] = sender_name
+    if phone and "phone" not in conv.debtor.collected:
+        conv.debtor.collected["phone"] = phone
+    if sender_name and "name" not in conv.debtor.collected:
+        conv.debtor.collected["name"] = sender_name
 
     # Log suspicious input
     if _SUSPICIOUS_PATTERN.search(text):
         logger.warning("Suspicious WhatsApp input: phone={}", phone)
 
-    lead_level_before = conv.lead.level
+    debtor_level_before = conv.debtor.level
 
     try:
         provider = build_llm_provider(settings)
@@ -303,7 +303,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         _deliverables, _delivery_mode = _delivery_for(tenant_id)
         registry = ToolRegistry(
             meilisearch_client=meili_client,
-            lead_machine=conv.lead,
+            lead_machine=conv.debtor,
             visitor_memory=visitor_memory,
             email_service=email_service,
             whatsapp_service=_wa_svc,
@@ -346,7 +346,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
             text=text,
             conversation_id=conv.conversation_id,
             history=conv.history[:-1],
-            lead_state=conv.lead.get_status(),
+            debtor_state=conv.debtor.get_status(),
             page_context=enriched_page_context,
             channel="whatsapp",
             session_state=conv.session_state,
@@ -372,7 +372,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         wa_tool_pairs = []
 
     from features.conversation.response_guard import guard_response
-    content = guard_response(content, conv.history, conv.lead.get_status())
+    content = guard_response(content, conv.history, conv.debtor.get_status())
     await conv.add_assistant_message_async(content)
 
     # Increment daily counter
@@ -386,7 +386,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         await _wa_svc.send_text(phone, content, incoming_id=message_id)
 
         # Send formatted widgets (buttons, mortgage, subsidy, comparison)
-        wa_quick_replies = build_quick_replies(conv.lead.get_status(), wa_ui_actions, wa_tool_pairs, content)
+        wa_quick_replies = build_quick_replies(conv.debtor.get_status(), wa_ui_actions, wa_tool_pairs, content)
         wa_messages = format_for_whatsapp(wa_ui_actions, wa_quick_replies, phone)
         if wa_messages:
             await _wa_svc.send_formatted(wa_messages)
@@ -423,15 +423,15 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
                 store.db_schema,
                 conv.conversation_id,
                 conversation_id,  # visitor_id = wa-phone
-                conv.lead.collected,
-                conv.lead.level,
+                conv.debtor.collected,
+                conv.debtor.level,
             )
         except Exception:
             logger.opt(exception=True).warning("Failed to persist WhatsApp lead")
 
     # Update visitor memory with lead data
     if visitor_memory:
-        collected = conv.lead.get_status().get("collected", {})
+        collected = conv.debtor.get_status().get("collected", {})
         if collected:
             await visitor_memory.upsert_visitor(conversation_id, {
                 "name": collected.get("name") or sender_name,
@@ -441,17 +441,17 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
             })
 
     # Lead capture hook (same as web)
-    lead_level_after = conv.lead.level
+    debtor_level_after = conv.debtor.level
     _CONTACT_LEVELS = {"LEAD", "LEAD_ENRICHED"}
     if (
-        lead_level_after in _CONTACT_LEVELS
-        and lead_level_before not in _CONTACT_LEVELS
-        and not conv.lead_notified
+        debtor_level_after in _CONTACT_LEVELS
+        and debtor_level_before not in _CONTACT_LEVELS
+        and not conv.debtor_notified
     ):
         try:
             from shared.webhooks import on_lead_captured
 
-            collected = conv.lead.collected
+            collected = conv.debtor.collected
             # TODO Fase 1: build a cobranza "case" context (account/debt summary)
             # to drive notifications. For now pass a neutral context.
             case_context = {"name": "", "brochure_url": "", "sales_agent": {}}
@@ -464,7 +464,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
                 whatsapp_service=_wa_svc,
                 notification_email=settings.notification_email,
             )
-            conv.lead_notified = True
+            conv.debtor_notified = True
             logger.info("WhatsApp lead captured: phone={} tenant={} actions={}", phone, tenant_id, actions)
         except Exception:
             logger.opt(exception=True).warning("WhatsApp lead capture hook failed")
@@ -975,7 +975,7 @@ async def chat(request: Request, body: ChatRequest):
             await visitor_memory.add_project_viewed(body.visitor_id, project_slug)
 
     # Snapshot lead level before processing to detect transitions
-    lead_level_before = conv.lead.level
+    debtor_level_before = conv.debtor.level
 
     # Try to use real agent, fallback to simple response
     has_error = False
@@ -1046,7 +1046,7 @@ async def chat(request: Request, body: ChatRequest):
         _deliverables, _delivery_mode = _delivery_for(body.tenant_id)
         registry = ToolRegistry(
             meilisearch_client=meili_client,
-            lead_machine=conv.lead,
+            lead_machine=conv.debtor,
             visitor_memory=visitor_memory,
             email_service=email_service,
             whatsapp_service=get_whatsapp_service(body.tenant_id),
@@ -1086,7 +1086,7 @@ async def chat(request: Request, body: ChatRequest):
             text=body.text,
             conversation_id=conv.conversation_id,
             history=conv.history[:-1],  # exclude the message we just added
-            lead_state=conv.lead.get_status(),
+            debtor_state=conv.debtor.get_status(),
             page_context=enriched_page_context,
             channel=body.channel,
             session_state=conv.session_state,
@@ -1136,7 +1136,7 @@ async def chat(request: Request, body: ChatRequest):
         logger.exception("Agent fatal error")
         raise
 
-    content = guard_response(content, conv.history, conv.lead.get_status())
+    content = guard_response(content, conv.history, conv.debtor.get_status())
     await conv.add_assistant_message_async(content)
 
     # Increment daily message counter (after successful response)
@@ -1155,8 +1155,8 @@ async def chat(request: Request, body: ChatRequest):
                 store.db_schema,
                 conv.conversation_id,
                 body.visitor_id,
-                conv.lead.collected,
-                conv.lead.level,
+                conv.debtor.collected,
+                conv.debtor.level,
             )
         except Exception:
             logger.opt(exception=True).warning("Failed to persist denormalized lead")
@@ -1176,7 +1176,7 @@ async def chat(request: Request, body: ChatRequest):
 
     # Update visitor memory with any lead data collected during this turn
     if body.visitor_id and visitor_memory:
-        lead_status = conv.lead.get_status()
+        lead_status = conv.debtor.get_status()
         collected = lead_status.get("collected", {})
         if collected:
             await visitor_memory.upsert_visitor(body.visitor_id, {
@@ -1187,17 +1187,17 @@ async def chat(request: Request, body: ChatRequest):
             })
 
     # --- Lead capture hook: send brochure + notify sales on LEAD transition ---
-    lead_level_after = conv.lead.level
+    debtor_level_after = conv.debtor.level
     _CONTACT_LEVELS = {"LEAD", "LEAD_ENRICHED"}
     if (
-        lead_level_after in _CONTACT_LEVELS
-        and lead_level_before not in _CONTACT_LEVELS
-        and not conv.lead_notified
+        debtor_level_after in _CONTACT_LEVELS
+        and debtor_level_before not in _CONTACT_LEVELS
+        and not conv.debtor_notified
     ):
         try:
             from shared.webhooks import on_lead_captured
 
-            collected = conv.lead.collected
+            collected = conv.debtor.collected
             # TODO Fase 1: build a cobranza "case" context (account/debt summary).
             case_context = {"name": "", "brochure_url": "", "sales_agent": {}}
 
@@ -1209,7 +1209,7 @@ async def chat(request: Request, body: ChatRequest):
                 whatsapp_service=get_whatsapp_service(body.tenant_id),
                 notification_email=settings.notification_email,
             )
-            conv.lead_notified = True
+            conv.debtor_notified = True
             logger.info("Lead captured: conversation={} actions={}", conv.conversation_id, actions)
         except Exception:
             logger.opt(exception=True).warning("Lead capture hook failed (non-blocking)")
@@ -1271,7 +1271,7 @@ async def chat(request: Request, body: ChatRequest):
             quick_replies = {"type": "single_select", "buttons": buttons[:4]}
         if not quick_replies:
             from features.conversation.response_builder import build_quick_replies
-            quick_replies = build_quick_replies(conv.lead.get_status(), ui_actions, tool_pairs, content)
+            quick_replies = build_quick_replies(conv.debtor.get_status(), ui_actions, tool_pairs, content)
 
     # Current identity state (updated this turn if the user identified via DNI).
     # Lets the widget refresh its identity strip without a token.
@@ -1310,7 +1310,7 @@ async def chat(request: Request, body: ChatRequest):
         "context_updated": True,
         "has_error": has_error,
         "error_message": error_message,
-        "lead": conv.lead.get_status(),
+        "lead": conv.debtor.get_status(),
     }
 
 
@@ -1651,7 +1651,7 @@ async def list_reclamos():
 
 def _fallback_response(text: str, conv) -> str:
     """Simple fallback when LLM is unavailable. Domain-neutral (config-driven copy is TODO)."""
-    lead = conv.lead
+    lead = conv.debtor
     if lead.level == "VISITOR":
         return "Hola, gracias por escribir. En un momento te ayudo con tu consulta."
     return "Entendido. En este momento no puedo consultar el detalle, pero te ayudo por WhatsApp."
@@ -1683,7 +1683,7 @@ async def get_conversation_messages(request: Request, conversation_id: str):
     return {
         "messages": messages,
         "page_context": conv.page_context,
-        "lead_status": conv.lead.get_status(),
+        "lead_status": conv.debtor.get_status(),
     }
 
 
@@ -1829,7 +1829,7 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             # Clear conversation state
             conv = await store.get_or_create_async(conversation_id, visitor_id=conversation_id)
             conv.history.clear()
-            conv.lead = type(conv.lead)()  # fresh lead machine
+            conv.debtor = type(conv.debtor)()  # fresh debtor state machine
             if _wa_svc:
                 await _wa_svc.send_text(phone, "Listo, empezamos de cero! En que te puedo ayudar? 😊")
             return {"status": "reset", "tenant_id": tenant_id}

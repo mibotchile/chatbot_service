@@ -217,7 +217,7 @@ async def _run_chathub_engine_turn(
         )
         if photo_result is not None:
             content = guard_response(
-                photo_result.get("content", ""), conv.history, conv.lead.get_status()
+                photo_result.get("content", ""), conv.history, conv.debtor.get_status()
             )
             photo_result["content"] = content
             await conv.add_assistant_message_async(content)
@@ -237,7 +237,7 @@ async def _run_chathub_engine_turn(
         provider = build_llm_provider(m.settings, api_key_override=api_key)
         _deliverables, _delivery_mode = m._delivery_for(tenant_id)
         registry = ToolRegistry(
-            lead_machine=conv.lead,
+            lead_machine=conv.debtor,
             visitor_memory=m.visitor_memory,
             email_service=m.email_service,
             whatsapp_service=m.get_whatsapp_service(tenant_id),
@@ -268,7 +268,7 @@ async def _run_chathub_engine_turn(
             text=text,
             conversation_id=conv.conversation_id,
             history=conv.history[:-1],
-            lead_state=conv.lead.get_status(),
+            debtor_state=conv.debtor.get_status(),
             page_context=page_context,
             channel=channel,
             # Sticky LLM-flow + variant/credit memory live here and must persist
@@ -288,7 +288,7 @@ async def _run_chathub_engine_turn(
             "usage": {},
         }
 
-    content = guard_response(result.get("content", ""), conv.history, conv.lead.get_status())
+    content = guard_response(result.get("content", ""), conv.history, conv.debtor.get_status())
     result["content"] = content
     await conv.add_assistant_message_async(content)
 

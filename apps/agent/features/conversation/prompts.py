@@ -111,7 +111,7 @@ _default_soul = AgentSoul()
 
 
 def build_system_prompt(
-    lead_state: dict,
+    debtor_state: dict,
     page_context: dict,
     conversation_summary: str = "",
     soul: AgentSoul | None = None,
@@ -155,7 +155,7 @@ def build_system_prompt(
     # FSM state — identity gate drives the state (cobranza)
     conv_history = history if history is not None else []
     identity = page_context.get("identity", {}) if page_context else {}
-    state = detect_state(lead_state, conv_history, page_context, identity=identity)
+    state = detect_state(debtor_state, conv_history, page_context, identity=identity)
     sections.append(f"# ESTADO CONVERSACIONAL: {state}\n{get_state_rules(state)}")
 
     # Verified identity context — the agent narrates only what's here / from tools
@@ -170,13 +170,13 @@ def build_system_prompt(
             "Nunca inventes cifras."
         )
 
-    # Lead state
-    if lead_state:
-        level = lead_state.get("level", "VISITOR")
-        collected = lead_state.get("collected", {})
-        missing = lead_state.get("missing", [])
+    # Debtor state
+    if debtor_state:
+        level = debtor_state.get("level", "VISITOR")
+        collected = debtor_state.get("collected", {})
+        missing = debtor_state.get("missing", [])
         sections.append(
-            f"# ESTADO DEL LEAD\n"
+            f"# ESTADO DEL DEUDOR\n"
             f"Nivel actual: {level}\n"
             f"Datos recolectados: {collected}\n"
             f"Datos faltantes: {', '.join(missing) if missing else 'ninguno'}"
@@ -202,8 +202,8 @@ def build_system_prompt(
     _first_words = _ap.get(_first_slug, {}).get("palabras_que_definen", [])[:3] if _first_slug else []
 
     priority_slug = page_context.get("project_slug", "") or (
-        lead_state.get("collected", {}).get("project_interest", "")
-        if isinstance(lead_state.get("collected"), dict)
+        debtor_state.get("collected", {}).get("project_interest", "")
+        if isinstance(debtor_state.get("collected"), dict)
         else ""
     )
 

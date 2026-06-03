@@ -1,4 +1,4 @@
-"""Lead state machine with progressive qualification and extraction opportunities."""
+"""Debtor state machine with progressive qualification and extraction opportunities."""
 
 from typing import Callable
 
@@ -21,8 +21,8 @@ EXTRACTION_EXCUSES = {
 TransitionCallback = Callable[[str, str, dict], None]
 
 
-class LeadMachine:
-    """Progressive lead qualification state machine."""
+class DebtorState:
+    """Progressive debtor qualification state machine."""
 
     def __init__(
         self,
@@ -70,6 +70,6 @@ class LeadMachine:
         return {"collected": dict(self.collected), "level": self.level}
 
     @classmethod
-    def from_dict(cls, data: dict) -> "LeadMachine":
+    def from_dict(cls, data: dict) -> "DebtorState":
         """Restore from persisted dict."""
         return cls(initial_data=data.get("collected"))

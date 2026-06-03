@@ -63,7 +63,7 @@ def test_system_prompt_builds_with_empty_state():
     """build_system_prompt runs with empty lead/page context (no KB present)."""
     from features.conversation.prompts import build_system_prompt
 
-    prompt = build_system_prompt(lead_state={}, page_context={})
+    prompt = build_system_prompt(debtor_state={}, page_context={})
     assert "IDENTIDAD" in prompt
     assert "agente de cobranza" in prompt
 

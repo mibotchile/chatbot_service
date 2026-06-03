@@ -78,7 +78,7 @@ def guard_response(
         content: The agent's draft response text.
         history: Full conversation history (list of role/content dicts).
                  Should NOT include *content* yet.
-        lead_status: Output of ``LeadMachine.get_status()`` — must contain
+        lead_status: Output of ``DebtorState.get_status()`` — must contain
                      a ``collected`` dict.
 
     Returns:

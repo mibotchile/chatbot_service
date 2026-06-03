@@ -17,7 +17,7 @@ from shared.llm import LLMProvider, ToolCall
 from shared.llm.base import usage_from_raw
 from tools import ToolRegistry
 from features.conversation.response_builder import build_ui_actions
-from features.conversation.debtor_profile import build_prospect_profile, truncate_history
+from features.conversation.debtor_profile import build_debtor_profile, truncate_history
 from features.conversation import responses as responses_engine
 
 # ── Sticky LLM-flow (data-driven multi-turn tool gathering) ───────────────────
@@ -63,7 +63,7 @@ class SoreliaAgent:
         text: str,
         conversation_id: str,
         history: list[dict],
-        lead_state: dict,
+        debtor_state: dict,
         page_context: dict,
         channel: str = "web",
         session_state: dict | None = None,
@@ -78,14 +78,14 @@ class SoreliaAgent:
         per-session variant memory + the chosen credit for desambiguación.
         """
         # ── Curated responses router (no-op when the tenant has no spec) ──
-        canned = await self._try_canned(text, lead_state, session_state)
+        canned = await self._try_canned(text, debtor_state, session_state)
         if canned is not None:
             return canned
 
-        system_prompt = self.prompt_builder.build(lead_state, page_context, history=history, channel=channel)
+        system_prompt = self.prompt_builder.build(debtor_state, page_context, history=history, channel=channel)
 
-        # Build prospect profile for context compression
-        profile = build_prospect_profile(lead_state, page_context, history)
+        # Build debtor profile for context compression
+        profile = build_debtor_profile(debtor_state, page_context, history)
 
         # Truncate history: profile replaces old messages, keep only recent ones
         recent = truncate_history(history)
@@ -99,7 +99,7 @@ class SoreliaAgent:
         messages.append({"role": "user", "content": text})
 
         token_savings = len(history) - len(recent)
-        logger.info(f"Agent call | conv={conversation_id[:12]} | msg='{text[:50]}' | lead={lead_state.get('level', '?')} | history={len(history)} truncated={token_savings}")
+        logger.info(f"Agent call | conv={conversation_id[:12]} | msg='{text[:50]}' | lead={debtor_state.get('level', '?')} | history={len(history)} truncated={token_savings}")
 
         # Per-turn usage accumulator (summed across every LLM call this turn) and
         # LLM wall-clock latency, surfaced in the result for the analytics sink.
@@ -198,7 +198,7 @@ class SoreliaAgent:
         tenant_owns_chips = bool(spec and getattr(spec, "has_chips", False))
         if not suggested_replies and content and not tenant_owns_chips:
             suggested_replies = await self._force_chip_generation(
-                content, lead_state, tool_pairs, _complete=_complete,
+                content, debtor_state, tool_pairs, _complete=_complete,
             )
 
         return {
@@ -238,7 +238,7 @@ class SoreliaAgent:
         return None
 
     async def _try_canned(
-        self, text: str, lead_state: dict, session_state: dict | None,
+        self, text: str, debtor_state: dict, session_state: dict | None,
     ) -> dict[str, Any] | None:
         """Run the 2-layer router. Returns a full result dict when it handles the
         turn with a canned reply, else None (the agent loop proceeds normally).
@@ -433,7 +433,7 @@ class SoreliaAgent:
     async def _force_chip_generation(
         self,
         content: str,
-        lead_state: dict,
+        debtor_state: dict,
         tool_pairs: list[tuple[str, dict]],
         _complete=None,
     ) -> list[str] | None:
@@ -449,7 +449,7 @@ class SoreliaAgent:
             return None
 
         tools_called = [name for name, _ in tool_pairs] if tool_pairs else ["ninguna"]
-        collected = lead_state.get("collected", {})
+        collected = debtor_state.get("collected", {})
         system = (
             "Genera opciones de respuesta rapida para el usuario. "
             "Deben ser 2-4 opciones cortas (2-5 palabras), coherentes con lo que acabas de decir. "
@@ -487,5 +487,5 @@ class _PromptBuilder:
     def __init__(self, tenant=None):
         self.tenant = tenant
 
-    def build(self, lead_state: dict, page_context: dict, history: list[dict] | None = None, channel: str = "web") -> str:
-        return build_system_prompt(lead_state=lead_state, page_context=page_context, history=history, channel=channel, tenant=self.tenant)
+    def build(self, debtor_state: dict, page_context: dict, history: list[dict] | None = None, channel: str = "web") -> str:
+        return build_system_prompt(debtor_state=debtor_state, page_context=page_context, history=history, channel=channel, tenant=self.tenant)

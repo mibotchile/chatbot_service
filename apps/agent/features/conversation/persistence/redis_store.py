@@ -6,7 +6,7 @@ import uuid
 from redis.asyncio import Redis
 
 from features.conversation.hooks import extract_implicit_data
-from features.conversation.debtor_state import LeadMachine
+from features.conversation.debtor_state import DebtorState
 
 TTL_SECONDS = 86400  # 24 hours
 
@@ -21,7 +21,7 @@ class RedisConversationState:
     def __init__(self, conversation_id: str, redis: Redis):
         self.conversation_id = conversation_id
         self._redis = redis
-        self.lead = LeadMachine()
+        self.debtor = DebtorState()
         self.page_context: dict = {}
         self.history: list[dict] = []
         self._dirty_history = False
@@ -33,7 +33,7 @@ class RedisConversationState:
         self._dirty_history = True
         extracted = extract_implicit_data(text)
         if extracted:
-            self.lead.update(extracted)
+            self.debtor.update(extracted)
             self._dirty_lead = True
 
     def add_assistant_message(self, content: str) -> None:
@@ -51,7 +51,7 @@ class RedisConversationState:
         if history_raw:
             self.history = json.loads(history_raw)
         if lead_raw:
-            self.lead = LeadMachine(initial_data=json.loads(lead_raw))
+            self.debtor = DebtorState(initial_data=json.loads(lead_raw))
         if page_raw:
             self.page_context = json.loads(page_raw)
 
@@ -64,7 +64,7 @@ class RedisConversationState:
             self._dirty_history = False
         if self._dirty_lead:
             key = _key(self.conversation_id, "lead_data")
-            pipe.set(key, json.dumps(self.lead.collected), ex=TTL_SECONDS)
+            pipe.set(key, json.dumps(self.debtor.collected), ex=TTL_SECONDS)
             self._dirty_lead = False
         if self._dirty_page:
             key = _key(self.conversation_id, "page_context")

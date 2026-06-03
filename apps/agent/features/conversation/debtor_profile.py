@@ -1,4 +1,4 @@
-"""Prospect profile compression — replaces raw history with a structured summary.
+"""Debtor profile compression — replaces raw history with a structured summary.
 
 Instead of sending 20+ raw messages to the LLM each turn (~8000 tokens),
 compress the conversation into a ~200 token profile + last 3 messages.
@@ -10,8 +10,8 @@ from typing import Any
 RECENT_MESSAGES_LIMIT = 6  # 3 user + 3 assistant turns
 
 
-def build_prospect_profile(lead_status: dict, page_context: dict, history: list[dict]) -> str:
-    """Build a compact prospect profile from lead data + conversation history.
+def build_debtor_profile(lead_status: dict, page_context: dict, history: list[dict]) -> str:
+    """Build a compact debtor profile from collected data + conversation history.
 
     Returns a short text block (~100-200 tokens) summarizing:
     - Who they are (name, contact)
