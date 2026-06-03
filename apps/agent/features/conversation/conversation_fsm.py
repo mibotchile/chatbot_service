@@ -52,7 +52,7 @@ _STATE_RULES: dict[str, str] = {
 
 
 def detect_state(
-    lead_status: dict,
+    debtor_status: dict,
     history: list[dict],
     page_context: dict,
     identity: dict | None = None,

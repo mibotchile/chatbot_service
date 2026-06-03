@@ -70,7 +70,7 @@ def _strip_sentences_for_fields(text: str, fields: set[str]) -> str:
 def guard_response(
     content: str,
     history: list[dict],
-    lead_status: dict,
+    debtor_status: dict,
 ) -> str:
     """Clean *content* by removing repeated data asks.
 
@@ -78,8 +78,8 @@ def guard_response(
         content: The agent's draft response text.
         history: Full conversation history (list of role/content dicts).
                  Should NOT include *content* yet.
-        lead_status: Output of ``DebtorState.get_status()`` — must contain
-                     a ``collected`` dict.
+        debtor_status: Output of ``DebtorState.get_status()`` — must contain
+                       a ``collected`` dict.
 
     Returns:
         The (possibly trimmed) response text.
@@ -88,7 +88,7 @@ def guard_response(
     if not current_asks:
         return content
 
-    collected = set(lead_status.get("collected", {}).keys())
+    collected = set(debtor_status.get("collected", {}).keys())
     fields_to_strip: set[str] = set()
 
     # Rule 1: field already collected — strip unconditionally

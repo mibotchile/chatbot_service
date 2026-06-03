@@ -203,7 +203,7 @@ _ASK_CHIPS: dict[str, list[dict]] = {
 
 
 def build_quick_replies(
-    lead_status: dict,
+    debtor_status: dict,
     ui_actions: dict,
     tool_results: list[tuple[str, dict]] | None = None,
     response_content: str = "",
@@ -213,7 +213,7 @@ def build_quick_replies(
     Priority: agent's question > tool results > lead state fallback.
     Returns a QuickReplySet: {type, buttons: [{id, label, value}]}
     """
-    collected = lead_status.get("collected", {}) or {}
+    collected = debtor_status.get("collected", {}) or {}
     buttons: list[dict] = []
     tools_called = {name for name, _ in (tool_results or [])}
 

@@ -10,7 +10,7 @@ from typing import Any
 RECENT_MESSAGES_LIMIT = 6  # 3 user + 3 assistant turns
 
 
-def build_debtor_profile(lead_status: dict, page_context: dict, history: list[dict]) -> str:
+def build_debtor_profile(debtor_status: dict, page_context: dict, history: list[dict]) -> str:
     """Build a compact debtor profile from collected data + conversation history.
 
     Returns a short text block (~100-200 tokens) summarizing:
@@ -19,8 +19,8 @@ def build_debtor_profile(lead_status: dict, page_context: dict, history: list[di
     - Where they are in the funnel
     - Key topics discussed
     """
-    collected = lead_status.get("collected", {})
-    level = lead_status.get("level", "VISITOR")
+    collected = debtor_status.get("collected", {})
+    level = debtor_status.get("level", "VISITOR")
 
     lines = ["## Perfil del Prospecto"]
 

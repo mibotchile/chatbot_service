@@ -1176,8 +1176,8 @@ async def chat(request: Request, body: ChatRequest):
 
     # Update visitor memory with any lead data collected during this turn
     if body.visitor_id and visitor_memory:
-        lead_status = conv.debtor.get_status()
-        collected = lead_status.get("collected", {})
+        debtor_status = conv.debtor.get_status()
+        collected = debtor_status.get("collected", {})
         if collected:
             await visitor_memory.upsert_visitor(body.visitor_id, {
                 "name": collected.get("name"),
@@ -1669,7 +1669,7 @@ async def get_conversation_messages(request: Request, conversation_id: str):
 
     # Only return if the conversation actually has history
     if not conv.history:
-        return {"messages": [], "page_context": {}, "lead_status": {}}
+        return {"messages": [], "page_context": {}, "debtor_status": {}}
 
     messages = [
         {
@@ -1683,7 +1683,7 @@ async def get_conversation_messages(request: Request, conversation_id: str):
     return {
         "messages": messages,
         "page_context": conv.page_context,
-        "lead_status": conv.debtor.get_status(),
+        "debtor_status": conv.debtor.get_status(),
     }
 
 
