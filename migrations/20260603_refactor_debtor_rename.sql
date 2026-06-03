@@ -237,6 +237,14 @@ $$;
 -- =============================================================================
 -- Section 2: DROP dead columns (UNRECOVERABLE — pg_dump REQUIRED first)
 -- =============================================================================
+-- NOTE: There is no Section 3. The numbering jumps to Section 4 (Rollback)
+-- because Section 3 is the manual verification step performed by the operator
+-- between the DROP and the rollback documentation:
+--   Section 3 (manual, not scripted):
+--     SELECT COUNT(*) FROM {schema}.sorelia_debtors;  -- confirm row counts match pre-migration
+--     SELECT debtor_level, COUNT(*) FROM {schema}.sorelia_debtors GROUP BY 1;  -- confirm enum remap
+--     curl https://<host>/api/v1/dashboard/stats -H "X-Dashboard-Key: <key>"  -- confirm 200
+-- =============================================================================
 -- DROP district_interest, purpose, budget from sorelia_debtors.
 -- project_interest is KEPT (LIVE: /stats top_projects endpoint reads it).
 -- Run only AFTER Section 1 is verified live and green.

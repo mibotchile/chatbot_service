@@ -28,7 +28,7 @@ def _q(schema: str, table: str) -> str:
 
 
 async def ensure_tables(pool: asyncpg.Pool, schema: str) -> None:
-    """Create sorelia_conversations and sorelia_leads tables if they don't exist."""
+    """Create sorelia_conversations and sorelia_debtors tables if they don't exist."""
     if not _SAFE_IDENTIFIER.match(schema):
         raise ValueError(f"Unsafe schema name: {schema!r}")
 

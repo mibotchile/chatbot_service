@@ -147,7 +147,9 @@ class StateStore:
                     )
                     if row:
                         history = row.get("history") or []
-                        # Dual-read: prefer debtor_data, fall back to lead_data
+                        # Dual-read: prefer debtor_data; fall back to lead_data when debtor_data
+                        # is absent or still '{}' (falsy) — expected during the pre-migration window
+                        # when rows were written by old code and debtor_data has not been backfilled.
                         debtor_data = row.get("debtor_data") or row.get("lead_data") or {}
                         page_context = row.get("page_context") or {}
                         visitor_id = visitor_id or row.get("visitor_id")
