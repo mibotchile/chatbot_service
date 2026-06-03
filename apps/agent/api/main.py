@@ -413,12 +413,12 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
     else:
         logger.info("[WA-NO-SERVICE] Would send to {}: {}", phone, content[:100])
 
-    # Persist denormalized lead
+    # Persist denormalized debtor
     if store.db_pool is not None:
         try:
-            from shared.persistence.persistence import upsert_lead
+            from shared.persistence.persistence import upsert_debtor
 
-            await upsert_lead(
+            await upsert_debtor(
                 store.db_pool,
                 store.db_schema,
                 conv.conversation_id,
@@ -427,7 +427,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
                 conv.debtor.level,
             )
         except Exception:
-            logger.opt(exception=True).warning("Failed to persist WhatsApp lead")
+            logger.opt(exception=True).warning("Failed to persist WhatsApp debtor")
 
     # Update visitor memory with lead data
     if visitor_memory:
@@ -442,7 +442,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
 
     # Lead capture hook (same as web)
     debtor_level_after = conv.debtor.level
-    _CONTACT_LEVELS = {"LEAD", "LEAD_ENRICHED"}
+    _CONTACT_LEVELS = {"DEBTOR", "DEBTOR_VERIFIED"}
     if (
         debtor_level_after in _CONTACT_LEVELS
         and debtor_level_before not in _CONTACT_LEVELS
@@ -1145,12 +1145,12 @@ async def chat(request: Request, body: ChatRequest):
     else:
         _increment_ip_daily_count(client_ip)
 
-    # Persist denormalized lead row for easy querying/export
+    # Persist denormalized debtor row for easy querying/export
     if store.db_pool is not None:
         try:
-            from shared.persistence.persistence import upsert_lead
+            from shared.persistence.persistence import upsert_debtor
 
-            await upsert_lead(
+            await upsert_debtor(
                 store.db_pool,
                 store.db_schema,
                 conv.conversation_id,
@@ -1159,7 +1159,7 @@ async def chat(request: Request, body: ChatRequest):
                 conv.debtor.level,
             )
         except Exception:
-            logger.opt(exception=True).warning("Failed to persist denormalized lead")
+            logger.opt(exception=True).warning("Failed to persist denormalized debtor")
 
     # Track search history from tool results
     if body.visitor_id and visitor_memory:
@@ -1186,9 +1186,9 @@ async def chat(request: Request, body: ChatRequest):
                 "lead_data": collected,
             })
 
-    # --- Lead capture hook: send brochure + notify sales on LEAD transition ---
+    # --- Lead capture hook: send brochure + notify sales on DEBTOR transition ---
     debtor_level_after = conv.debtor.level
-    _CONTACT_LEVELS = {"LEAD", "LEAD_ENRICHED"}
+    _CONTACT_LEVELS = {"DEBTOR", "DEBTOR_VERIFIED"}
     if (
         debtor_level_after in _CONTACT_LEVELS
         and debtor_level_before not in _CONTACT_LEVELS
