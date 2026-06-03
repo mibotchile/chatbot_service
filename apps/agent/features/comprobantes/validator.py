@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from shared.config.settings import settings
-from integrations.doris_debt_source import classify_tipo, normalize_cci
+from shared.debt_math import classify_tipo, normalize_cci
 
 # Local dedup store: a comprobante's nº de operación seen once is flagged on
 # any repeat. JSON list of records so the demo can show the audit trail. Lives

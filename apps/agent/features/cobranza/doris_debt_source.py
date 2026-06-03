@@ -30,7 +30,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from shared.config.settings import settings
-from shared.debt_math import classify_tipo, normalize_cci  # noqa: F401 — re-exported
+from shared.debt_math import classify_tipo
 from features.cobranza import mock_debt_source
 
 # Profile fields that must be coerced to float when mapped from Doris.

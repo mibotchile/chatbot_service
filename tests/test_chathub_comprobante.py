@@ -155,7 +155,7 @@ def runner_env(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_photo_identified_acks_and_registers(runner_env):
-    set_provider, cobranza = runner_env
+    set_provider, validator = runner_env
     provider = _NoToolProvider()
     set_provider(provider)
 
@@ -180,7 +180,7 @@ async def test_photo_identified_acks_and_registers(runner_env):
     # No LLM was consulted for the photo path.
     assert provider.calls == 0
     # The image was registered for manual reconciliation.
-    items = json.loads(cobranza._COMPROBANTES_PATH.read_text(encoding="utf-8"))
+    items = json.loads(validator._COMPROBANTES_PATH.read_text(encoding="utf-8"))
     assert len(items) == 1
     rec = items[0]
     assert rec["credito"] == "P02137"
@@ -195,7 +195,7 @@ async def test_photo_identified_acks_and_registers(runner_env):
 
 @pytest.mark.asyncio
 async def test_photo_without_identity_asks_dni(runner_env):
-    set_provider, cobranza = runner_env
+    set_provider, validator = runner_env
     provider = _NoToolProvider()
     set_provider(provider)
 
@@ -217,7 +217,7 @@ async def test_photo_without_identity_asks_dni(runner_env):
     assert "dni" in content
     assert "revisión" not in content and "revision" not in content
     # Nothing registered without identity.
-    assert not cobranza._COMPROBANTES_PATH.exists()
+    assert not validator._COMPROBANTES_PATH.exists()
     assert provider.calls == 0
 
 
@@ -226,7 +226,7 @@ async def test_photo_without_identity_asks_dni(runner_env):
 
 @pytest.mark.asyncio
 async def test_typed_path_invokes_validar_comprobante(runner_env):
-    set_provider, cobranza = runner_env
+    set_provider, validator = runner_env
     provider = _ComprobanteProvider()
     set_provider(provider)
 
@@ -247,7 +247,7 @@ async def test_typed_path_invokes_validar_comprobante(runner_env):
     tools_called = [name for name, _ in result.get("tool_pairs", [])]
     assert "validar_comprobante" in tools_called
     # The tool actually registered the voucher (typed path, with monto).
-    items = json.loads(cobranza._COMPROBANTES_PATH.read_text(encoding="utf-8"))
+    items = json.loads(validator._COMPROBANTES_PATH.read_text(encoding="utf-8"))
     assert len(items) == 1
     assert items[0]["credito"] == "P02137"
     assert items[0]["nro_operacion"] == "OP-WA-001"
@@ -259,7 +259,7 @@ async def test_typed_path_invokes_validar_comprobante(runner_env):
 
 @pytest.mark.asyncio
 async def test_photo_plus_text_prioritizes_text_and_attaches_image(runner_env):
-    set_provider, cobranza = runner_env
+    set_provider, validator = runner_env
     provider = _ComprobanteProvider()
     set_provider(provider)
 
@@ -281,7 +281,7 @@ async def test_photo_plus_text_prioritizes_text_and_attaches_image(runner_env):
     tools_called = [name for name, _ in result.get("tool_pairs", [])]
     assert "validar_comprobante" in tools_called
     # Both the photo record AND the typed voucher are present.
-    items = json.loads(cobranza._COMPROBANTES_PATH.read_text(encoding="utf-8"))
+    items = json.loads(validator._COMPROBANTES_PATH.read_text(encoding="utf-8"))
     sources = sorted(str(i.get("source") or "typed") for i in items)
     assert "foto" in sources
     # The typed voucher (from the forced tool-call) is also present.
@@ -292,7 +292,7 @@ async def test_photo_plus_text_prioritizes_text_and_attaches_image(runner_env):
 
 
 def test_registrar_comprobante_foto_dedups(runner_env):
-    _set, cobranza = runner_env
+    _set, validator = runner_env
     from features.comprobantes.validator import registrar_comprobante_foto
 
     profile = {"account_id": "P02137", "dni": "44218903"}
@@ -303,5 +303,5 @@ def test_registrar_comprobante_foto_dedups(runner_env):
     assert first["duplicate"] is False
     assert second["registered"] is False
     assert second["duplicate"] is True
-    items = json.loads(cobranza._COMPROBANTES_PATH.read_text(encoding="utf-8"))
+    items = json.loads(validator._COMPROBANTES_PATH.read_text(encoding="utf-8"))
     assert len(items) == 1
