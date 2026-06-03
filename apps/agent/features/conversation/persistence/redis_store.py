@@ -44,14 +44,17 @@ class RedisConversationState:
         """Load state from Redis into local attributes."""
         pipe = self._redis.pipeline()
         pipe.get(_key(self.conversation_id, "history"))
-        pipe.get(_key(self.conversation_id, "lead_data"))
+        pipe.get(_key(self.conversation_id, "debtor_data"))
+        pipe.get(_key(self.conversation_id, "lead_data"))  # fallback (24h TTL overlap)
         pipe.get(_key(self.conversation_id, "page_context"))
-        history_raw, lead_raw, page_raw = await pipe.execute()
+        history_raw, debtor_raw, lead_raw, page_raw = await pipe.execute()
 
         if history_raw:
             self.history = json.loads(history_raw)
-        if lead_raw:
-            self.debtor = DebtorState(initial_data=json.loads(lead_raw))
+        # Dual-read: prefer debtor_data key; fall back to lead_data key
+        raw = debtor_raw or lead_raw
+        if raw:
+            self.debtor = DebtorState(initial_data=json.loads(raw))
         if page_raw:
             self.page_context = json.loads(page_raw)
 
@@ -63,7 +66,7 @@ class RedisConversationState:
             pipe.set(key, json.dumps(self.history), ex=TTL_SECONDS)
             self._dirty_history = False
         if self._dirty_lead:
-            key = _key(self.conversation_id, "lead_data")
+            key = _key(self.conversation_id, "debtor_data")
             pipe.set(key, json.dumps(self.debtor.collected), ex=TTL_SECONDS)
             self._dirty_lead = False
         if self._dirty_page:

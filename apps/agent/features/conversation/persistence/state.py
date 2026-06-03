@@ -31,14 +31,17 @@ class ConversationState:
         db_schema: str = "dev",
         visitor_id: str | None = None,
         history: list[dict] | None = None,
-        lead_data: dict | None = None,
+        debtor_data: dict | None = None,
+        lead_data: dict | None = None,  # backward-compat fallback (dual-read)
     ):
         self.conversation_id = conversation_id
         self.db_pool = db_pool
         self.db_schema = db_schema
         self.visitor_id = visitor_id
         self.history: list[dict] = list(history) if history else []
-        self.debtor = DebtorState(initial_data=lead_data)
+        # Dual-read: prefer debtor_data; fall back to lead_data for existing rows
+        initial = debtor_data if debtor_data is not None else lead_data
+        self.debtor = DebtorState(initial_data=initial)
         self.page_context: dict = {}
         self.brochures_sent: set[str] = set()  # project slugs already emailed
         self.debtor_notified: bool = False  # sales team already notified
@@ -84,8 +87,8 @@ class ConversationState:
                 self.conversation_id,
                 visitor_id=self.visitor_id,
                 history=self.history,
-                lead_data=self.debtor.collected,
-                lead_level=self.debtor.level,
+                debtor_data=self.debtor.collected,
+                debtor_level=self.debtor.level,
                 page_context=self.page_context,
             )
         except Exception:
@@ -131,7 +134,7 @@ class StateStore:
 
         if conversation_id not in self._conversations:
             history: list[dict] = []
-            lead_data: dict = {}
+            debtor_data: dict = {}
             page_context: dict = {}
 
             # Try loading from DB
@@ -144,7 +147,8 @@ class StateStore:
                     )
                     if row:
                         history = row.get("history") or []
-                        lead_data = row.get("lead_data") or {}
+                        # Dual-read: prefer debtor_data, fall back to lead_data
+                        debtor_data = row.get("debtor_data") or row.get("lead_data") or {}
                         page_context = row.get("page_context") or {}
                         visitor_id = visitor_id or row.get("visitor_id")
                 except Exception:
@@ -159,7 +163,7 @@ class StateStore:
                 db_schema=self.db_schema,
                 visitor_id=visitor_id,
                 history=history,
-                lead_data=lead_data,
+                debtor_data=debtor_data,
             )
             conv.page_context = page_context
             self._conversations[conversation_id] = conv
