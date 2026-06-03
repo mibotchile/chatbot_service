@@ -16,8 +16,8 @@ import uuid
 
 import pytest
 
-from integrations import chathub_web_publisher as pub
-from integrations.chathub_web_publisher import build_incoming_payload, publish_to_chathub
+from features.messaging import chathub_web_publisher as pub
+from features.messaging.chathub_web_publisher import build_incoming_payload, publish_to_chathub
 
 _TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 

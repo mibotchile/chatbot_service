@@ -23,7 +23,7 @@ import json
 import pytest
 
 from shared.llm import LLMProvider, LLMResponse, ToolCall
-from integrations.chathub_adapter import ChathubChatAdapter, ChathubChatRequest
+from features.messaging.chathub_adapter import ChathubChatAdapter, ChathubChatRequest
 
 
 # ── (a) body.url is propagated to the engine runner ──────────────────────────

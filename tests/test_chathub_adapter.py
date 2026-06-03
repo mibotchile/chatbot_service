@@ -17,8 +17,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from integrations import chathub_adapter as ca
-from integrations.chathub_adapter import (
+from features.messaging import chathub_adapter as ca
+from features.messaging.chathub_adapter import (
     ChathubChatAdapter,
     ChathubChatRequest,
     build_chathub_response,

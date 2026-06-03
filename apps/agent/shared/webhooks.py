@@ -14,7 +14,7 @@ with exponential backoff (1s min, 30s max).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import dramatiq
@@ -23,7 +23,6 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from shared.delivery.email_delivery import EmailService
-    from core.whatsapp_service import WhatsAppService
 
 
 def _setup_broker() -> None:
@@ -133,7 +132,7 @@ async def on_lead_captured(
     project: dict,
     conversation_id: str,
     email_service: EmailService | None = None,
-    whatsapp_service: WhatsAppService | None = None,
+    whatsapp_service: Any | None = None,
     notification_email: str = "ventas@novainmobiliaria.pe",
 ) -> dict:
     """Fire when lead gives contact info (name + email or phone).

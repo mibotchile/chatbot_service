@@ -28,7 +28,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from integrations.chathub_adapter import (
+from features.messaging.chathub_adapter import (
     CHATHUB_TOKEN_HEADER,
     ChathubChatAdapter,
     ChathubChatRequest,

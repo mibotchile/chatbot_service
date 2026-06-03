@@ -26,20 +26,20 @@ from core.state import get_store
 from core.agent import SoreliaAgent
 from shared.llm import LLMError, build_llm_provider
 from shared.delivery.email_delivery import EmailService
-from core.whatsapp_service import WhatsAppService
+from features.messaging.whatsapp_service import WhatsAppService
 from core.response_guard import guard_response
 from core.response_builder import build_quick_replies
-from core.whatsapp_formatter import format_for_whatsapp
+from features.messaging.whatsapp_formatter import format_for_whatsapp
 from core.visitor_memory import VisitorMemory
 from shared.rate_limit import from_settings as _build_rate_limiter
 # NOTE: visit_manager / google_calendar were real-estate-only (property visits)
 # and are NOT ported. Their references are removed below (TODO if cobranza ever
 # needs scheduled callbacks).
 from tools import ToolRegistry
-from integrations.chathub_outbound import ChathubOutboundClient
+from features.messaging.chathub_outbound import ChathubOutboundClient
 from features.analytics.dashboard import dashboard_router
 from api.chathub import chathub_router
-from integrations.chathub_adapter import was_escalated
+from features.messaging.chathub_adapter import was_escalated
 
 # Store and services — initialised in lifespan with DB pool
 store = get_store()
@@ -1219,7 +1219,7 @@ async def chat(request: Request, body: ChatRequest):
     # best-effort (the publisher swallows all errors and has its own timeout, so
     # it never blocks/breaks the web response). NO-OP if no channel_id configured.
     if body.channel == "web" and was_escalated(tool_pairs):
-        from integrations.chathub_web_publisher import publish_to_chathub
+        from features.messaging.chathub_web_publisher import publish_to_chathub
 
         _contact_name = (
             (conv.debt_context or {}).get("borrower_name")
