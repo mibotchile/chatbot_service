@@ -159,7 +159,7 @@ async def test_photo_identified_acks_and_registers(runner_env):
     provider = _NoToolProvider()
     set_provider(provider)
 
-    from api.chathub import _run_chathub_engine_turn
+    from api.routers.chathub import _run_chathub_engine_turn
 
     result = await _run_chathub_engine_turn(
         text="",
@@ -199,7 +199,7 @@ async def test_photo_without_identity_asks_dni(runner_env):
     provider = _NoToolProvider()
     set_provider(provider)
 
-    from api.chathub import _run_chathub_engine_turn
+    from api.routers.chathub import _run_chathub_engine_turn
 
     result = await _run_chathub_engine_turn(
         text="",
@@ -230,7 +230,7 @@ async def test_typed_path_invokes_validar_comprobante(runner_env):
     provider = _ComprobanteProvider()
     set_provider(provider)
 
-    from api.chathub import _run_chathub_engine_turn
+    from api.routers.chathub import _run_chathub_engine_turn
 
     result = await _run_chathub_engine_turn(
         text="Ya hice mi transferencia, te paso los datos del voucher",
@@ -263,7 +263,7 @@ async def test_photo_plus_text_prioritizes_text_and_attaches_image(runner_env):
     provider = _ComprobanteProvider()
     set_provider(provider)
 
-    from api.chathub import _run_chathub_engine_turn
+    from api.routers.chathub import _run_chathub_engine_turn
 
     result = await _run_chathub_engine_turn(
         text="Ya hice mi transferencia, te paso los datos del voucher",

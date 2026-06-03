@@ -38,7 +38,7 @@ from shared.rate_limit import from_settings as _build_rate_limiter
 from tools import ToolRegistry
 from features.messaging.chathub_outbound import ChathubOutboundClient
 from features.analytics.dashboard import dashboard_router
-from api.chathub import chathub_router
+from api.routers.chathub import chathub_router
 from features.messaging.chathub_adapter import was_escalated
 
 # Store and services — initialised in lifespan with DB pool

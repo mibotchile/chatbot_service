@@ -241,7 +241,7 @@ def test_conversation_id_is_stable_per_chathub_conv():
 def client(monkeypatch):
     """TestClient with the engine turn mocked — observes routing/auth/shaping
     without touching the LLM or Doris."""
-    import api.chathub as ch
+    import api.routers.chathub as ch
     import api.main as m
 
     async def fake_engine(**kwargs):
