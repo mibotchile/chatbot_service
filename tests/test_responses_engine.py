@@ -488,8 +488,8 @@ class _ToolProvider(LLMProvider):
 async def test_sticky_flow_bypasses_router_for_cci_keyword(monkeypatch, tmp_path):
     # An active llm_flow must bypass layer-1 even for "es un cci" (which normally
     # matches donde_pagar) → the turn reaches the LLM, NOT a canned reply.
-    import tools.cobranza as cobranza
-    monkeypatch.setattr(cobranza, "_COMPROBANTES_PATH", tmp_path / "c.json")
+    import features.comprobantes.validator as _validator
+    monkeypatch.setattr(_validator, "_COMPROBANTES_PATH", tmp_path / "c.json")
     provider = _ToolProvider()
     agent = _agent(provider, identity_dni=LUIS)
     ss = {"llm_flow": {"intent": "comprobante_reportar", "turns": 1}}

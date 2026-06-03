@@ -139,15 +139,15 @@ def runner_env(monkeypatch, tmp_path):
     """
     import api.main as m
     import shared.llm as llm
-    import tools.cobranza as cobranza
+    import features.comprobantes.validator as validator
 
     m.store = m.get_store()
-    monkeypatch.setattr(cobranza, "_COMPROBANTES_PATH", tmp_path / "comprobantes.json")
+    monkeypatch.setattr(validator, "_COMPROBANTES_PATH", tmp_path / "comprobantes.json")
 
     def set_provider(provider):
         monkeypatch.setattr(llm, "build_llm_provider", lambda *a, **k: provider)
 
-    return set_provider, cobranza
+    return set_provider, validator
 
 
 # ── (b) photo from an IDENTIFIED debtor → acuse + registro (no validation) ────

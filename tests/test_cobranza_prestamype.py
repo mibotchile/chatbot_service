@@ -353,7 +353,7 @@ async def test_validar_comprobante_stores_account_type_in_audit(tmp_path, monkey
     # El audit/registro debe guardar tipo + número de cuenta (y el alias cci).
     _isolate_dedup(monkeypatch, tmp_path)
     import json as _json
-    import tools.cobranza as cobranza
+    import features.comprobantes.validator as _validator
 
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     await reg.execute(
@@ -365,7 +365,7 @@ async def test_validar_comprobante_stores_account_type_in_audit(tmp_path, monkey
             "nro_operacion": "OP-AUDIT",
         },
     )
-    items = _json.loads(cobranza._COMPROBANTES_PATH.read_text(encoding="utf-8"))
+    items = _json.loads(_validator._COMPROBANTES_PATH.read_text(encoding="utf-8"))
     rec = next(r for r in items if r["nro_operacion"] == "OP-AUDIT")
     assert rec["account_type"] == "cuenta"
     assert rec["cuenta_destino"] == "1320268376"
@@ -447,6 +447,6 @@ def test_prestamype_guardrails_forbid_refi_and_keep_two_capabilities():
 
 def _isolate_dedup(monkeypatch, tmp_path) -> None:
     """Point the comprobantes dedup store at a temp file per test."""
-    import tools.cobranza as cobranza
+    import features.comprobantes.validator as _validator
 
-    monkeypatch.setattr(cobranza, "_COMPROBANTES_PATH", tmp_path / "comprobantes.json")
+    monkeypatch.setattr(_validator, "_COMPROBANTES_PATH", tmp_path / "comprobantes.json")

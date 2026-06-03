@@ -23,11 +23,11 @@ LUIS_SALDO = 18420.00
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     import api.main as m
-    import tools.cobranza as cobranza
+    import features.comprobantes.validator as _validator
 
     # Isolate image storage + dedup store per test (off /tmp, off real volume).
     monkeypatch.setattr(m.settings, "comprobante_dir", str(tmp_path / "comprobantes"))
-    monkeypatch.setattr(cobranza, "_COMPROBANTES_PATH", tmp_path / "comprobantes.json")
+    monkeypatch.setattr(_validator, "_COMPROBANTES_PATH", tmp_path / "comprobantes.json")
     # Reset the in-memory rate-limit log so the shared 10/min window doesn't
     # bleed across tests (the limiter now also covers /comprobante).
     m._request_log.clear()

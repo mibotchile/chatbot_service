@@ -25,7 +25,7 @@ from shared.config.settings import settings
 from core.state import get_store
 from core.agent import SoreliaAgent
 from shared.llm import LLMError, build_llm_provider
-from core.email_service import EmailService
+from shared.delivery.email_delivery import EmailService
 from core.whatsapp_service import WhatsAppService
 from core.response_guard import guard_response
 from core.response_builder import build_quick_replies

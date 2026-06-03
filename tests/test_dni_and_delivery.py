@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.email_service import EmailService
+from shared.delivery.email_delivery import EmailService
 from core.whatsapp_service import WhatsAppService
 from integrations.mock_debt_source import resolve_dni, resolve_token
 from tools import ToolRegistry

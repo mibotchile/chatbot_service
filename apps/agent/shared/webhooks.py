@@ -22,7 +22,7 @@ from dramatiq.brokers.stub import StubBroker
 from loguru import logger
 
 if TYPE_CHECKING:
-    from core.email_service import EmailService
+    from shared.delivery.email_delivery import EmailService
     from core.whatsapp_service import WhatsAppService
 
 
