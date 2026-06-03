@@ -78,12 +78,11 @@ async def _safe_fetchval(pool, query: str, *args) -> Any:
 
 
 def _get_pool(request: Request):
-    """Get the asyncpg pool from VisitorMemory on the app."""
-    from api.main import visitor_memory
-
-    if visitor_memory is None or visitor_memory._pool is None:
+    """Get the asyncpg pool from VisitorMemory stored on app.state by the lifespan."""
+    vm = getattr(request.app.state, "visitor_memory", None)
+    if vm is None or vm._pool is None:
         raise HTTPException(503, "Database not available")
-    return visitor_memory._pool
+    return vm._pool
 
 
 def _schema() -> str:

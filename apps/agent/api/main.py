@@ -138,6 +138,7 @@ async def lifespan(app: FastAPI):
     vm = VisitorMemory(database_url=settings.database_url, schema=settings.database_schema)
     await vm.init()
     visitor_memory = vm
+    app.state.visitor_memory = vm
 
     db_pool = vm._pool
     if db_pool is not None:
@@ -160,6 +161,7 @@ async def lifespan(app: FastAPI):
 
     await vm.close()
     visitor_memory = None
+    app.state.visitor_memory = None
 
 
 # ---------------------------------------------------------------------------
