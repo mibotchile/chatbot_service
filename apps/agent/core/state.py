@@ -76,7 +76,7 @@ class ConversationState:
         if self.db_pool is None:
             return
         try:
-            from core.persistence import save_conversation
+            from shared.persistence.persistence import save_conversation
 
             await save_conversation(
                 self.db_pool,
@@ -137,7 +137,7 @@ class StateStore:
             # Try loading from DB
             if self.db_pool is not None:
                 try:
-                    from core.persistence import load_conversation
+                    from shared.persistence.persistence import load_conversation
 
                     row = await load_conversation(
                         self.db_pool, self.db_schema, conversation_id

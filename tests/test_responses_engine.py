@@ -349,7 +349,7 @@ def test_build_variables_fills_from_profile():
 # ── agent integration: canned short-circuits the LLM ─────────────────────────
 
 from core.agent import SoreliaAgent  # noqa: E402
-from core.llm import LLMProvider, LLMResponse, ToolCall  # noqa: E402
+from shared.llm import LLMProvider, LLMResponse, ToolCall  # noqa: E402
 
 
 class _CountingProvider(LLMProvider):

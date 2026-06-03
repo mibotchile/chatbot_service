@@ -17,7 +17,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from config.cors import build_cors_origin_regex
+from shared.config.cors import build_cors_origin_regex
 
 
 # ── Origin regex builder (unit) ─────────────────────────────────────────────
@@ -57,7 +57,7 @@ def test_regex_rejects_unknown_origin():
 def test_regex_never_matches_everything_when_empty(monkeypatch):
     # Degenerate input (no globals AND no tenant origins) must match NOTHING,
     # never collapse to a permissive regex.
-    import config.cors as cors
+    import shared.config.cors as cors
 
     monkeypatch.setattr(cors, "collect_embed_origins", lambda: [])
     rx = re.compile(cors.build_cors_origin_regex([]))
@@ -68,7 +68,7 @@ def test_regex_never_matches_everything_when_empty(monkeypatch):
 def test_regex_does_not_let_a_tenant_inject_regex(tmp_path, monkeypatch):
     # A tenant origin containing regex metacharacters is escaped, so it can only
     # match itself — it cannot become a wildcard.
-    import config.cors as cors
+    import shared.config.cors as cors
 
     monkeypatch.setattr(cors, "collect_embed_origins", lambda: ["https://.*"])
     rx = re.compile(cors.build_cors_origin_regex(["https://demos.mibot.cl"]))

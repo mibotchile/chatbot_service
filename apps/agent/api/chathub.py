@@ -150,9 +150,9 @@ async def _run_chathub_engine_turn(
     dict (SoreliaAgent.process_message output) so the adapter can shape it."""
     import api.main as m  # late import: live module-level services
 
-    from config.settings import resolve_api_key
+    from shared.config.settings import resolve_api_key
     from core.agent import SoreliaAgent
-    from core.llm import build_llm_provider
+    from shared.llm import build_llm_provider
     from core.response_guard import guard_response
     from integrations.debt_source import resolve_token
     from tools import ToolRegistry

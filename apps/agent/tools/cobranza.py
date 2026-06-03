@@ -27,7 +27,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from config.settings import settings
+from shared.config.settings import settings
 from integrations.certificate_pdf import generate_certificate
 from integrations.doris_debt_source import classify_tipo, normalize_cci
 

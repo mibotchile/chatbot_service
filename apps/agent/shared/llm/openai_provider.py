@@ -20,7 +20,7 @@ from typing import Any
 from loguru import logger
 from openai import AsyncOpenAI, OpenAIError
 
-from core.llm.base import LLMError, LLMProvider, LLMResponse, ToolCall
+from shared.llm.base import LLMError, LLMProvider, LLMResponse, ToolCall
 
 
 class OpenAIProvider(LLMProvider):

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.llm.base import LLMProvider
+from shared.llm.base import LLMProvider
 
 
 def build_llm_provider(settings: Any, *, api_key_override: str | None = None) -> LLMProvider:
@@ -22,7 +22,7 @@ def build_llm_provider(settings: Any, *, api_key_override: str | None = None) ->
     provider = (getattr(settings, "llm_provider", "anthropic") or "anthropic").lower()
 
     if provider == "openai":
-        from core.llm.openai_provider import OpenAIProvider
+        from shared.llm.openai_provider import OpenAIProvider
 
         return OpenAIProvider(
             api_key=api_key_override or settings.openai_api_key,
@@ -30,7 +30,7 @@ def build_llm_provider(settings: Any, *, api_key_override: str | None = None) ->
         )
 
     if provider == "anthropic":
-        from core.llm.anthropic_provider import AnthropicProvider
+        from shared.llm.anthropic_provider import AnthropicProvider
 
         return AnthropicProvider(
             api_key=api_key_override or settings.anthropic_api_key,

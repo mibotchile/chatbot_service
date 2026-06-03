@@ -45,7 +45,7 @@ from datetime import datetime, timezone
 import httpx
 from loguru import logger
 
-from config.settings import settings
+from shared.config.settings import settings
 
 _LOG_PREFIX = "[chathub-web-publisher]"
 

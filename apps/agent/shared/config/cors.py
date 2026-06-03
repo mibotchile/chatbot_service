@@ -34,8 +34,8 @@ def _tenants_root() -> Path:
     docker = Path("/app/tenants")
     if docker.exists():
         return docker
-    # apps/agent/config/cors.py → repo root is 4 levels up.
-    return Path(__file__).resolve().parent.parent.parent.parent / "tenants"
+    # apps/agent/shared/config/cors.py → repo root is 5 levels up.
+    return Path(__file__).resolve().parent.parent.parent.parent.parent / "tenants"
 
 
 def _origin_pattern(origin: str) -> str | None:

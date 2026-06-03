@@ -13,7 +13,7 @@ _FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 
 
 def test_settings_has_root_path_default_empty():
-    from config.settings import Settings
+    from shared.config.settings import Settings
 
     s = Settings()
     assert s.root_path == ""  # local dev = no prefix
@@ -21,7 +21,7 @@ def test_settings_has_root_path_default_empty():
 
 def test_settings_root_path_from_env(monkeypatch):
     monkeypatch.setenv("COBRANZA_ROOT_PATH", "/pubot-gj5w2a0p")
-    from config.settings import Settings
+    from shared.config.settings import Settings
 
     assert Settings().root_path == "/pubot-gj5w2a0p"
 
@@ -34,7 +34,7 @@ def test_app_uses_root_path(monkeypatch):
 
 
 def test_cors_includes_demos_origin():
-    from config.settings import Settings
+    from shared.config.settings import Settings
 
     assert "https://demos.mibot.cl" in Settings().cors_origins
 

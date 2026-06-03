@@ -21,17 +21,17 @@ from pydantic import BaseModel, Field, field_validator
 
 from contextlib import asynccontextmanager
 
-from config.settings import settings
+from shared.config.settings import settings
 from core.state import get_store
 from core.agent import SoreliaAgent
-from core.llm import LLMError, build_llm_provider
+from shared.llm import LLMError, build_llm_provider
 from core.email_service import EmailService
 from core.whatsapp_service import WhatsAppService
 from core.response_guard import guard_response
 from core.response_builder import build_quick_replies
 from core.whatsapp_formatter import format_for_whatsapp
 from core.visitor_memory import VisitorMemory
-from core.rate_limit import from_settings as _build_rate_limiter
+from shared.rate_limit import from_settings as _build_rate_limiter
 # NOTE: visit_manager / google_calendar were real-estate-only (property visits)
 # and are NOT ported. Their references are removed below (TODO if cobranza ever
 # needs scheduled callbacks).
@@ -416,7 +416,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
     # Persist denormalized lead
     if store.db_pool is not None:
         try:
-            from core.persistence import upsert_lead
+            from shared.persistence.persistence import upsert_lead
 
             await upsert_lead(
                 store.db_pool,
@@ -449,7 +449,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         and not conv.lead_notified
     ):
         try:
-            from core.webhooks import on_lead_captured
+            from shared.webhooks import on_lead_captured
 
             collected = conv.lead.collected
             # TODO Fase 1: build a cobranza "case" context (account/debt summary)
@@ -510,7 +510,7 @@ async def lifespan(app: FastAPI):
     db_pool = vm._pool
     if db_pool is not None:
         try:
-            from core.persistence import ensure_tables
+            from shared.persistence.persistence import ensure_tables
 
             await ensure_tables(db_pool, settings.database_schema)
             store = get_store(db_pool=db_pool, db_schema=settings.database_schema)
@@ -721,7 +721,7 @@ app.add_middleware(RateLimitMiddleware)
 # given to Starlette via allow_origin_regex — credentialed requests require the
 # exact Origin echoed back (no `*`), which the regex echo path does correctly.
 # demos.mibot.cl is always in the global list, so the same-origin demo is safe.
-from config.cors import build_cors_origin_regex
+from shared.config.cors import build_cors_origin_regex
 
 _cors_origin_regex = build_cors_origin_regex(settings.cors_origins)
 logger.info("CORS allow_origin_regex={}", _cors_origin_regex)
@@ -996,7 +996,7 @@ async def chat(request: Request, body: ChatRequest):
             except Exception:
                 logger.opt(exception=True).warning("Failed to load tenant config: {}", body.tenant_id)
 
-    from config.settings import resolve_api_key
+    from shared.config.settings import resolve_api_key
     _api_key = resolve_api_key(body.tenant_id)
 
     # ── Cobranza identity gate: resolve the campaign token (demo: mock source).
@@ -1148,7 +1148,7 @@ async def chat(request: Request, body: ChatRequest):
     # Persist denormalized lead row for easy querying/export
     if store.db_pool is not None:
         try:
-            from core.persistence import upsert_lead
+            from shared.persistence.persistence import upsert_lead
 
             await upsert_lead(
                 store.db_pool,
@@ -1195,7 +1195,7 @@ async def chat(request: Request, body: ChatRequest):
         and not conv.lead_notified
     ):
         try:
-            from core.webhooks import on_lead_captured
+            from shared.webhooks import on_lead_captured
 
             collected = conv.lead.collected
             # TODO Fase 1: build a cobranza "case" context (account/debt summary).
@@ -1766,7 +1766,7 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
 
     # --- Multi-tenant routing (BEFORE media/slash handling) ---
     instance_name = payload.get("instance", settings.whatsapp_instance)
-    from config.settings import resolve_whatsapp_tenant
+    from shared.config.settings import resolve_whatsapp_tenant
     tenant_wa = resolve_whatsapp_tenant(instance_name)
     if not tenant_wa:
         return {"status": "ignored", "reason": f"unmapped instance: {instance_name}"}

@@ -20,7 +20,7 @@ import pytest
 
 from config import pricing
 from core.agent import SoreliaAgent
-from core.llm import LLMProvider, LLMResponse
+from shared.llm import LLMProvider, LLMResponse
 from core.tenant_loader import TenantConfig as TC
 from integrations import analytics_sink
 

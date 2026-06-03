@@ -29,7 +29,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from config.settings import settings
+from shared.config.settings import settings
 from integrations import mock_debt_source
 
 # Profile fields that must be coerced to float when mapped from Doris.

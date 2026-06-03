@@ -12,9 +12,9 @@ from typing import Any
 
 from loguru import logger
 from prompts.system import build_system_prompt
-from config.tools_schema import TOOL_DEFINITIONS
-from core.llm import LLMProvider, ToolCall
-from core.llm.base import usage_from_raw
+from shared.config.tools_schema import TOOL_DEFINITIONS
+from shared.llm import LLMProvider, ToolCall
+from shared.llm.base import usage_from_raw
 from tools import ToolRegistry
 from core.response_builder import build_ui_actions
 from core.prospect_profile import build_prospect_profile, truncate_history

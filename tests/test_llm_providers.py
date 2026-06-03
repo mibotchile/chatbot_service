@@ -15,10 +15,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.llm import build_llm_provider
-from core.llm.anthropic_provider import AnthropicProvider
-from core.llm.openai_provider import OpenAIProvider
-from config.tools_schema import TOOL_DEFINITIONS
+from shared.llm import build_llm_provider
+from shared.llm.anthropic_provider import AnthropicProvider
+from shared.llm.openai_provider import OpenAIProvider
+from shared.config.tools_schema import TOOL_DEFINITIONS
 
 
 def _settings(provider: str):
@@ -110,7 +110,7 @@ def test_openai_parses_plain_text_response():
 
 
 def test_openai_serializes_neutral_messages():
-    from core.llm import ToolCall
+    from shared.llm import ToolCall
 
     msgs = [
         {"role": "user", "content": "hola"},
@@ -150,7 +150,7 @@ def test_anthropic_translates_tools_to_input_schema():
 
 
 def test_anthropic_serializes_neutral_messages():
-    from core.llm import ToolCall
+    from shared.llm import ToolCall
 
     msgs = [
         {"role": "user", "content": "hola"},

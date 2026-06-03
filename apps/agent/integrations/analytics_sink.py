@@ -31,7 +31,7 @@ from typing import Any
 from loguru import logger
 
 from config.pricing import compute_cost_usd
-from config.settings import settings
+from shared.config.settings import settings
 
 _INTERACTIONS_TABLE = "bot_interactions"
 _LLM_USAGE_TABLE = "bot_llm_usage"

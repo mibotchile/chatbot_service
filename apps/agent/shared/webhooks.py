@@ -32,7 +32,7 @@ def _setup_broker() -> None:
     if isinstance(current, StubBroker):
         return
     from dramatiq.brokers.redis import RedisBroker
-    from config.settings import settings
+    from shared.config.settings import settings
     broker = RedisBroker(url=settings.redis_url)
     dramatiq.set_broker(broker)
 

@@ -12,7 +12,7 @@ from typing import Any
 import anthropic
 from loguru import logger
 
-from core.llm.base import LLMError, LLMProvider, LLMResponse, ToolCall
+from shared.llm.base import LLMError, LLMProvider, LLMResponse, ToolCall
 
 
 class AnthropicProvider(LLMProvider):

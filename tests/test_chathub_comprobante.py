@@ -22,7 +22,7 @@ import json
 
 import pytest
 
-from core.llm import LLMProvider, LLMResponse, ToolCall
+from shared.llm import LLMProvider, LLMResponse, ToolCall
 from integrations.chathub_adapter import ChathubChatAdapter, ChathubChatRequest
 
 
@@ -138,7 +138,7 @@ def runner_env(monkeypatch, tmp_path):
     - returns a setter for the faked LLM provider
     """
     import api.main as m
-    import core.llm as llm
+    import shared.llm as llm
     import tools.cobranza as cobranza
 
     m.store = m.get_store()

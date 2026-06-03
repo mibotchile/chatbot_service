@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncpg
-from config.settings import settings
+from shared.config.settings import settings
 
 _pool: asyncpg.Pool | None = None
 

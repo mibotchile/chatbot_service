@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.rate_limit import RateLimitConfig, RateLimiter, from_settings
+from shared.rate_limit import RateLimitConfig, RateLimiter, from_settings
 
 
 class FakeClock:
@@ -283,7 +283,7 @@ def test_upload_window_slides():
 # ── settings wiring ───────────────────────────────────────────────────────
 
 def test_from_settings_reads_env_defaults():
-    from config.settings import Settings
+    from shared.config.settings import Settings
 
     rl = from_settings(Settings())
     cfg = rl.config
@@ -299,7 +299,7 @@ def test_settings_overridable_by_env(monkeypatch):
     monkeypatch.setenv("COBRANZA_RL_IDENT_PER_HOUR", "3")
     monkeypatch.setenv("COBRANZA_RL_DISTINCT_DNI_PER_HOUR", "2")
     monkeypatch.setenv("COBRANZA_DAILY_COST_CAP_USD", "1.25")
-    from config.settings import Settings
+    from shared.config.settings import Settings
 
     s = Settings()
     assert s.rl_ident_per_hour == 3
@@ -313,7 +313,7 @@ async def test_registry_blocks_identification_without_resolving(monkeypatch):
     """A denied attempt returns rate_limited WITHOUT touching the data source."""
     from tools import ToolRegistry
     import tools as tools_pkg
-    from core.rate_limit import RateLimitDecision
+    from shared.rate_limit import RateLimitDecision
 
     resolved = {"count": 0}
 
@@ -340,7 +340,7 @@ async def test_registry_blocks_identification_without_resolving(monkeypatch):
 async def test_registry_allows_identification_when_under_limit(monkeypatch):
     from tools import ToolRegistry
     import tools as tools_pkg
-    from core.rate_limit import RateLimitDecision
+    from shared.rate_limit import RateLimitDecision
 
     monkeypatch.setattr(
         tools_pkg,

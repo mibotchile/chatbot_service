@@ -422,7 +422,7 @@ def test_prestamype_active_tools_only_in_scope():
     voucher (validar_comprobante), escalation, and generic engine plumbing.
     Forbidden: any reclamo/certificado/documento tool.
     """
-    from config.tools_schema import TOOL_DEFINITIONS
+    from shared.config.tools_schema import TOOL_DEFINITIONS
 
     excluded = set(_tenant_config().excluded_tools or [])
     active = {t["name"] for t in TOOL_DEFINITIONS if t["name"] not in excluded}

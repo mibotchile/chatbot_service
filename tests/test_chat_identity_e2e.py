@@ -15,7 +15,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from core.llm import LLMProvider, LLMResponse, ToolCall
+from shared.llm import LLMProvider, LLMResponse, ToolCall
 
 
 def _tokens():

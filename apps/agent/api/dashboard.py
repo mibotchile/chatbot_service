@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
-from config.settings import settings
+from shared.config.settings import settings
 
 dashboard_router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
