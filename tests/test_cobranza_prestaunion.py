@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from features.cobranza.mock_debt_source import resolve_token
-from shared.tool_registry import ToolRegistry
+from api.tool_registry import ToolRegistry
 
 JUAN = "demo-juan"      # al día
 CARLOS = "demo-carlos"  # en mora

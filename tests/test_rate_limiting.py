@@ -311,8 +311,8 @@ def test_settings_overridable_by_env(monkeypatch):
 
 async def test_registry_blocks_identification_without_resolving(monkeypatch):
     """A denied attempt returns rate_limited WITHOUT touching the data source."""
-    from shared.tool_registry import ToolRegistry
-    import shared.tool_registry as tools_pkg
+    from api.tool_registry import ToolRegistry
+    import api.tool_registry as tools_pkg
     from shared.rate_limit import RateLimitDecision
 
     resolved = {"count": 0}
@@ -338,8 +338,8 @@ async def test_registry_blocks_identification_without_resolving(monkeypatch):
 
 
 async def test_registry_allows_identification_when_under_limit(monkeypatch):
-    from shared.tool_registry import ToolRegistry
-    import shared.tool_registry as tools_pkg
+    from api.tool_registry import ToolRegistry
+    import api.tool_registry as tools_pkg
     from shared.rate_limit import RateLimitDecision
 
     monkeypatch.setattr(

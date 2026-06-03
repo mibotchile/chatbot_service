@@ -155,7 +155,7 @@ async def _run_chathub_engine_turn(
     from shared.llm import build_llm_provider
     from features.conversation.response_guard import guard_response
     from features.cobranza.debt_source import resolve_token
-    from shared.tool_registry import ToolRegistry
+    from api.tool_registry import ToolRegistry
 
     # Conversation state (durable across turns via the engine store).
     conv = await m.store.get_or_create_async(conversation_id, visitor_id=conversation_id)

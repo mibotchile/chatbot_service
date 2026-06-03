@@ -1,4 +1,9 @@
-"""Tool registry for the cobranza agent's function calling.
+"""Concrete tool registry for the cobranza agent's function calling.
+
+Lives in api/ because it imports from features/ (api→features is allowed).
+The abstract interface (ToolRegistryPort + NullToolRegistry) lives in
+shared/ports/tool_registry.py so feature modules can depend on the port
+without creating a shared→features violation.
 
 Routes tool names to implementations. Generic tools (quick replies, navigate,
 contact form, lead status) are real engine tools. The cobranza domain tools

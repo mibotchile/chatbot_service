@@ -15,7 +15,7 @@ from features.conversation.prompts import build_system_prompt
 from shared.config.tools_schema import TOOL_DEFINITIONS
 from shared.llm import LLMProvider, ToolCall
 from shared.llm.base import usage_from_raw
-from shared.tool_registry import ToolRegistry
+from shared.ports.tool_registry import NullToolRegistry, ToolRegistryPort
 from features.conversation.response_builder import build_ui_actions
 from features.conversation.debtor_profile import build_debtor_profile, truncate_history
 from features.conversation import responses as responses_engine
@@ -52,9 +52,9 @@ def _intent_is_flow(spec, intent: str) -> bool:
 class SoreliaAgent:
     """Core agent: context assembly → LLM with tools → tool execution → response."""
 
-    def __init__(self, provider: LLMProvider, tool_registry: ToolRegistry | None = None, tenant=None):
+    def __init__(self, provider: LLMProvider, tool_registry: ToolRegistryPort | None = None, tenant=None):
         self.provider = provider
-        self.tool_registry = tool_registry or ToolRegistry()
+        self.tool_registry = tool_registry or NullToolRegistry()
         self.tenant = tenant
         self.prompt_builder = _PromptBuilder(tenant=tenant)
 

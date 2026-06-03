@@ -371,7 +371,7 @@ class _CountingProvider(LLMProvider):
 
 
 def _agent(provider, *, identity_dni: str | None = None):
-    from shared.tool_registry import ToolRegistry
+    from api.tool_registry import ToolRegistry
 
     debt_ctx = _profile(identity_dni) if identity_dni else {}
     reg = ToolRegistry(

@@ -37,7 +37,7 @@ def test_empty_tenant_loads():
 
 def test_tool_registry_has_cobranza_tools():
     """ToolRegistry exposes generic + the 3 consolidated cobranza tools."""
-    from shared.tool_registry import ToolRegistry
+    from api.tool_registry import ToolRegistry
 
     reg = ToolRegistry()
     assert reg.has_tool("consultar_deuda")
@@ -70,7 +70,7 @@ def test_system_prompt_builds_with_empty_state():
 
 def test_tool_name_is_get_debtor_status():
     """The registered tool name and schema name must be get_debtor_status (LLM contract)."""
-    from shared.tool_registry import ToolRegistry
+    from api.tool_registry import ToolRegistry
     from shared.config.tools_schema import TOOL_DEFINITIONS
 
     # Schema name

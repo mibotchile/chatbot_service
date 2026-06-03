@@ -220,7 +220,7 @@ async def chat(request: Request, body: ChatRequest):
     _download_base = m.settings.public_base_url.rstrip("/") or str(request.base_url).rstrip("/")
 
     from shared.llm import LLMError
-    from shared.tool_registry import ToolRegistry
+    from api.tool_registry import ToolRegistry
     from features.conversation.agent import SoreliaAgent
     from features.conversation.response_guard import guard_response
     from features.conversation.response_builder import build_quick_replies
