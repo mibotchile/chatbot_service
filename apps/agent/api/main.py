@@ -37,7 +37,7 @@ from shared.rate_limit import from_settings as _build_rate_limiter
 # needs scheduled callbacks).
 from tools import ToolRegistry
 from integrations.chathub_outbound import ChathubOutboundClient
-from api.dashboard import dashboard_router
+from features.analytics.dashboard import dashboard_router
 from api.chathub import chathub_router
 from integrations.chathub_adapter import was_escalated
 
@@ -161,7 +161,7 @@ async def _emit_analytics(
     """
     import uuid as _uuid
 
-    from integrations import analytics_sink
+    from features.analytics import analytics_sink
 
     try:
         if not analytics_sink.analytics_enabled():

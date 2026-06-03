@@ -22,7 +22,7 @@ from tenancy import pricing
 from core.agent import SoreliaAgent
 from shared.llm import LLMProvider, LLMResponse
 from tenancy.tenant_loader import TenantConfig as TC
-from integrations import analytics_sink
+from features.analytics import analytics_sink
 
 _DT_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
