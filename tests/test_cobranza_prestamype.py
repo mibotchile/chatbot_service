@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from features.cobranza import debt_source, doris_debt_source
-from tools import ToolRegistry
+from shared.tool_registry import ToolRegistry
 
 TENANT = "prestamype"
 

@@ -3,7 +3,7 @@
 Routes tool names to implementations. Generic tools (quick replies, navigate,
 contact form, lead status) are real engine tools. The cobranza domain tools
 (consultar_deuda, registrar_reclamo, emitir_certificado_no_adeudo) live in
-``tools/cobranza.py``.
+``features/cobranza/tools.py``.
 
 SECURITY — hard identity gate (non-negotiable):
   - The registry is constructed with ``identity_verified`` + ``debt_context``

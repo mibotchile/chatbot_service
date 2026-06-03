@@ -15,7 +15,7 @@ from features.conversation.prompts import build_system_prompt
 from shared.config.tools_schema import TOOL_DEFINITIONS
 from shared.llm import LLMProvider, ToolCall
 from shared.llm.base import usage_from_raw
-from tools import ToolRegistry
+from shared.tool_registry import ToolRegistry
 from features.conversation.response_builder import build_ui_actions
 from features.conversation.debtor_profile import build_debtor_profile, truncate_history
 from features.conversation import responses as responses_engine

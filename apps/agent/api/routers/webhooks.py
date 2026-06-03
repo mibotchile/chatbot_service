@@ -195,7 +195,7 @@ async def _process_whatsapp_message(
     from features.conversation.response_builder import build_quick_replies
     from features.messaging.whatsapp_formatter import format_for_whatsapp
     from shared.llm import build_llm_provider
-    from tools import ToolRegistry
+    from shared.tool_registry import ToolRegistry
 
     import api.main as m
 

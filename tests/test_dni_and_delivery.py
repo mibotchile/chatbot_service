@@ -12,7 +12,7 @@ import pytest
 from shared.delivery.email_delivery import EmailService
 from features.messaging.whatsapp_service import WhatsAppService
 from features.cobranza.mock_debt_source import resolve_dni, resolve_token
-from tools import ToolRegistry
+from shared.tool_registry import ToolRegistry
 
 JUAN_DNI = "41785236"     # al día (con deuda)
 CARLOS_DNI = "09823514"   # en mora (con deuda)

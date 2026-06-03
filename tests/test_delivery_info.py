@@ -20,7 +20,7 @@ from features.conversation.responses import (
     route_layer1,
     resolve_classified_intent,
 )
-from tools import ToolRegistry
+from shared.tool_registry import ToolRegistry
 from features.cobranza.tools import (
     enviar_info,
     mask_email,
