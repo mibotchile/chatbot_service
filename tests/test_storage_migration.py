@@ -4,7 +4,7 @@ Tests cover:
 - dual-read for lead_data → debtor_data (state.py)
 - dual-read for Redis key suffix lead_data → debtor_data (redis_store.py)
 - upsert_debtor function exists and has the right signature (persistence.py)
-- _CONTACT_LEVELS uses new enum values at both api/main.py sites
+- _CONTACT_LEVELS uses new enum values (api/routers/webhooks.py after PR6 split)
 - dashboard.py SQL references sorelia_debtors, debtor_level (not old names)
 - migration script SQL file exists and contains expected statements
 - project_interest column is preserved in persistence code
@@ -164,10 +164,15 @@ def test_persistence_load_conversation_reads_debtor_data():
 # ---------------------------------------------------------------------------
 
 def test_contact_levels_uses_new_enum_values():
-    """_CONTACT_LEVELS in api/main.py must use DEBTOR/DEBTOR_VERIFIED, not LEAD/LEAD_ENRICHED."""
-    import api.main as main_module
+    """_CONTACT_LEVELS in API source must use DEBTOR/DEBTOR_VERIFIED, not LEAD/LEAD_ENRICHED.
 
-    src = inspect.getsource(main_module)
+    After PR6 (api/main.py split), _CONTACT_LEVELS lives in api/routers/webhooks.py.
+    Scan all API source modules to ensure the enum rename from PR5 is preserved.
+    """
+    import api.main as main_module
+    import api.routers.webhooks as webhooks_module
+
+    src = inspect.getsource(main_module) + inspect.getsource(webhooks_module)
 
     # Count occurrences of _CONTACT_LEVELS assignments
     # Both sites must use new values

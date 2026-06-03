@@ -135,11 +135,7 @@ def test_certificate_download_serves_existing_file(tmp_path, monkeypatch):
     fake_pdf = cert_dir / "test_cert.pdf"
     fake_pdf.write_bytes(b"%PDF-1.4 fake content")
 
-    # Patch the hardcoded /tmp path via monkeypatching the endpoint module
-    # by temporarily overriding Path resolution in the endpoint
     import api.main as m_module
-    original_cert_endpoint = m_module.download_certificate
-
     monkeypatch.setattr(m_module.settings, "comprobante_dir", str(tmp_path))
 
     from unittest.mock import patch

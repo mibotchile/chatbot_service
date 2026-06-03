@@ -222,20 +222,3 @@ async def get_history(
 ) -> list[dict]:
     """No-op kept for backwards compatibility. Loading is now done via load_conversation."""
     return []
-
-
-async def save_lead_data(
-    pool: asyncpg.Pool,
-    conversation_id: str,
-    data: dict,
-) -> None:
-    """No-op kept for backwards compatibility. Saving is now done via save_conversation."""
-    pass
-
-
-async def get_lead_data(
-    pool: asyncpg.Pool,
-    conversation_id: str,
-) -> dict:
-    """No-op kept for backwards compatibility. Loading is now done via load_conversation."""
-    return {}
