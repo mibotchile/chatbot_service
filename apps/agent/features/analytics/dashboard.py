@@ -1,4 +1,4 @@
-"""Dashboard API for the sales team -- lead & conversation visibility."""
+"""Dashboard API for the sales team -- debtor & conversation visibility."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def _schema() -> str:
 @dashboard_router.get("/leads", dependencies=[Depends(verify_dashboard_key)])
 async def list_leads(
     request: Request,
-    status: str | None = Query(None, description="Filter by lead_level"),
+    status: str | None = Query(None, description="Filter by debtor_level"),
     from_date: date | None = Query(None, alias="from", description="Created after (YYYY-MM-DD)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -110,7 +110,7 @@ async def list_leads(
     idx = 1
 
     if status:
-        conditions.append(f"lead_level = ${idx}")
+        conditions.append(f"debtor_level = ${idx}")
         args.append(status)
         idx += 1
 
@@ -129,8 +129,8 @@ async def list_leads(
 
     query = f"""
         SELECT conversation_id, visitor_id, name, email, phone,
-               project_interest, lead_level, created_at
-        FROM {schema}.sorelia_leads
+               project_interest, debtor_level, created_at
+        FROM {schema}.sorelia_debtors
         {where}
         ORDER BY created_at DESC
         LIMIT ${limit_idx} OFFSET ${offset_idx}
@@ -139,7 +139,7 @@ async def list_leads(
     rows = await _safe_fetch(pool, query, *args)
 
     # Total count for pagination
-    count_query = f"SELECT COUNT(*) FROM {schema}.sorelia_leads {where}"
+    count_query = f"SELECT COUNT(*) FROM {schema}.sorelia_debtors {where}"
     count_args = [a for a in args[:len(conditions)]]  # only filter args
     total = await _safe_fetchval(pool, count_query, *count_args) if conditions else await _safe_fetchval(pool, count_query)
 
@@ -158,7 +158,7 @@ async def get_lead_detail(request: Request, conversation_id: str):
     lead = await _safe_fetchrow(
         pool,
         f"""
-        SELECT * FROM {schema}.sorelia_leads
+        SELECT * FROM {schema}.sorelia_debtors
         WHERE conversation_id = $1
         """,
         conversation_id,
@@ -197,19 +197,19 @@ async def get_stats(request: Request):
         f"SELECT COUNT(DISTINCT conversation_id) FROM {schema}.sorelia_conversations",
     )
 
-    total_leads = await _safe_fetchval(
+    total_debtors = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_leads WHERE lead_level IN ('LEAD', 'CONTACT', 'QUALIFIED')",
+        f"SELECT COUNT(*) FROM {schema}.sorelia_debtors WHERE debtor_level IN ('DEBTOR', 'DEBTOR_VERIFIED')",
     )
 
-    total_contacts = await _safe_fetchval(
+    total_verified = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_leads WHERE lead_level IN ('CONTACT', 'QUALIFIED')",
+        f"SELECT COUNT(*) FROM {schema}.sorelia_debtors WHERE debtor_level = 'DEBTOR_VERIFIED'",
     )
 
-    leads_today = await _safe_fetchval(
+    debtors_today = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_leads WHERE created_at >= $1",
+        f"SELECT COUNT(*) FROM {schema}.sorelia_debtors WHERE created_at >= $1",
         today_start,
     )
 
@@ -217,7 +217,7 @@ async def get_stats(request: Request):
         pool,
         f"""
         SELECT project_interest AS name, COUNT(*) AS count
-        FROM {schema}.sorelia_leads
+        FROM {schema}.sorelia_debtors
         WHERE project_interest IS NOT NULL AND project_interest != ''
         GROUP BY project_interest
         ORDER BY count DESC
@@ -230,22 +230,16 @@ async def get_stats(request: Request):
         f"SELECT COUNT(*) FROM {schema}.sorelia_visitors",
     )
 
-    qualified = await _safe_fetchval(
-        pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_leads WHERE lead_level = 'QUALIFIED'",
-    )
-
     return {
         "total_conversations": total_conversations,
-        "total_leads": total_leads,
-        "total_contacts": total_contacts,
-        "leads_today": leads_today,
+        "total_debtors": total_debtors,
+        "total_verified": total_verified,
+        "debtors_today": debtors_today,
         "top_projects": top_projects,
         "conversion_funnel": {
             "visitors": total_visitors,
-            "leads": total_leads,
-            "contacts": total_contacts,
-            "qualified": qualified,
+            "debtors": total_debtors,
+            "verified": total_verified,
         },
     }
 
@@ -263,7 +257,7 @@ async def list_conversations(
     pool = _get_pool(request)
     schema = _schema()
 
-    # Get recent conversations with last message and lead info
+    # Get recent conversations with last message and debtor info
     query = f"""
         WITH last_msg AS (
             SELECT DISTINCT ON (conversation_id)
@@ -277,11 +271,11 @@ async def list_conversations(
             lm.conversation_id,
             lm.last_message,
             lm.last_message_at,
-            l.lead_level,
-            l.name AS visitor_name,
-            l.project_interest
+            d.debtor_level,
+            d.name AS visitor_name,
+            d.project_interest
         FROM last_msg lm
-        LEFT JOIN {schema}.sorelia_leads l ON lm.conversation_id = l.conversation_id
+        LEFT JOIN {schema}.sorelia_debtors d ON lm.conversation_id = d.conversation_id
         ORDER BY lm.last_message_at DESC
         LIMIT $1 OFFSET $2
     """
