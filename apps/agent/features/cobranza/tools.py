@@ -29,7 +29,7 @@ from loguru import logger
 
 from shared.config.settings import settings
 from shared.delivery.certificate_pdf import generate_certificate
-from integrations.doris_debt_source import classify_tipo, normalize_cci
+from shared.debt_math import classify_tipo, normalize_cci
 
 # ── Reclamos persistence (mock JSON so the demo can show registered claims) ──
 _RECLAMOS_PATH = Path("/tmp/prestaunion_reclamos.json")
@@ -696,10 +696,3 @@ async def enviar_documento(
     }
 
 
-# ── 5. Validar comprobante de pago (PrestamYpe) ────────────────────────────
-# Carved into features/comprobantes/validator.py — re-exported for callers.
-from features.comprobantes.validator import (  # noqa: E402
-    registrar_comprobante_foto,
-    validar_comprobante,
-    _COMPROBANTES_PATH,  # noqa: F401 — tests monkeypatch this
-)

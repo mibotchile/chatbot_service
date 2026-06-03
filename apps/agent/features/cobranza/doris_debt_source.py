@@ -30,7 +30,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from shared.config.settings import settings
-from integrations import mock_debt_source
+from shared.debt_math import classify_tipo, normalize_cci  # noqa: F401 — re-exported
+from features.cobranza import mock_debt_source
 
 # Profile fields that must be coerced to float when mapped from Doris.
 _NUMERIC_FIELDS = frozenset(
@@ -54,8 +55,8 @@ def _tenants_root() -> Path:
     docker_path = Path("/app/tenants")
     if docker_path.exists():
         return docker_path
-    # apps/agent/integrations/ -> repo root -> tenants/
-    return Path(__file__).resolve().parent.parent.parent.parent / "tenants"
+    # apps/agent/features/cobranza/ -> repo root -> tenants/
+    return Path(__file__).resolve().parent.parent.parent.parent.parent / "tenants"
 
 
 def _safe_ident(value: str, *, what: str) -> str:
@@ -148,11 +149,6 @@ def _build_sql(schema: dict) -> tuple[str, str]:
 def _normalize_dni(dni: str) -> str:
     """Keep only digits — tolerates spaces/dots the user might type."""
     return re.sub(r"\D", "", dni or "")
-
-
-def normalize_cci(cci: str) -> str:
-    """Strip everything but digits from a CCI (Doris stores some with spaces)."""
-    return re.sub(r"\D", "", cci or "")
 
 
 def _to_float(value) -> float:
@@ -356,22 +352,3 @@ def validate_comprobante(
     }
 
 
-def classify_tipo(monto: float, cuota: float, saldo: float, tol: float = 0.02) -> str:
-    """Classify a payment amount as pago / abono / cancelacion.
-
-    - ``monto`` ≈ ``saldo`` (±tol) → ``cancelacion`` (pays the whole balance)
-    - ``monto`` ≈ ``cuota`` (±tol) → ``pago`` (regular installment)
-    - ``monto`` < ``cuota``        → ``abono`` (partial)
-    - otherwise (monto > cuota but not full saldo) → ``abono`` (extra partial)
-
-    Cancelación is checked first so a single-installment loan (cuota == saldo)
-    is reported as a full cancelation.
-    """
-    monto = _to_float(monto)
-    if saldo > 0 and abs(monto - saldo) <= tol * saldo:
-        return "cancelacion"
-    if cuota > 0 and abs(monto - cuota) <= tol * cuota:
-        return "pago"
-    if cuota > 0 and monto < cuota:
-        return "abono"
-    return "abono"

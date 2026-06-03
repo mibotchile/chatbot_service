@@ -21,7 +21,7 @@ from core.responses import (
     resolve_classified_intent,
 )
 from tools import ToolRegistry
-from tools.cobranza import (
+from features.cobranza.tools import (
     enviar_info,
     mask_email,
     mask_phone,

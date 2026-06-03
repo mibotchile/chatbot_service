@@ -17,7 +17,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from integrations import mock_debt_source
+from features.cobranza import mock_debt_source
 
 
 def _tenants_root() -> Path:
@@ -25,8 +25,8 @@ def _tenants_root() -> Path:
     docker_path = Path("/app/tenants")
     if docker_path.exists():
         return docker_path
-    # apps/agent/integrations/ -> repo root -> tenants/
-    return Path(__file__).resolve().parent.parent.parent.parent / "tenants"
+    # apps/agent/features/cobranza/ -> repo root -> tenants/
+    return Path(__file__).resolve().parent.parent.parent.parent.parent / "tenants"
 
 
 @lru_cache(maxsize=16)
@@ -45,7 +45,7 @@ def _data_source(tenant_id: str) -> str:
 def _backend(tenant_id: str):
     """Return the debt-source module for the tenant."""
     if _data_source(tenant_id) == "doris":
-        from integrations import doris_debt_source  # local import (lazy driver)
+        from features.cobranza import doris_debt_source  # local import (lazy driver)
 
         return doris_debt_source
     return mock_debt_source

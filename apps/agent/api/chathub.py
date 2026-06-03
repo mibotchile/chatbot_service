@@ -106,7 +106,7 @@ async def _handle_voucher_photo(
 
     # Identificado → registrar la foto para conciliación manual.
     try:
-        from tools.cobranza import registrar_comprobante_foto
+        from features.comprobantes.validator import registrar_comprobante_foto
 
         reg = registrar_comprobante_foto(conv.debt_context, media_url)
         logger.info(
@@ -154,7 +154,7 @@ async def _run_chathub_engine_turn(
     from core.agent import SoreliaAgent
     from shared.llm import build_llm_provider
     from core.response_guard import guard_response
-    from integrations.debt_source import resolve_token
+    from features.cobranza.debt_source import resolve_token
     from tools import ToolRegistry
 
     # Conversation state (durable across turns via the engine store).

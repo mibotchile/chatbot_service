@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from integrations import doris_debt_source as dds
+from features.cobranza import doris_debt_source as dds
 
 TENANT = "prestamype"
 
@@ -106,15 +106,13 @@ def test_doris_tenant_without_schema_errors(tmp_path):
         json.dumps({"id": "broken", "data_source": "doris"}), encoding="utf-8"
     )
     dds._load_schema.cache_clear()
-    import integrations.doris_debt_source as mod
-
-    orig = mod._tenants_root
-    mod._tenants_root = lambda: tmp_path  # type: ignore[assignment]
+    orig = dds._tenants_root
+    dds._tenants_root = lambda: tmp_path  # type: ignore[assignment]
     try:
         with pytest.raises(ValueError, match="no 'doris_schema'"):
             dds._load_schema("broken")
     finally:
-        mod._tenants_root = orig  # type: ignore[assignment]
+        dds._tenants_root = orig  # type: ignore[assignment]
         dds._load_schema.cache_clear()
 
 

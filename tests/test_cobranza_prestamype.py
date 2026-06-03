@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from integrations import debt_source, doris_debt_source
+from features.cobranza import debt_source, doris_debt_source
 from tools import ToolRegistry
 
 TENANT = "prestamype"
@@ -80,7 +80,7 @@ def test_resolve_dni_unknown_returns_none():
 # ── PrestamYpe casuística: multi-crédito y crédito grupal ──────────────────
 
 async def test_consultar_deuda_lists_multiple_credits_same_dni():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
 
     # demo-4: mismo DNI con 2 créditos vigentes (uno al día, otro en mora leve).
     prof = debt_source.resolve_dni(LUCIA, tenant_id=TENANT)
@@ -96,7 +96,7 @@ async def test_consultar_deuda_lists_multiple_credits_same_dni():
 
 
 async def test_consultar_deuda_flags_grupal_with_codeudores():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
 
     # demo-5: crédito grupal compartido por 2 codeudores, casi cancelado.
     prof = debt_source.resolve_dni(ROSA, tenant_id=TENANT)
@@ -112,7 +112,7 @@ async def test_consultar_deuda_flags_grupal_with_codeudores():
 
 
 async def test_consultar_deuda_single_credit_has_no_multi_flags():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
 
     prof = debt_source.resolve_dni(LUIS, tenant_id=TENANT)  # al día, 1 crédito
     summary = await consultar_deuda(prof)
@@ -126,7 +126,7 @@ async def test_consultar_deuda_single_credit_has_no_multi_flags():
 
 
 async def test_consultar_deuda_exposes_bank_and_payment_account():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
 
     prof = debt_source.resolve_dni(LUIS, tenant_id=TENANT)
     summary = await consultar_deuda(prof)
@@ -138,7 +138,7 @@ async def test_consultar_deuda_exposes_bank_and_payment_account():
 
 
 async def test_build_panel_single_credit():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
     from core.response_builder import build_ui_actions
 
     prof = debt_source.resolve_dni(LUIS, tenant_id=TENANT)  # al día, 1 crédito
@@ -158,7 +158,7 @@ async def test_build_panel_single_credit():
 
 
 async def test_build_panel_mora_badge_has_days():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
     from core.response_builder import build_ui_actions
 
     prof = debt_source.resolve_dni(SANDRA, tenant_id=TENANT)  # mora 97d
@@ -170,7 +170,7 @@ async def test_build_panel_mora_badge_has_days():
 
 
 async def test_build_panel_multi_credit_one_card_each():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
     from core.response_builder import build_ui_actions
 
     prof = debt_source.resolve_dni(LUCIA, tenant_id=TENANT)  # 2 créditos
@@ -184,7 +184,7 @@ async def test_build_panel_multi_credit_one_card_each():
 
 
 async def test_build_panel_grupal_attaches_codeudores():
-    from tools.cobranza import consultar_deuda
+    from features.cobranza.tools import consultar_deuda
     from core.response_builder import build_ui_actions
 
     prof = debt_source.resolve_dni(ROSA, tenant_id=TENANT)  # crédito grupal

@@ -1005,7 +1005,7 @@ async def chat(request: Request, body: ChatRequest):
     _token = body.campaign_token or (body.page_context or {}).get("campaign_token")
     if _token and not conv.identity_verified:
         # Tenant-aware: prestaunion→mock, prestamype→doris (fixture fallback).
-        from integrations.debt_source import resolve_token
+        from features.cobranza.debt_source import resolve_token
 
         _profile = resolve_token(_token, tenant_id=body.tenant_id or "prestaunion")
         if _profile:
@@ -1600,7 +1600,7 @@ async def upload_comprobante(
         )
 
     # --- Identity gate: the DNI must resolve to a borrower for this tenant ---
-    from integrations import debt_source
+    from features.cobranza import debt_source
 
     profile = debt_source.resolve_dni(dni_norm, tenant_id=tenant_id)
     if not profile:
@@ -1615,7 +1615,7 @@ async def upload_comprobante(
     (dest_dir / f"{nro}.{ext}").write_bytes(payload)
 
     # --- Validate + classify against the verified profile ---
-    from tools.cobranza import validar_comprobante
+    from features.comprobantes.validator import validar_comprobante
 
     result = await validar_comprobante(
         profile,

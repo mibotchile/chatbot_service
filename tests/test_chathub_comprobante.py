@@ -293,7 +293,7 @@ async def test_photo_plus_text_prioritizes_text_and_attaches_image(runner_env):
 
 def test_registrar_comprobante_foto_dedups(runner_env):
     _set, cobranza = runner_env
-    from tools.cobranza import registrar_comprobante_foto
+    from features.comprobantes.validator import registrar_comprobante_foto
 
     profile = {"account_id": "P02137", "dni": "44218903"}
     first = registrar_comprobante_foto(profile, "https://x/v.jpg")

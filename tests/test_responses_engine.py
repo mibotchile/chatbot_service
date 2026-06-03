@@ -19,7 +19,7 @@ import pytest
 from core import responses as R
 from core.responses import ResponsesSpec
 from tenancy.tenant_loader import TenantConfig
-from integrations import debt_source
+from features.cobranza import debt_source
 
 TENANT = "prestamype"
 LUIS = "44218903"    # P02137, al día, single credit

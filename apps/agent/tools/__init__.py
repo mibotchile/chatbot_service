@@ -20,15 +20,15 @@ google_calendar) are accepted but ignored — kept for engine compatibility.
 
 from typing import Any, Callable
 
-from integrations.debt_source import resolve_dni
-from tools.cobranza import (
+from features.cobranza.debt_source import resolve_dni
+from features.cobranza.tools import (
     consultar_deuda,
     emitir_certificado_no_adeudo,
     enviar_documento,
     enviar_info,
     registrar_reclamo,
-    validar_comprobante,
 )
+from features.comprobantes.validator import validar_comprobante
 
 # Tools that require a verified identity before they may execute.
 # identificar_cliente is NOT gated — it is the mechanism that OPENS the gate.

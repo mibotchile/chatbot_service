@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from integrations.mock_debt_source import resolve_token
+from features.cobranza.mock_debt_source import resolve_token
 from tools import ToolRegistry
 
 JUAN = "demo-juan"      # al día

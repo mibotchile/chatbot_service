@@ -26,8 +26,8 @@ def _tenants_root() -> Path:
     docker_path = Path("/app/tenants")
     if docker_path.exists():
         return docker_path
-    # apps/agent/integrations/ -> repo root -> tenants/
-    return Path(__file__).resolve().parent.parent.parent.parent / "tenants"
+    # apps/agent/features/cobranza/ -> repo root -> tenants/
+    return Path(__file__).resolve().parent.parent.parent.parent.parent / "tenants"
 
 
 @lru_cache(maxsize=8)
