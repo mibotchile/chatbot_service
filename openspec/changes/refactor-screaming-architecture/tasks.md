@@ -35,37 +35,37 @@ Chain strategy: pending
 
 ---
 
-## Phase 1 — Scaffold (Slice 0)
+## Phase 1 — Scaffold (Slice 0) ✅ DONE (PR1)
 
-- [ ] 1.1 Create `features/{conversation,cobranza,comprobantes,messaging,analytics}/` with `__init__.py`. No code moves.
-- [ ] 1.2 Create `shared/{llm,persistence,delivery,ports}/`, `shared/config/` with `__init__.py`.
-- [ ] 1.3 Create `tenancy/` with `__init__.py`.
-- [ ] 1.4 Create `api/routers/` with `__init__.py`.
-- [ ] 1.5 Run `uv run pytest tests/ -v` — must be green (pure no-op).
-- [ ] 1.6 Commit: `chore(scaffold): create screaming-architecture directory skeleton`.
-
----
-
-## Phase 2 — shared/ kernel (Slice 1)
-
-- [ ] 2.1 `git mv core/llm/* shared/llm/` — preserve history.
-- [ ] 2.2 `git mv core/persistence.py shared/persistence/persistence.py` + `git mv core/db.py shared/persistence/db.py`.
-- [ ] 2.3 `git mv core/rate_limit.py shared/rate_limit.py` + `git mv core/webhooks.py shared/webhooks.py` + `git mv core/webhook_config.py shared/webhook_config.py`.
-- [ ] 2.4 `git mv config/settings.py shared/config/settings.py` + `git mv config/cors.py shared/config/cors.py` + `git mv config/tools_schema.py shared/config/tools_schema.py`.
-- [ ] 2.5 Re-map all imports: `core.llm*→shared.llm*`, `core.persistence→shared.persistence.persistence`, `core.db→shared.persistence.db`, `core.rate_limit→shared.rate_limit`, `core.webhooks→shared.webhooks`, `core.webhook_config→shared.webhook_config`, `config.settings→shared.config.settings`, `config.cors→shared.config.cors`, `config.tools_schema→shared.config.tools_schema`. **Do NOT rename `webhook_lead_url`, `lead_transition_url`, `website_leads_only`.**
-- [ ] 2.6 Update 18 test-file imports (import paths only — zero assertion/fixture changes).
-- [ ] 2.7 Run `uv run pytest tests/ -v` — green. Delete `config/__init__.py`.
-- [ ] 2.8 Commit: `refactor(shared): move kernel modules to shared/`.
+- [x] 1.1 Create `features/{conversation,cobranza,comprobantes,messaging,analytics}/` with `__init__.py`. No code moves.
+- [x] 1.2 Create `shared/{llm,persistence,delivery,ports}/`, `shared/config/` with `__init__.py`.
+- [x] 1.3 Create `tenancy/` with `__init__.py`.
+- [x] 1.4 Create `api/routers/` with `__init__.py`.
+- [x] 1.5 Run `uv run pytest tests/ -v` — must be green (pure no-op).
+- [x] 1.6 Commit: `chore(scaffold): create screaming-architecture directory skeleton`.
 
 ---
 
-## Phase 3 — tenancy/ (Slice 2)
+## Phase 2 — shared/ kernel (Slice 1) ✅ DONE (PR1)
 
-- [ ] 3.1 `git mv core/tenant_loader.py tenancy/tenant_loader.py` + `git mv config/soul.py tenancy/soul.py` + `git mv config/pricing.py tenancy/pricing.py`.
-- [ ] 3.2 Extract `ResponsesSpec` dataclass from `core/responses.py` into `tenancy/responses_spec.py` (breaks cycle #1: tenancy→conversation). Keep the responses engine in `core/responses.py` for now; update its import.
-- [ ] 3.3 Re-map imports: `config.soul→tenancy.soul`, `config.pricing→tenancy.pricing`, `core.tenant_loader→tenancy.tenant_loader`. Update `test_responses_engine.py` + `test_delivery_info.py` import paths.
-- [ ] 3.4 Run `uv run pytest tests/ -v` — green.
-- [ ] 3.5 Commit: `refactor(tenancy): extract tenant_loader, soul, pricing, ResponsesSpec`.
+- [x] 2.1 `git mv core/llm/* shared/llm/` — preserve history.
+- [x] 2.2 `git mv core/persistence.py shared/persistence/persistence.py` + `git mv core/db.py shared/persistence/db.py`.
+- [x] 2.3 `git mv core/rate_limit.py shared/rate_limit.py` + `git mv core/webhooks.py shared/webhooks.py` + `git mv core/webhook_config.py shared/webhook_config.py`.
+- [x] 2.4 `git mv config/settings.py shared/config/settings.py` + `git mv config/cors.py shared/config/cors.py` + `git mv config/tools_schema.py shared/config/tools_schema.py`.
+- [x] 2.5 Re-map all imports. **Did NOT rename `webhook_lead_url`, `lead_transition_url`, `website_leads_only`.**
+- [x] 2.6 Updated 11 test-file imports (import paths only — zero assertion/fixture changes). Also fixed cors._tenants_root() path depth (4→5 parent levels after move).
+- [x] 2.7 Run `uv run pytest tests/ -v` — 310 green. `config/__init__.py` deleted at end of slice 2 after config/ fully vacated.
+- [x] 2.8 Commit: `refactor(shared): move kernel modules to shared/`.
+
+---
+
+## Phase 3 — tenancy/ (Slice 2) ✅ DONE (PR1)
+
+- [x] 3.1 `git mv core/tenant_loader.py tenancy/tenant_loader.py` + `git mv config/soul.py tenancy/soul.py` + `git mv config/pricing.py tenancy/pricing.py`.
+- [x] 3.2 Extract `ResponsesSpec` dataclass from `core/responses.py` into `tenancy/responses_spec.py`. core/responses.py re-exports ResponsesSpec for backward compat. Restored dataclass/field imports in responses.py (needed by CannedResult + RouterOutcome).
+- [x] 3.3 Re-map imports: `config.soul→tenancy.soul`, `config.pricing→tenancy.pricing`, `core.tenant_loader→tenancy.tenant_loader`. Updated test_analytics_doris, test_responses_engine, test_smoke, test_cobranza_prestamype, test_rate_limiting.
+- [x] 3.4 Run `uv run pytest tests/ -v` — 310 green.
+- [x] 3.5 Commit: `refactor(tenancy): extract tenant_loader, soul, pricing, ResponsesSpec`.
 
 ---
 
