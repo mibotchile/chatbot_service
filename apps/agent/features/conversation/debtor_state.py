@@ -39,11 +39,11 @@ class DebtorState:
         has_enrichment = len(ENRICHMENT_FIELDS & self.collected.keys()) >= 2
 
         if has_contact and has_enrichment:
-            return "LEAD_ENRICHED"
+            return "DEBTOR_VERIFIED"
         if has_contact:
-            return "LEAD"
+            return "DEBTOR"
         if has_interest:
-            return "PRE_LEAD"
+            return "PRE_DEBTOR"
         return "VISITOR"
 
     def update(self, data: dict) -> None:
