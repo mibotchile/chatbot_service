@@ -93,7 +93,7 @@ class ToolRegistry:
         self._on_identification_attempt = on_identification_attempt
         self._tools: dict[str, Any] = {
             # generic engine tools
-            "get_lead_status": self._get_lead_status,
+            "get_debtor_status": self._get_debtor_status,
             "navigate_page": self._navigate_page,
             "suggest_quick_replies": self._suggest_quick_replies,
             "collect_contact_info": self._collect_contact_info,
@@ -128,7 +128,7 @@ class ToolRegistry:
 
     # ── Generic engine tools ────────────────────────────────────────────
 
-    async def _get_lead_status(self, conversation_id: str) -> dict:
+    async def _get_debtor_status(self, conversation_id: str) -> dict:
         if self._lead_machine:
             return self._lead_machine.get_status()
         return {

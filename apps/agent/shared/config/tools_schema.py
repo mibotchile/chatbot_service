@@ -5,7 +5,7 @@ Provider-agnostic schema: each tool is {name, description, parameters} where
 `input_schema`, OpenAI → `function.parameters`). See core/llm/.
 
 Generic engine tools (suggest_quick_replies, navigate_page, collect_contact_info,
-get_lead_status) are kept. The cobranza domain has THREE tools:
+get_debtor_status) are kept. The cobranza domain has THREE tools:
   - consultar_deuda
   - registrar_reclamo
   - emitir_certificado_no_adeudo
@@ -19,8 +19,8 @@ operate on the account take only business params (or none).
 TOOL_DEFINITIONS = [
     # ── Generic engine tools (kept as-is) ───────────────────────────────
     {
-        "name": "get_lead_status",
-        "description": "Get current lead qualification level and missing data. Use to decide what to ask next.",
+        "name": "get_debtor_status",
+        "description": "Get current debtor qualification level and missing data. Use to decide what to ask next.",
         "parameters": {
             "type": "object",
             "properties": {

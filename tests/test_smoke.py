@@ -66,3 +66,19 @@ def test_system_prompt_builds_with_empty_state():
     prompt = build_system_prompt(lead_state={}, page_context={})
     assert "IDENTIDAD" in prompt
     assert "agente de cobranza" in prompt
+
+
+def test_tool_name_is_get_debtor_status():
+    """The registered tool name and schema name must be get_debtor_status (LLM contract)."""
+    from tools import ToolRegistry
+    from shared.config.tools_schema import TOOL_DEFINITIONS
+
+    # Schema name
+    schema_names = [t["name"] for t in TOOL_DEFINITIONS]
+    assert "get_debtor_status" in schema_names, "get_debtor_status missing from TOOL_DEFINITIONS"
+    assert "get_lead_status" not in schema_names, "old get_lead_status must be removed from schema"
+
+    # Registry dispatch key
+    reg = ToolRegistry()
+    assert reg.has_tool("get_debtor_status"), "ToolRegistry must dispatch get_debtor_status"
+    assert not reg.has_tool("get_lead_status"), "old get_lead_status key must be removed"
