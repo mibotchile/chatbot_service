@@ -69,44 +69,44 @@ Chain strategy: pending
 
 ---
 
-## Phase 4 — features/analytics/ (Slice 3 — file move only, SQL unchanged)
+## Phase 4 — features/analytics/ (Slice 3 — file move only, SQL unchanged) ✅ DONE (PR2)
 
-- [ ] 4.1 **EXCLUDE-list pre-check**: `grep -rn "sorelia_leads\|lead_level" api/dashboard.py` — record all 31 ref locations. Confirm these will NOT be renamed in this slice (SQL rename deferred to slice 9).
-- [ ] 4.2 `git mv integrations/analytics_sink.py features/analytics/analytics_sink.py`.
-- [ ] 4.3 `git mv api/dashboard.py features/analytics/dashboard.py`. Re-map its internal import. Update `api/main.py` import from `api.dashboard→features.analytics.dashboard`. **SQL strings (`sorelia_leads`, `lead_level`) unchanged — atomic rename lives in slice 9.**
-- [ ] 4.4 Re-map test imports for analytics.
-- [ ] 4.5 Run `uv run pytest tests/ -v` — green.
-- [ ] 4.6 Commit: `refactor(analytics): move dashboard + analytics_sink into features/analytics/ (SQL unchanged)`.
-
----
-
-## Phase 5 — features/comprobantes/ + shared/delivery/ (Slice 4)
-
-- [ ] 5.1 `git mv integrations/certificate_pdf.py shared/delivery/certificate_pdf.py` + `git mv core/email_service.py shared/delivery/email_delivery.py`.
-- [ ] 5.2 Carve `features/comprobantes/validator.py` from `tools/cobranza.py` lines 708–870: `_load_comprobantes`, `_save_comprobantes`, `_normalize_account_type`, `registrar_comprobante_foto`, `validar_comprobante`. Remove these from `tools/cobranza.py`.
-- [ ] 5.3 Re-map all callers of the carved symbols to `features.comprobantes.validator`. Re-map `integrations.certificate_pdf→shared.delivery.certificate_pdf`, `core.email_service→shared.delivery.email_delivery`.
-- [ ] 5.4 Run `uv run pytest tests/ -v` — green.
-- [ ] 5.5 Commit: `refactor(comprobantes): carve validator from cobranza tools; move delivery to shared/`.
+- [x] 4.1 **EXCLUDE-list pre-check**: SQL (`sorelia_leads`, `lead_level`) NOT renamed in this slice. Deferred to slice 9.
+- [x] 4.2 `git mv integrations/analytics_sink.py features/analytics/analytics_sink.py`.
+- [x] 4.3 `git mv api/dashboard.py features/analytics/dashboard.py`. Updated `api/main.py` imports: `api.dashboard→features.analytics.dashboard`, `from integrations import analytics_sink→from features.analytics import analytics_sink`. **SQL unchanged.**
+- [x] 4.4 Re-mapped `test_analytics_doris.py`: `from integrations import analytics_sink → from features.analytics import analytics_sink`.
+- [x] 4.5 Run `uv run pytest tests/ -q` — 310 green.
+- [x] 4.6 Commit: `refactor(analytics): move dashboard + analytics_sink to features/analytics/ (SQL unchanged)`.
 
 ---
 
-## Phase 6 — features/messaging/ (Slice 5)
+## Phase 5 — features/comprobantes/ + shared/delivery/ (Slice 4) ✅ DONE (PR2)
 
-- [ ] 6.1 `git mv core/whatsapp_service.py features/messaging/whatsapp_service.py` + `git mv core/whatsapp_formatter.py features/messaging/whatsapp_formatter.py`.
-- [ ] 6.2 `git mv integrations/chathub_adapter.py features/messaging/chathub_adapter.py` + `git mv integrations/chathub_outbound.py features/messaging/chathub_outbound.py` + `git mv integrations/chathub_web_publisher.py features/messaging/chathub_web_publisher.py`.
-- [ ] 6.3 Re-map imports: `core.whatsapp_*→features.messaging.*`, `integrations.chathub_*→features.messaging.*`.
-- [ ] 6.4 Run `uv run pytest tests/ -v` — green.
-- [ ] 6.5 Commit: `refactor(messaging): move whatsapp + chathub into features/messaging/`.
+- [x] 5.1 `git mv integrations/certificate_pdf.py shared/delivery/certificate_pdf.py` + `git mv core/email_service.py shared/delivery/email_delivery.py`.
+- [x] 5.2 Carved `features/comprobantes/validator.py` from `tools/cobranza.py` lines 699–871: `_load_comprobantes`, `_save_comprobantes`, `_normalize_account_type`, `registrar_comprobante_foto`, `validar_comprobante`. Removed from `tools/cobranza.py` (re-export stubs removed in slice 6). classify_tipo/normalize_cci extracted to `shared/debt_math.py` to avoid cross-feature dep.
+- [x] 5.3 Re-mapped all callers. Tests updated to patch `features.comprobantes.validator._COMPROBANTES_PATH` directly (not via tools.cobranza). shared/webhooks.py WhatsAppService type hint replaced with `Any` to avoid shared→features violation.
+- [x] 5.4 Run `uv run pytest tests/ -q` — 310 green.
+- [x] 5.5 Commit: `refactor(comprobantes): carve validator into features/comprobantes/; move delivery to shared/`.
 
 ---
 
-## Phase 7 — features/cobranza/ (Slice 6)
+## Phase 6 — features/messaging/ (Slice 5) ✅ DONE (PR2)
 
-- [ ] 7.1 `git mv tools/cobranza.py features/cobranza/tools.py` (remainder after comprobantes carve).
-- [ ] 7.2 `git mv integrations/debt_source.py features/cobranza/debt_source.py` + `git mv integrations/doris_debt_source.py features/cobranza/doris_debt_source.py` + `git mv integrations/mock_debt_source.py features/cobranza/mock_debt_source.py`.
-- [ ] 7.3 Re-map all callers: `tools.cobranza→features.cobranza.tools`, `integrations.debt_source*→features.cobranza.*`.
-- [ ] 7.4 Run `uv run pytest tests/ -v` — green.
-- [ ] 7.5 Commit: `refactor(cobranza): move cobranza tools + debt sources into features/cobranza/`.
+- [x] 6.1 `git mv core/whatsapp_service.py features/messaging/whatsapp_service.py` + `git mv core/whatsapp_formatter.py features/messaging/whatsapp_formatter.py`.
+- [x] 6.2 `git mv integrations/chathub_adapter.py features/messaging/chathub_adapter.py` + `git mv integrations/chathub_outbound.py features/messaging/chathub_outbound.py` + `git mv integrations/chathub_web_publisher.py features/messaging/chathub_web_publisher.py`.
+- [x] 6.3 Re-mapped all imports in api/main.py, api/chathub.py, shared/webhooks.py, test_dni_and_delivery.py, test_chathub_adapter.py, test_chathub_comprobante.py, test_chathub_web_publisher.py.
+- [x] 6.4 Run `uv run pytest tests/ -q` — 310 green.
+- [x] 6.5 Commit: `refactor(messaging): move whatsapp + chathub into features/messaging/`.
+
+---
+
+## Phase 7 — features/cobranza/ (Slice 6) ✅ DONE (PR2)
+
+- [x] 7.1 `git mv tools/cobranza.py features/cobranza/tools.py` (remainder after comprobantes carve). Cross-feature re-export removed; tools/__init__.py imports comprobantes functions directly from features.comprobantes.validator.
+- [x] 7.2 `git mv integrations/debt_source.py features/cobranza/debt_source.py` + `git mv integrations/doris_debt_source.py features/cobranza/doris_debt_source.py` + `git mv integrations/mock_debt_source.py features/cobranza/mock_debt_source.py`. Fixed `_tenants_root()` path (4→5 parent levels). Extracted `classify_tipo` + `normalize_cci` from doris_debt_source → `shared/debt_math.py`. Internal `from integrations import mock_debt_source` → `from features.cobranza import mock_debt_source`.
+- [x] 7.3 Re-mapped all callers in api/main.py, api/chathub.py, tools/__init__.py, and 6 test files. test_doris_schema.py inline `import integrations.doris_debt_source` replaced with module alias already imported.
+- [x] 7.4 Run `uv run pytest tests/ -q` — 310 green.
+- [x] 7.5 Commit: `refactor(cobranza): move cobranza tools + debt sources into features/cobranza/; extract debt_math to shared/`.
 
 ---
 
