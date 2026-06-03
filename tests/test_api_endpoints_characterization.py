@@ -285,6 +285,46 @@ def test_whatsapp_webhook_ignores_non_upsert_event(client):
     assert "event=" in data["reason"]
 
 
+# ── Dashboard: app.state.visitor_memory wiring ───────────────────────────────
+
+
+def test_dashboard_leads_reads_app_state_visitor_memory(monkeypatch):
+    """Dashboard /leads reads visitor_memory from app.state (not a module global).
+
+    This test locks the behavioral contract established in PR7: the lifespan
+    assigns ``app.state.visitor_memory`` and ``_get_pool`` reads it from
+    ``request.app.state``. If the wiring breaks (e.g. _get_pool reverts to a
+    module-level import), this test surfaces a 500 instead of 503.
+
+    Scenario: app.state.visitor_memory is set to a stub with _pool=None →
+    _get_pool raises HTTPException(503) → response is 503, not 500 (AttributeError).
+    """
+    import api.main as m
+
+    class _FakeVM:
+        _pool = None
+
+    # Wire a fake VisitorMemory onto app.state (simulates a successful lifespan).
+    m.app.state.visitor_memory = _FakeVM()
+
+    # Activate dashboard key so auth passes.
+    monkeypatch.setattr(m.settings, "dashboard_key", "test-key-pr8")
+
+    try:
+        with TestClient(m.app, raise_server_exceptions=False) as c:
+            r = c.get(
+                "/api/v1/dashboard/leads",
+                headers={"X-Dashboard-Key": "test-key-pr8"},
+            )
+        # _get_pool finds _pool=None → 503 "Database not available"
+        # (NOT a 500 AttributeError — the wiring to app.state is working).
+        assert r.status_code == 503
+        assert "Database not available" in r.json().get("detail", "")
+    finally:
+        # Clean up app.state so other tests are not affected.
+        m.app.state.visitor_memory = None
+
+
 def test_whatsapp_webhook_ignores_outgoing_messages(client):
     r = client.post(
         "/api/v1/webhooks/whatsapp",
