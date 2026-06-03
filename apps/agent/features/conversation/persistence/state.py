@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from core.hooks import extract_implicit_data
-from core.lead_machine import LeadMachine
+from features.conversation.hooks import extract_implicit_data
+from features.conversation.debtor_state import LeadMachine
 
 if TYPE_CHECKING:
     import asyncpg
@@ -174,7 +174,7 @@ def get_store(
 ) -> StateStore:
     """Factory: returns the appropriate StateStore variant."""
     if redis_url:
-        from core.redis_store import RedisStateStore
+        from features.conversation.persistence.redis_store import RedisStateStore
 
         return RedisStateStore(redis_url)  # type: ignore[return-value]
     return StateStore(db_pool=db_pool, db_schema=db_schema)

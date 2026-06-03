@@ -59,19 +59,10 @@ class LeadMachine:
         all_fields = CONTACT_FIELDS | INTEREST_FIELDS | ENRICHMENT_FIELDS
         missing = [f for f in all_fields if f not in self.collected]
 
-        # Generate extraction opportunities based on missing fields
-        opportunities = []
-        for field in missing:
-            if field in EXTRACTION_EXCUSES:
-                project = self.collected.get("project_interest", "nuestros proyectos")
-                excuse = EXTRACTION_EXCUSES[field].format(project=project)
-                opportunities.append(f"{field}: {excuse}")
-
         return {
             "level": self.level,
             "collected": dict(self.collected),
             "missing": missing,
-            "opportunities": opportunities,
         }
 
     def to_dict(self) -> dict:

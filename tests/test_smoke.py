@@ -52,7 +52,7 @@ def test_tool_registry_has_cobranza_tools():
 
 def test_lead_machine_uses_cobranza_fields():
     """The lead machine tracks cobranza interest fields, not real-estate ones."""
-    from core.lead_machine import INTEREST_FIELDS
+    from features.conversation.debtor_state import INTEREST_FIELDS
 
     assert "debt_amount" in INTEREST_FIELDS
     assert "account_id" in INTEREST_FIELDS
@@ -61,7 +61,7 @@ def test_lead_machine_uses_cobranza_fields():
 
 def test_system_prompt_builds_with_empty_state():
     """build_system_prompt runs with empty lead/page context (no KB present)."""
-    from prompts.system import build_system_prompt
+    from features.conversation.prompts import build_system_prompt
 
     prompt = build_system_prompt(lead_state={}, page_context={})
     assert "IDENTIDAD" in prompt

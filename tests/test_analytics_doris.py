@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from tenancy import pricing
-from core.agent import SoreliaAgent
+from features.conversation.agent import SoreliaAgent
 from shared.llm import LLMProvider, LLMResponse
 from tenancy.tenant_loader import TenantConfig as TC
 from features.analytics import analytics_sink

@@ -5,8 +5,8 @@ import uuid
 
 from redis.asyncio import Redis
 
-from core.hooks import extract_implicit_data
-from core.lead_machine import LeadMachine
+from features.conversation.hooks import extract_implicit_data
+from features.conversation.debtor_state import LeadMachine
 
 TTL_SECONDS = 86400  # 24 hours
 

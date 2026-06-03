@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from core import responses as R
-from core.responses import ResponsesSpec
+from features.conversation import responses as R
+from tenancy.responses_spec import ResponsesSpec
 from tenancy.tenant_loader import TenantConfig
 from features.cobranza import debt_source
 
@@ -348,7 +348,7 @@ def test_build_variables_fills_from_profile():
 
 # ── agent integration: canned short-circuits the LLM ─────────────────────────
 
-from core.agent import SoreliaAgent  # noqa: E402
+from features.conversation.agent import SoreliaAgent  # noqa: E402
 from shared.llm import LLMProvider, LLMResponse, ToolCall  # noqa: E402
 
 

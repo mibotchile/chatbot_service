@@ -6,11 +6,11 @@ from datetime import date
 from pathlib import Path
 
 from tenancy.soul import AgentSoul
-from core.conversation_fsm import detect_state, get_state_rules
+from features.conversation.conversation_fsm import detect_state, get_state_rules
 
 _GUARDRAILS = (Path(__file__).parent / "guardrails.md").read_text()
 
-_KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "knowledge"
+_KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent.parent / "knowledge"
 
 
 def _load_knowledge(name: str, key: str | None = None):
@@ -119,7 +119,7 @@ def build_system_prompt(
     channel: str = "web",
     tenant: "object | None" = None,
 ) -> str:
-    from skills import load_skill, DEFAULT_SKILLS, WEB_ONLY_SKILLS, WHATSAPP_ONLY_SKILLS
+    from features.conversation.skills import load_skill, DEFAULT_SKILLS, WEB_ONLY_SKILLS, WHATSAPP_ONLY_SKILLS
 
     # ── Resolve tenant data ──
     if tenant is not None:
@@ -175,13 +175,11 @@ def build_system_prompt(
         level = lead_state.get("level", "VISITOR")
         collected = lead_state.get("collected", {})
         missing = lead_state.get("missing", [])
-        opportunities = lead_state.get("opportunities", [])
         sections.append(
             f"# ESTADO DEL LEAD\n"
             f"Nivel actual: {level}\n"
             f"Datos recolectados: {collected}\n"
-            f"Datos faltantes: {', '.join(missing) if missing else 'ninguno'}\n"
-            f"Oportunidades de extraccion: {'; '.join(opportunities) if opportunities else 'ninguna'}"
+            f"Datos faltantes: {', '.join(missing) if missing else 'ninguno'}"
         )
 
     # Page context

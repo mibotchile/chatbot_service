@@ -55,7 +55,7 @@ from typing import Any
 
 from loguru import logger
 
-from tenancy.responses_spec import ResponsesSpec  # noqa: F401 — re-exported for callers
+from tenancy.responses_spec import ResponsesSpec
 
 # Result "source" tags surfaced to analytics so we can measure LLM savings.
 SOURCE_KEYWORD = "canned_keyword"   # Layer 1 — resolved with zero LLM

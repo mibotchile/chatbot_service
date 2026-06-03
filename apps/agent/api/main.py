@@ -22,15 +22,15 @@ from pydantic import BaseModel, Field, field_validator
 from contextlib import asynccontextmanager
 
 from shared.config.settings import settings
-from core.state import get_store
-from core.agent import SoreliaAgent
+from features.conversation.persistence.state import get_store
+from features.conversation.agent import SoreliaAgent
 from shared.llm import LLMError, build_llm_provider
 from shared.delivery.email_delivery import EmailService
 from features.messaging.whatsapp_service import WhatsAppService
-from core.response_guard import guard_response
-from core.response_builder import build_quick_replies
+from features.conversation.response_guard import guard_response
+from features.conversation.response_builder import build_quick_replies
 from features.messaging.whatsapp_formatter import format_for_whatsapp
-from core.visitor_memory import VisitorMemory
+from features.conversation.persistence.visitor_memory import VisitorMemory
 from shared.rate_limit import from_settings as _build_rate_limiter
 # NOTE: visit_manager / google_calendar were real-estate-only (property visits)
 # and are NOT ported. Their references are removed below (TODO if cobranza ever
@@ -75,7 +75,7 @@ def _delivery_for(tenant_id: str | None) -> tuple[dict, str]:
     delivery_mode = "simulate" if data_source == "mock" else "real"
     deliverables: dict = {}
     try:
-        from core.responses import ResponsesSpec
+        from tenancy.responses_spec import ResponsesSpec
 
         spec = ResponsesSpec.from_dir(_tenant_dir(tenant_id))
         deliverables = spec.deliverables or {}
@@ -371,7 +371,7 @@ async def _process_whatsapp_message(phone: str, sender_name: str, text: str, mes
         wa_ui_actions = {}
         wa_tool_pairs = []
 
-    from core.response_guard import guard_response
+    from features.conversation.response_guard import guard_response
     content = guard_response(content, conv.history, conv.lead.get_status())
     await conv.add_assistant_message_async(content)
 
@@ -1244,7 +1244,8 @@ async def chat(request: Request, body: ChatRequest):
     _tenant_owns_chips = False
     _tenant_chips = None
     try:
-        from core.responses import ResponsesSpec, resolve_chips
+        from tenancy.responses_spec import ResponsesSpec
+        from features.conversation.responses import resolve_chips
 
         _chip_spec = ResponsesSpec.from_dir(_tenant_dir(body.tenant_id))
         _tenant_owns_chips = _chip_spec.has_chips
@@ -1269,7 +1270,7 @@ async def chat(request: Request, body: ChatRequest):
             buttons = [{"id": f"qr-{i}", "label": opt, "value": opt} for i, opt in enumerate(suggested_replies)]
             quick_replies = {"type": "single_select", "buttons": buttons[:4]}
         if not quick_replies:
-            from core.response_builder import build_quick_replies
+            from features.conversation.response_builder import build_quick_replies
             quick_replies = build_quick_replies(conv.lead.get_status(), ui_actions, tool_pairs, content)
 
     # Current identity state (updated this turn if the user identified via DNI).

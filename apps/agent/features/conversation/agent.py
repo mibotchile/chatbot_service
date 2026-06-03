@@ -11,14 +11,14 @@ import time
 from typing import Any
 
 from loguru import logger
-from prompts.system import build_system_prompt
+from features.conversation.prompts import build_system_prompt
 from shared.config.tools_schema import TOOL_DEFINITIONS
 from shared.llm import LLMProvider, ToolCall
 from shared.llm.base import usage_from_raw
 from tools import ToolRegistry
-from core.response_builder import build_ui_actions
-from core.prospect_profile import build_prospect_profile, truncate_history
-from core import responses as responses_engine
+from features.conversation.response_builder import build_ui_actions
+from features.conversation.debtor_profile import build_prospect_profile, truncate_history
+from features.conversation import responses as responses_engine
 
 # ── Sticky LLM-flow (data-driven multi-turn tool gathering) ───────────────────
 # When a ``flow: true`` intent routes a turn to the LLM (e.g. validar_comprobante

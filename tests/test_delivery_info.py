@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.responses import (
-    ResponsesSpec,
+from tenancy.responses_spec import ResponsesSpec
+from features.conversation.responses import (
     route_layer1,
     resolve_classified_intent,
 )
@@ -273,7 +273,7 @@ def test_flow_pide_estado_pregunta_canal_y_guarda_tipo():
     assert "correo o" in out.text.lower()           # Ada pregunta el canal
     assert out.run_tool is None                       # todavía no envía
     # el tipo pendiente quedó guardado en la sesión (data-driven set_session)
-    from core.responses import _get_session
+    from features.conversation.responses import _get_session
     assert _get_session(session, "tipo") == "estado_cuenta"
 
 

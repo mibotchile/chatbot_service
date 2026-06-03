@@ -65,7 +65,7 @@ def _photo_ack_text(tenant_config, profile: dict) -> str:
     quedó en revisión."""
     spec = getattr(tenant_config, "responses", None)
     if spec is not None and getattr(spec, "intents", {}).get("comprobante_resultado"):
-        from core import responses as responses_engine
+        from features.conversation import responses as responses_engine
 
         res = responses_engine.render_intent(
             spec, "comprobante_resultado", profile or {},
@@ -151,9 +151,9 @@ async def _run_chathub_engine_turn(
     import api.main as m  # late import: live module-level services
 
     from shared.config.settings import resolve_api_key
-    from core.agent import SoreliaAgent
+    from features.conversation.agent import SoreliaAgent
     from shared.llm import build_llm_provider
-    from core.response_guard import guard_response
+    from features.conversation.response_guard import guard_response
     from features.cobranza.debt_source import resolve_token
     from tools import ToolRegistry
 

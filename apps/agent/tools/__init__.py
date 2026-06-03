@@ -135,7 +135,6 @@ class ToolRegistry:
             "level": "VISITOR",
             "collected": {},
             "missing": ["name", "phone", "email"],
-            "opportunities": [],
         }
 
     async def _navigate_page(self, scroll_to: str, highlight: str = "") -> dict:
