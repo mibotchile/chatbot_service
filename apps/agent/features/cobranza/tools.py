@@ -451,9 +451,8 @@ def render_deliverable(spec: dict, channel: str, profile: dict) -> dict:
 
     Returns ``{"subject", "body", "text", "label"}`` with {variables} filled from
     the verified profile via the responses engine (single + list multi-deuda).
-    Imported lazily to avoid a hard dependency cycle with the responses module.
     """
-    from features.conversation.responses import render_template
+    from shared.templates import render_template
 
     label = spec.get("label", "información")
     out = {"label": label, "subject": "", "body": "", "text": ""}
