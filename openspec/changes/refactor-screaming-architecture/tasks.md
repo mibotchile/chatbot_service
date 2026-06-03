@@ -110,20 +110,20 @@ Chain strategy: pending
 
 ---
 
-## Phase 8 — features/conversation/ + delete opportunity_detector (Slice 7)
+## Phase 8 — features/conversation/ + delete opportunity_detector (Slice 7) ✅ DONE (PR3)
 
-- [ ] 8.1 **[CHARACTERIZATION TEST — STRICT TDD]** Write characterization tests for any untested code paths in `core/responses.py`, `core/agent.py`, `core/conversation_fsm.py` before moving. Gate: suite green including new tests.
-- [ ] 8.2 `git mv core/agent.py features/conversation/agent.py` + `git mv core/responses.py features/conversation/responses.py` + `git mv core/response_builder.py features/conversation/response_builder.py` + `git mv core/response_guard.py features/conversation/response_guard.py` + `git mv core/conversation_fsm.py features/conversation/conversation_fsm.py` + `git mv core/hooks.py features/conversation/hooks.py`.
-- [ ] 8.3 `git mv core/lead_machine.py features/conversation/debtor_state.py` (file rename; class rename deferred to slice 8).
-- [ ] 8.4 `git mv core/prospect_profile.py features/conversation/debtor_profile.py` (file rename only; symbol rename deferred to slice 8).
-- [ ] 8.5 `git mv prompts/system.py features/conversation/prompts.py`. Delete `prompts/__init__.py`.
-- [ ] 8.6 `git mv skills/ features/conversation/skills/` (7 SKILL.md + loader — NOT dead code).
-- [ ] 8.7 `git mv core/state.py features/conversation/persistence/state.py` + `git mv core/redis_store.py features/conversation/persistence/redis_store.py` + `git mv core/visitor_memory.py features/conversation/persistence/visitor_memory.py`.
-- [ ] 8.8 **DELETE `core/opportunity_detector.py`**. Remove `"opportunities": []` from `tools/__init__.py:138` (now `api/tool_registry.py` after slice 10, but edit in-place now). Remove opportunities render block from `prompts/system.py:178,184` (now `features/conversation/prompts.py`). Remove `get_status()` opportunities block from `core/lead_machine.py` (now `features/conversation/debtor_state.py`).
-- [ ] 8.9 **Snapshot guard**: `grep -rn "Oportunidades de extraccion" tests/` — if any fixture matches, update it in this same commit.
-- [ ] 8.10 Re-map all imports: `core.agent→features.conversation.agent`, `core.responses→features.conversation.responses`, `core.lead_machine→features.conversation.debtor_state`, `core.prospect_profile→features.conversation.debtor_profile`, `prompts.system→features.conversation.prompts`, `core.state/redis_store/visitor_memory→features.conversation.persistence.*`. Update `test_responses_engine.py`, `test_delivery_info.py` (ResponsesSpec path from tenancy), and all other affected test imports.
-- [ ] 8.11 Run `uv run pytest tests/ -v` — green. Delete empty `core/` if now empty.
-- [ ] 8.12 Commit: `refactor(conversation): move conversation modules + persistence; delete opportunity_detector`.
+- [x] 8.1 **[CHARACTERIZATION TEST — STRICT TDD]** Write characterization tests for any untested code paths in `core/responses.py`, `core/agent.py`, `core/conversation_fsm.py` before moving. Gate: suite green including new tests. (All paths already covered — 310 green, no new tests required.)
+- [x] 8.2 `git mv core/agent.py features/conversation/agent.py` + `git mv core/responses.py features/conversation/responses.py` + `git mv core/response_builder.py features/conversation/response_builder.py` + `git mv core/response_guard.py features/conversation/response_guard.py` + `git mv core/conversation_fsm.py features/conversation/conversation_fsm.py` + `git mv core/hooks.py features/conversation/hooks.py`.
+- [x] 8.3 `git mv core/lead_machine.py features/conversation/debtor_state.py` (file rename; class rename deferred to slice 8).
+- [x] 8.4 `git mv core/prospect_profile.py features/conversation/debtor_profile.py` (file rename only; symbol rename deferred to slice 8).
+- [x] 8.5 `git mv prompts/system.py features/conversation/prompts.py`. Delete `prompts/__init__.py`. Also moved guardrails.md + identity.md to features/conversation/.
+- [x] 8.6 `git mv skills/ features/conversation/skills/` (7 SKILL.md + loader — NOT dead code).
+- [x] 8.7 `git mv core/state.py features/conversation/persistence/state.py` + `git mv core/redis_store.py features/conversation/persistence/redis_store.py` + `git mv core/visitor_memory.py features/conversation/persistence/visitor_memory.py`.
+- [x] 8.8 **DELETE `core/opportunity_detector.py`**. Removed `"opportunities": []` from `tools/__init__.py`. Removed opportunities render block from `features/conversation/prompts.py`. Removed `get_status()` opportunities block from `features/conversation/debtor_state.py`.
+- [x] 8.9 **Snapshot guard**: `grep -rn "Oportunidades de extraccion" tests/` → zero matches.
+- [x] 8.10 Re-mapped all imports across api/main.py (9 sites), api/chathub.py (3 sites), features/cobranza/tools.py (1 site), tools/__init__.py (1 site), and 5 test files. ResponsesSpec shim dissolved: 3 callers updated to import from tenancy.responses_spec directly; noqa re-export line removed.
+- [x] 8.11 310 tests green. core/__init__.py + integrations/__init__.py + prompts/__init__.py deleted. core/ has only llm/ pycache stub (cleaned by OS).
+- [x] 8.12 Committed: `refactor(conversation): move conversation modules + persistence; delete opportunity_detector` (7af5ec6).
 
 ---
 
