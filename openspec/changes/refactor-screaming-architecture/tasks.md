@@ -127,18 +127,19 @@ Chain strategy: pending
 
 ---
 
-## Phase 9 — lead→debtor code + tool rename, NO storage (Slice 8)
+## Phase 9 — lead→debtor code + tool rename, NO storage (Slice 8) ✅ DONE (PR4)
 
-- [ ] 9.1 **EXCLUDE-list verification FIRST**: `grep -rn "webhook_lead_url\|lead_transition_url\|website_leads_only" apps/agent/` — record exact file:line. Confirm these are NOT in the rename set.
-- [ ] 9.2 Apply symbol renames across all moved modules (exclude §4b symbols): `lead_state→debtor_state`, `class LeadMachine→DebtorState` (in `features/conversation/debtor_state.py`), `build_prospect_profile→build_debtor_profile` (in `features/conversation/debtor_profile.py`), `self.lead→self.debtor` (agent.py, redis_store.py), `lead_data param→debtor_data` (persistence/state.py, persistence.py), `lead_level code refs→debtor_level` (constants, params, persistence refs — NOT storage column yet).
-- [ ] 9.3 **[LLM CONTRACT — TOOL RENAME]** In `shared/config/tools_schema.py:22`: `"get_lead_status"→"get_debtor_status"` + update description text + docstring L8. In `api/tool_registry.py` (was `tools/__init__.py`): dispatch key `:96` + handler `:131` renamed.
-- [ ] 9.4 Grep `get_lead_status` in `features/conversation/skills/*/SKILL.md` + `features/conversation/prompts.py` — rename every occurrence.
-- [ ] 9.5 Check `tenant.config.json` files for `get_lead_status` references — rename if found.
-- [ ] 9.6 **[NEW TEST — STRICT TDD]** Add/adjust test asserting `get_debtor_status` is the registered tool name. Gate: red → green.
-- [ ] 9.7 Update `test_smoke.py:55` `INTEREST_FIELDS` import path to `features.conversation.debtor_state`. Update all test kwargs: `lead_state=→debtor_state=` (~17 call sites in tests). `_CONTACT_LEVELS` update deferred to slice 9 (storage).
-- [ ] 9.8 **Post-rename diff check**: `git diff HEAD -- apps/agent/ | grep -E "webhook_lead_url|lead_transition_url|website_leads_only"` — must return zero hits.
-- [ ] 9.9 Run `uv run pytest tests/ -v` — green.
-- [ ] 9.10 Commit: `feat(debtor): rename lead→debtor in code + tool contract (get_debtor_status); no storage change`.
+- [x] 9.1 **EXCLUDE-list verification FIRST**: `grep -rn "webhook_lead_url\|lead_transition_url\|website_leads_only" apps/agent/` — record exact file:line. Confirm these are NOT in the rename set. VERIFIED: 7 occurrences in shared/webhook_config.py, shared/config/settings.py, api/main.py — all untouched.
+- [x] 9.2 Apply symbol renames across all moved modules: `lead_state→debtor_state`, `class LeadMachine→DebtorState`, `build_prospect_profile→build_debtor_profile`, `self.lead→self.debtor` (ConversationState + RedisConversationState), `lead_notified→debtor_notified`, `lead_level_before/after→debtor_level_before/after` (local vars in api/main.py). `lead_data param` in persistence stays as-is (storage boundary, PR5).
+- [x] 9.3 **[LLM CONTRACT — TOOL RENAME]** `shared/config/tools_schema.py`: `"get_lead_status"→"get_debtor_status"` + description updated. `tools/__init__.py`: dispatch key + handler renamed `_get_lead_status→_get_debtor_status`.
+- [x] 9.4 Grep `get_lead_status` in `features/conversation/skills/*/SKILL.md` — zero matches found. No renaming needed.
+- [x] 9.5 No `get_lead_status` in tenant.config.json files — nothing to rename.
+- [x] 9.6 **[NEW TEST — STRICT TDD]** `test_tool_name_is_get_debtor_status` in test_smoke.py: RED → GREEN. Asserts schema + registry both use `get_debtor_status`.
+- [x] 9.7 Updated test kwargs `lead_state=→debtor_state=` in test_smoke.py, test_responses_engine.py (17 sites), test_analytics_doris.py (1 site).
+- [x] 9.8 **Post-rename diff check**: `git diff HEAD -- apps/agent/ | grep -E "webhook_lead_url|lead_transition_url|website_leads_only"` — zero hits. ✅
+- [x] 9.9 Run `uv run pytest tests/ -q` — 311 green. ✅
+- [x] 9.10 **W1 CLEANUP**: moved `render_template` + `build_variables` + `normalize_credits` + private helpers from `features/conversation/responses.py` → `shared/templates.py`. Updated `features/cobranza/tools.py` to import from `shared.templates`. Removed cobranza→conversation cross-feature edge.
+- [x] Commits: `9b8e691` tool rename · `8f7bfa6` symbol renames · `9dc3f0b` W1 render_template move.
 
 ---
 
