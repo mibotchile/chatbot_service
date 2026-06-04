@@ -27,9 +27,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Foundation — Config & Flag Files
 
-- [ ] 1.1 `tenants/prestamype/tenant.config.json` — add `"allow_fixture_fallback": false` (do NOT change `data_source` yet)
-- [ ] 1.2 `tenants/prestaunion/tenant.config.json` — add `"allow_fixture_fallback": true` (preserves demo behavior)
-- [ ] 1.3 `infrastructure/docker/Dockerfile.agent` — after `uv sync --frozen` line, add `RUN uv run python -c "import pymysql"` smoke gate
+- [x] 1.1 `tenants/prestamype/tenant.config.json` — add `"allow_fixture_fallback": false` (do NOT change `data_source` yet)
+- [x] 1.2 `tenants/prestaunion/tenant.config.json` — add `"allow_fixture_fallback": true` (preserves demo behavior)
+- [x] 1.3 `infrastructure/docker/Dockerfile.agent` — after `uv sync --frozen` line, add `RUN uv run python -c "import pymysql"` smoke gate
 
 ---
 
@@ -37,25 +37,25 @@ Chain strategy: stacked-to-main
 
 ### 2a. DNI/RUC Format Validation in `_identificar_cliente`
 
-- [ ] 2.1 **RED** — `tests/test_tool_registry.py`: write failing tests for format validation scenarios: `"hola"` → invalid_format; `"1234"` → invalid_format; `"123456789"` → invalid_format (9 digits); `"12345678"` → passes; `"12345678901"` → passes; `"12.345.678"` → normalized+passes. Assert `resolve_dni` NOT called and attempt counter NOT called on invalid inputs.
-- [ ] 2.2 **GREEN** — `apps/agent/api/tool_registry.py` `_identificar_cliente`: add normalize step (`re.sub(r"\D","",dni)`) then length check (`len==8 or len==11`); on fail return `{identified: False, reason: "invalid_format", message: "Necesito tu DNI (8 dígitos) o RUC (11). ¿Me lo confirmas?"}` BEFORE `_on_identification_attempt` and BEFORE `resolve_dni`. Run tests → green.
+- [x] 2.1 **RED** — `tests/test_dni_format_validation.py`: wrote 12 failing tests covering invalid_format cases (hola, 4-digit, 9-digit, empty, whitespace, 14-digit) + valid cases (8-digit, 11-digit, dots-normalized, spaces-normalized). Assert attempt counter NOT called on invalid inputs.
+- [x] 2.2 **GREEN** — `apps/agent/api/tool_registry.py` `_identificar_cliente`: added normalize (`_DNI_CLEAN_RE.sub`) then length check (len∈{8,11}); on fail returns `{identified: False, reason: "invalid_format", message: "Necesito tu DNI (8 dígitos) o RUC (11). ¿Me lo confirmas?"}` BEFORE `_on_identification_attempt` and BEFORE `resolve_dni`. All 12 tests green.
 
 ### 2b. Doris Fall-Through Fix in `_resolve_dni_credits`
 
-- [ ] 2.3 **RED** — `tests/features/cobranza/test_doris_debt_source.py`: write failing tests (characterization): (a) `_query_dni` returns `[]` → function returns `[]`, fixture NOT called; (b) `_query_dni` raises `Exception`, `allow_fixture_fallback=True` → fixture consulted; (c) `_query_dni` raises `Exception`, `allow_fixture_fallback=False` → returns `[]`, fixture NOT called; (d) `_query_dni` returns rows → returns mapped profiles.
-- [ ] 2.4 **GREEN** — `apps/agent/features/cobranza/doris_debt_source.py` `_resolve_dni_credits` (~L234): restructure control flow to: `try: rows=_query_dni(...)` / `except Exception: return fixture if _allow_fixture_fallback(tenant_id) else []` / `return [_row_to_profile(r) for r in rows]`. Run tests → green.
+- [x] 2.3 **RED** — `tests/test_doris_fallthrough.py`: wrote 8 failing tests: (a) Doris OK+empty→[], fixture NOT called; (b) Doris OK+rows→mapped profiles, fixture NOT called; (c) Exception+flag=True→fixture; (d) Exception+flag=False→[], fixture NOT called.
+- [x] 2.4 **GREEN** — `apps/agent/features/cobranza/doris_debt_source.py` `_resolve_dni_credits`: restructured to try/except; except branch: `if _allow_fixture_fallback(tenant_id): fixture else []`; happy path: `[_row_to_profile(r) for r in rows]`. All tests green.
 
 ### 2c. Per-Tenant Flag Reader
 
-- [ ] 2.5 **RED** — add test cases for `_allow_fixture_fallback`: prestamype→False; prestaunion→True; unknown tenant (no key in config)→False (default).
-- [ ] 2.6 **GREEN** — `apps/agent/features/cobranza/doris_debt_source.py`: add `_allow_fixture_fallback(tenant_id) -> bool` with `@lru_cache`, reading `tenants/{tenant_id}/tenant.config.json` directly (mirrors `_load_schema` pattern), key `allow_fixture_fallback`, default `False`.
+- [x] 2.5 **RED** — added test cases for `_allow_fixture_fallback`: prestamype→False, prestaunion→True, unknown tenant→False. Also lru_cache bleed test.
+- [x] 2.6 **GREEN** — `apps/agent/features/cobranza/doris_debt_source.py`: added `_allow_fixture_fallback(tenant_id) -> bool` with `@lru_cache(maxsize=16)`, reads `tenant.config.json` directly (mirrors `_load_schema`), key `allow_fixture_fallback`, default `False`. Cache bleed: tests call `cache_clear()` before/after.
 
 ---
 
 ## Phase 3: Regression Guard
 
-- [ ] 3.1 Run full suite (`uv run pytest tests/ -v`); confirm baseline 424 tests remain green with no new failures. Fix any regressions before proceeding.
-- [ ] 3.2 Verify `doris_debt_source` tests cover the safe-degradation message ("No puedo verificar tu identidad en este momento; intenta más tarde o te derivo con un asesor.") — add assertion if missing.
+- [x] 3.1 Full suite ran: 445 passed (424 baseline + 21 new). Zero regressions. prestaunion mock path confirmed unchanged.
+- [x] 3.2 Added `test_identificar_cliente_doris_down_flag_false_returns_safe_message` asserting identified=False + non-empty neutral message + no internal detail (Doris/Connection/Exception strings absent).
 
 ---
 
