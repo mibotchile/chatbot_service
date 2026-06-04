@@ -94,11 +94,11 @@
       background-image:
         radial-gradient(ellipse 55% 70% at 100% 50%, rgba(0,90,50,0.35), transparent 65%),
         radial-gradient(ellipse 40% 50% at 0% 100%, rgba(0,200,120,0.15), transparent 55%);
-      margin-left: calc(-50vw + 50%);
-      margin-right: calc(-50vw + 50%);
-      /* vh-based vertical padding so the hero scales with viewport height and
-         stays inside one screen; align-items:center handles vertical centering. */
-      padding: clamp(72px, 9vh, 128px) calc(50vw - 50%) clamp(40px, 6vh, 80px);
+      /* Full-bleed green band, but the inner grid is constrained + centered
+         (max ~1180px) so content does not stretch edge-to-edge on wide screens.
+         Vertical padding stays vh-based so the hero fits one viewport. */
+      padding-block: clamp(72px, 9vh, 128px) clamp(40px, 6vh, 80px);
+      padding-inline: max(24px, calc((100vw - 1180px) / 2));
       text-align: left;
     }
     .hero-copy { max-width: 580px; }
