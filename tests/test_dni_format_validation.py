@@ -40,6 +40,7 @@ def _reg(*, attempt_called: list[str] | None = None, resolve_called: list[str] |
     ("hola",         "alphabetic string"),
     ("1234",         "too short (4 digits)"),
     ("123456789",    "9 digits — neither DNI(8) nor RUC(11)"),
+    ("1234567890",   "10 digits — neither DNI(8) nor RUC(11)"),
     ("",             "empty string"),
     ("       ",      "whitespace only"),
     ("12345678901234", "too long (14 digits)"),
