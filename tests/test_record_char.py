@@ -17,30 +17,14 @@ from __future__ import annotations
 
 import pytest
 
-from features.conversation.debtor_state import (
+from features.cobranza.debtor import (
+    COBRANZA_SPEC,
     CONTACT_FIELDS,
     ENRICHMENT_FIELDS,
     INTEREST_FIELDS,
-    DebtorState,
 )
+from features.conversation.debtor_state import DebtorState
 from features.conversation.record import Record
-from shared.ports.capture_spec import CaptureSpec
-
-# ---------------------------------------------------------------------------
-# COBRANZA_SPEC — must reproduce DebtorState exactly
-# ---------------------------------------------------------------------------
-
-COBRANZA_SPEC = CaptureSpec(
-    contact_fields=frozenset(CONTACT_FIELDS),
-    interest_fields=frozenset(INTEREST_FIELDS),
-    enrichment_fields=frozenset(ENRICHMENT_FIELDS),
-    interest_threshold=2,
-    enrichment_threshold=2,
-    level_visitor="VISITOR",
-    level_pre_contact="PRE_DEBTOR",
-    level_contact="DEBTOR",
-    level_contact_enriched="DEBTOR_VERIFIED",
-)
 
 
 # ---------------------------------------------------------------------------
