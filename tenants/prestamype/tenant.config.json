@@ -39,7 +39,7 @@
       "currency": { "source": "debt", "column": "moneda" },
       "banco": { "source": "debt", "column": "banco" },
       "cci": { "source": "debt", "column": "codigo_de_cuenta_cci" },
-      "cuenta_bancaria": { "source": "debt", "column": "numero_de_cuenta" },
+      "cuenta_bancaria": { "source": "debt", "column": "numero_de_cuenta", "cast": "id_number" },
       "inversionista": { "source": "debt", "column": "inversionista" },
       "next_due_date": { "source": "pagos", "column": "fecha_de_pago_esperada_original", "from_selected_row": true },
       "saldo_por_cancelar": { "source": "pagos", "column": "saldo_por_cancelar", "from_selected_row": true },
