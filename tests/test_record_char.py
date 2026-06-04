@@ -36,12 +36,12 @@ def _contact_data() -> dict:
 
 
 def _interest_data() -> dict:
-    fields = list(INTEREST_FIELDS)[:2]
+    fields = sorted(INTEREST_FIELDS)[:2]
     return {f: f"value_{f}" for f in fields}
 
 
 def _enrichment_data() -> dict:
-    fields = list(ENRICHMENT_FIELDS)[:2]
+    fields = sorted(ENRICHMENT_FIELDS)[:2]
     return {f: f"value_{f}" for f in fields}
 
 
