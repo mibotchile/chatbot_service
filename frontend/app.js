@@ -91,8 +91,11 @@
   }
 
   // Remove the anti-flash gate now this tenant's data is written.
+  // Dispatches a generic event so tenant-specific scripts (e.g. hero.js) can
+  // start animations exactly when content becomes visible — not before.
   function revealContent() {
     document.documentElement.classList.remove("branding-pending");
+    document.dispatchEvent(new CustomEvent("pu:branding-ready", { detail: { tenant: TENANT } }));
   }
 
   // Production tenants (no demo section to scroll to): the hero CTA opens

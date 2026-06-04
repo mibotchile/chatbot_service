@@ -17,3 +17,7 @@ __pycache__/
 # OS / editor
 .DS_Store
 *.swp
+
+# Node (GSAP vendoring)
+node_modules/
+node-compile-cache/
