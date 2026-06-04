@@ -1,9 +1,10 @@
 # Apply Progress: widget-secure-distribution
 
-**Branch**: feat/widget-secure-pr2 (stacked on feat/widget-secure-pr1, stacked on feat/per-tenant-landings-pr2)
-**PR1 commit**: 4dbf9a6 | **PR2 commits**: ecc5108, 230fbb7, 609b2f7
+**Branch**: feat/widget-secure-pr3 (stacked on feat/widget-secure-pr2 → feat/widget-secure-pr1 → feat/per-tenant-landings-pr2)
+**PR1 commit**: 4dbf9a6 | **PR2 commits**: ecc5108, 230fbb7, 609b2f7 | **PR3 commits**: ecf8b3b, 9a32f5e
 **Date**: 2026-06-04
-**Tests**: 490 passed (31 new total)
+**Tests**: 497 passed (38 new total: 31 PR1/PR2 + 7 PR3)
+**Status**: ALL SLICES DONE — deploy-blocker closed (PR3)
 
 ## PR1 — DONE
 
@@ -49,6 +50,42 @@
 - **esbuild --keep-names**: preserves PubotWidget global so public API survives minification.
 - **WIDGET_VERSION=dev default**: local dev + CI tests work without Node/Docker.
 - **Obfuscation**: minification = size + mild deterrence only, NOT a security control. Documented in stub + Dockerfile.
+
+## PR3 — DONE (deploy-blocker: client→server key loop)
+
+### Slice D tasks
+- [x] D-1 RED: tests/test_pk_loop.py — 7 tests (branding pk variants + sentinel replacement)
+- [x] D-2 GREEN: apps/agent/api/routers/cobranza.py — /branding returns publishable_key
+- [x] D-3 GREEN: apps/agent/api/main.py — _mount_demo_frontend injects __PK__ sentinel
+- [x] D-4 GREEN: frontend/index.html + frontend/tenants/prestamype/index.html — __PK__ sentinel added
+- [x] D-5 GREEN: frontend/widget.js — PK resolution chain + X-Publishable-Key on /chat + /comprobante
+- [x] D-6 GREEN: frontend/embed.js — data-pk documented + passed to mount()
+- [x] D-7 SMOKE: 497 tests passing
+
+### Files changed (PR3)
+| File | Change |
+|---|---|
+| `tests/test_pk_loop.py` | NEW — 7 RED→GREEN tests |
+| `apps/agent/api/routers/cobranza.py` | publishable_key added to /branding response |
+| `apps/agent/api/main.py` | __PK__ sentinel replacement in _mount_demo_frontend |
+| `frontend/index.html` | __PK__ sentinel script tag added |
+| `frontend/tenants/prestamype/index.html` | __PK__ sentinel script tag added |
+| `frontend/widget.js` | PK resolution + X-Publishable-Key on gated fetches |
+| `frontend/embed.js` | data-pk attr documented, passed to mount() |
+
+### Key flow (end-to-end)
+1. Same-origin landing: server injects `window.__PK__ = "pk_live_..."` via sentinel
+2. Third-party embed: site owner sets `data-pk="pk_live_..."` on the `<script>` tag
+3. Non-default tenant (no window.__PK__): widget fetches /branding, reads `branding.publishable_key`
+4. widget.js sends `X-Publishable-Key: <pk>` on every gated route call
+5. Server gate validates key → resolves tenant → checks origin → passes or 403
+
+### Key decisions (PR3)
+- **Sentinel pattern**: b'"__PK__"' → same replace-bytes approach as __TENANT__; variable name `window.__PK__` stays, only the value is replaced
+- **_resolve_current_pk**: inline in both cobranza.py and main.py (two separate callsites); no shared helper to avoid premature abstraction across module boundary
+- **loadBranding skips prestaunion**: TENANT === "prestaunion" bails early — same-origin landing uses window.__PK__ (always available); no branding fetch needed
+- **Sentinel guard**: PK === "__PK__" → null; protects against misconfigured deploy serving raw template
+- **Gated fetches in widget.js**: only /chat and /comprobante are called directly; /conversations/messages, /page-context are not called from widget.js (server-side only)
 
 ## Notes
 - test_comprobante_requires_session_and_csrf: updated assertion to `in (401, 403)` —
