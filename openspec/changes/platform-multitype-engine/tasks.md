@@ -40,10 +40,10 @@ Chain strategy: stacked-to-main
 Spec requirement: Neutral Record Entity.
 Parallel: No (foundation for everything).
 
-- [ ] 1.1 [CHAR-TEST] Write `tests/test_record_char.py`: assert `Record(COBRANZA_SPEC_inline)` produces identical `level`, `get_status`, `to_dict`, `from_dict` output to current `DebtorState` over a fixed input matrix (≥10 cases covering VISITOR / PRE_DEBTOR / DEBTOR / DEBTOR_VERIFIED). Run `uv run pytest tests/test_record_char.py -v` — expected RED (Record does not exist yet).
-- [ ] 1.2 Create `shared/ports/capture_spec.py` with frozen `CaptureSpec` dataclass (contact_fields, interest_fields, enrichment_fields, levels, default_level). No imports from `features/` or `api/`.
-- [ ] 1.3 Create `features/conversation/record.py` with `Record` class: `__init__(spec, initial_data, on_transition)`, `level` property, `update`, `get_status`, `to_dict`, `from_dict`. Logic moved VERBATIM from `DebtorState`; field sets / level predicates read from injected spec. Import `CaptureSpec` from `shared/ports/capture_spec.py`.
-- [ ] 1.4 Turn test 1.1 GREEN: `uv run pytest tests/test_record_char.py -v`. Then run full suite: `uv run pytest tests/ -v` — all 366+ must pass (no call-site changes yet).
+- [x] 1.1 [CHAR-TEST] Write `tests/test_record_char.py`: assert `Record(COBRANZA_SPEC_inline)` produces identical `level`, `get_status`, `to_dict`, `from_dict` output to current `DebtorState` over a fixed input matrix (≥10 cases covering VISITOR / PRE_DEBTOR / DEBTOR / DEBTOR_VERIFIED). Run `uv run pytest tests/test_record_char.py -v` — expected RED (Record does not exist yet).
+- [x] 1.2 Create `shared/ports/capture_spec.py` with frozen `CaptureSpec` dataclass (contact_fields, interest_fields, enrichment_fields, levels, default_level). No imports from `features/` or `api/`.
+- [x] 1.3 Create `features/conversation/record.py` with `Record` class: `__init__(spec, initial_data, on_transition)`, `level` property, `update`, `get_status`, `to_dict`, `from_dict`. Logic moved VERBATIM from `DebtorState`; field sets / level predicates read from injected spec. Import `CaptureSpec` from `shared/ports/capture_spec.py`.
+- [x] 1.4 Turn test 1.1 GREEN: `uv run pytest tests/test_record_char.py -v`. Then run full suite: `uv run pytest tests/ -v` — all 366+ must pass (no call-site changes yet).
 - [ ] Rollback note: additive only; `git revert` removes both new files with zero impact.
 
 ## Slice 2 — cobranza Debtor + COBRANZA_SPEC + DebtorState shim [PR 1 / WU-1]
@@ -51,9 +51,9 @@ Parallel: No (foundation for everything).
 Spec requirement: Debtor as Composition over Record.
 Parallel: No (depends on S1).
 
-- [ ] 2.1 Create `features/cobranza/debtor.py` with `COBRANZA_SPEC` (CaptureSpec for cobranza: exact field sets + level predicates from current `DebtorState`) and `Debtor` class that wraps `Record` by composition (has-a, not is-a). Delegates `level`, `collected`, `update`, `get_status` to `self._record`.
-- [ ] 2.2 Rewrite `features/conversation/debtor_state.py` as a thin shim: `class DebtorState(Record)` subclassing `Record`, passing `COBRANZA_SPEC` in `__init__`. Re-export module-level constants (`CONTACT_FIELDS`, `INTEREST_FIELDS`, `ENRICHMENT_FIELDS`, level names) so existing imports stay green.
-- [ ] 2.3 Run `uv run pytest tests/ -v` — all 366+ tests must pass with shim in place.
+- [x] 2.1 Create `features/cobranza/debtor.py` with `COBRANZA_SPEC` (CaptureSpec for cobranza: exact field sets + level predicates from current `DebtorState`) and `Debtor` class that wraps `Record` by composition (has-a, not is-a). Delegates `level`, `collected`, `update`, `get_status` to `self._record`.
+- [x] 2.2 Rewrite `features/conversation/debtor_state.py` as a thin shim: `class DebtorState(Record)` subclassing `Record`, passing `COBRANZA_SPEC` in `__init__`. Re-export module-level constants (`CONTACT_FIELDS`, `INTEREST_FIELDS`, `ENRICHMENT_FIELDS`, level names) so existing imports stay green.
+- [x] 2.3 Run `uv run pytest tests/ -v` — all 366+ tests must pass with shim in place.
 - [ ] Rollback note: revert 2.1 + 2.2 restores original `DebtorState`; shim keeps callers untouched.
 
 ---
@@ -63,12 +63,12 @@ Parallel: No (depends on S1).
 Spec requirement: Type Registry with Swappable Source + agent_type as Tenancy Config Dimension.
 Parallel: No (depends on S2 for COBRANZA_SPEC).
 
-- [ ] 3.1 [CHAR-TEST] Write `tests/test_agent_type_registry.py`: assert `default_registry().get("cobranza")` returns an `AgentTypeSpec` with non-empty tools/gated_tools; assert `get("unknown_type")` raises a typed error; assert `has("cobranza")` is True and `has("other")` is False. Run RED.
-- [ ] 3.2 Create `shared/ports/agent_type_registry.py` with `AgentTypeSpec` (frozen dataclass: agent_type, capture_spec, tools, gated_tools, skills, gate_model, projection_table) and `AgentTypeRegistry` Protocol. No imports from `features/` or `api/`.
-- [ ] 3.3 Create `features/cobranza/agent_type.py` with `COBRANZA_AGENT_TYPE` (`AgentTypeSpec` instance): tools = current cobranza tool list, gated_tools = current `_GATED_TOOLS` set, gate_model = `"hard_dni"`, projection_table = `"debtors"`, capture_spec = `COBRANZA_SPEC`.
-- [ ] 3.4 Create `tenancy/agent_types/__init__.py` (empty) and `tenancy/agent_types/registry.py` with `InCodeAgentTypeRegistry` impl and `default_registry()` factory. Wiring of `COBRANZA_AGENT_TYPE` happens at composition root (api/), NOT inside `tenancy/`. Raise `AgentTypeNotFoundError` (typed) for unknown types.
-- [ ] 3.5 Add `agent_type: str = "cobranza"` field to `TenantConfig` in `tenancy/tenant_loader.py`. Verify prestamype/prestaunion configs parse without error (absent field defaults to `"cobranza"`).
-- [ ] 3.6 Turn test 3.1 GREEN: `uv run pytest tests/test_agent_type_registry.py -v`. Full suite: `uv run pytest tests/ -v` — 366+ pass.
+- [x] 3.1 [CHAR-TEST] Write `tests/test_agent_type_registry.py`: assert `default_registry().get("cobranza")` returns an `AgentTypeSpec` with non-empty tools/gated_tools; assert `get("unknown_type")` raises a typed error; assert `has("cobranza")` is True and `has("other")` is False. Run RED.
+- [x] 3.2 Create `shared/ports/agent_type_registry.py` with `AgentTypeSpec` (frozen dataclass: agent_type, capture_spec, tools, gated_tools, skills, gate_model, projection_table) and `AgentTypeRegistry` Protocol. No imports from `features/` or `api/`.
+- [x] 3.3 Create `features/cobranza/agent_type.py` with `COBRANZA_AGENT_TYPE` (`AgentTypeSpec` instance): tools = current cobranza tool list, gated_tools = current `_GATED_TOOLS` set, gate_model = `"hard_dni"`, projection_table = `"debtors"`, capture_spec = `COBRANZA_SPEC`.
+- [x] 3.4 Create `tenancy/agent_types/__init__.py` (empty) and `tenancy/agent_types/registry.py` with `InCodeAgentTypeRegistry` impl and `default_registry()` factory. Wiring of `COBRANZA_AGENT_TYPE` happens at composition root (api/), NOT inside `tenancy/`. Raise `AgentTypeNotFoundError` (typed) for unknown types.
+- [x] 3.5 Add `agent_type: str = "cobranza"` field to `TenantConfig` in `tenancy/tenant_loader.py`. Verify prestamype/prestaunion configs parse without error (absent field defaults to `"cobranza"`).
+- [x] 3.6 Turn test 3.1 GREEN: `uv run pytest tests/test_agent_type_registry.py -v`. Full suite: `uv run pytest tests/ -v` — 366+ pass.
 - [ ] Rollback note: additive (new files + one field); revert removes them cleanly.
 
 ## Slice 4 — Engine composes spec from registry [PR 2 / WU-2]
@@ -76,10 +76,10 @@ Parallel: No (depends on S2 for COBRANZA_SPEC).
 Spec requirement: ToolRegistry Composed per agent_type (dependency path); Record embedded via registry.
 Parallel: No (depends on S3).
 
-- [ ] 4.1 In `api/main.py` (or equivalent composition root): wire `default_registry()` into app startup; resolve `spec = registry.get(cfg.agent_type)`; build `Record(spec.capture_spec)` where the engine currently builds `DebtorState()`.
-- [ ] 4.2 Migrate all call sites in `features/conversation/state.py` and `features/conversation/redis_store.py` that instantiate `DebtorState()` to use `Record(spec.capture_spec)` (inject spec from engine). The shim still exists — replace call sites, not the class.
-- [ ] 4.3 Migrate `features/conversation/hooks.py` (if applicable) and any other caller discovered by `grep -r "DebtorState" apps/agent/` that is NOT a test.
-- [ ] 4.4 Run `uv run pytest tests/ -v` — 366+ pass. Verify no non-test import of `DebtorState` remains outside `debtor_state.py` shim itself.
+- [x] 4.1 In `api/main.py` (or equivalent composition root): wire `default_registry()` into app startup; resolve `spec = registry.get(cfg.agent_type)`; build `Record(spec.capture_spec)` where the engine currently builds `DebtorState()`.
+- [x] 4.2 Migrate all call sites in `features/conversation/state.py` and `features/conversation/redis_store.py` that instantiate `DebtorState()` to use `Record(spec.capture_spec)` (inject spec from engine). The shim still exists — replace call sites, not the class.
+- [x] 4.3 Migrate `features/conversation/hooks.py` (if applicable) and any other caller discovered by `grep -r "DebtorState" apps/agent/` that is NOT a test.
+- [x] 4.4 Run `uv run pytest tests/ -v` — 366+ pass. Verify no non-test import of `DebtorState` remains outside `debtor_state.py` shim itself.
 - [ ] Rollback note: revert composition-root wiring + call-site changes; shim path automatically restores behavior.
 
 ---
