@@ -1,3 +1,31 @@
+# ── Stage 1: widget build ─────────────────────────────────────────────────────
+# Minifies frontend/widget.js → frontend/widget.min.js using esbuild.
+# Node never ends up in the runtime image (~100 ms build cost).
+#
+# Minification provides size reduction and mild deterrence only — it is NOT a
+# security control. No real secret ever lives in client-side JS.
+#
+# --keep-names preserves the PubotWidget global and any named functions so the
+# public API contract (window.PubotWidget.mount + attachShadow call) survives
+# minification without mangling.
+FROM node:20-slim AS widgetbuild
+
+ARG WIDGET_VERSION=dev
+
+WORKDIR /build
+
+COPY frontend/widget.js ./widget.js
+
+RUN npx --yes esbuild@0.21 widget.js \
+    --bundle=false \
+    --minify \
+    --sourcemap \
+    --keep-names \
+    --legal-comments=none \
+    --outfile=widget.min.js
+
+
+# ── Stage 2: Python runtime ───────────────────────────────────────────────────
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -20,10 +48,19 @@ COPY apps/agent/ apps/agent/
 COPY frontend/ frontend/
 COPY tenants/ tenants/
 
+# Replace the test stub with the real esbuild output from the widgetbuild stage.
+COPY --from=widgetbuild /build/widget.min.js frontend/widget.min.js
+COPY --from=widgetbuild /build/widget.min.js.map frontend/widget.min.js.map
+
 # Engine modules use absolute imports (from core.X). uv project root is /app.
 ENV PYTHONPATH=/app/apps/agent
 # Reverse-proxy prefix; empty by default, overridden by .env in prod.
 ENV COBRANZA_ROOT_PATH=""
+
+# Widget version injected at build time; the versioned route /widget/<version>/
+# widget.min.js uses this value. Default matches widgetbuild ARG default.
+ARG WIDGET_VERSION=dev
+ENV WIDGET_VERSION=${WIDGET_VERSION}
 
 # Run as non-root user.
 # /app/data/comprobantes is a mount point for a named volume (uploaded vouchers +

@@ -15,8 +15,24 @@
  *      host) and calls window.PubotWidget.mount({ shadowRoot, api, tenant, ct }).
  *   5. Idempotent: including the snippet twice mounts only once.
  *
- * Framework-free, no build step. Served alongside widget.js from the demo
- * container; minify with a ?v= cache-bust if needed (see embed-demo.html).
+ * Framework-free. Served alongside widget.min.js from the demo container.
+ *
+ * Widget URL strategy:
+ *   embed.js loads api + "/widget.js". The server returns a 302 redirect to the
+ *   current immutable versioned URL (/widget/<version>/widget.min.js), which the
+ *   browser then fetches with Cache-Control: public, max-age=31536000, immutable.
+ *   This means:
+ *     - embed.js never needs to know the version string (no build-time sed required).
+ *     - The redirect URL itself is no-cache, so after a deploy the browser picks
+ *       up the new versioned URL on the next embed.js load.
+ *     - The versioned asset is permanently cached once fetched — zero extra round
+ *       trips for repeat visits.
+ *   Alternatively, the Docker esbuild stage can sed __WIDGET_VERSION__ into embed.js
+ *   to bypass the redirect entirely, but the redirect approach is simpler and correct.
+ *
+ * Security note: minification (applied to widget.js by the Docker build stage)
+ *   provides size reduction and mild deterrence only — it is NOT a security control.
+ *   No real secret (csrf_secret, session key) ever appears in client-side JS.
  */
 (function () {
   "use strict";
