@@ -297,7 +297,13 @@ def resolve_token(token: str, tenant_id: str) -> dict | None:
             if c.get("account_id") == acc:
                 return c
         return credits[0]
-    return fixture_profile
+    # credits is empty: Doris returned no rows (either Doris OK+empty, or
+    # Doris raised and _resolve_dni_credits already handled the fallback).
+    # Mirror the resolve_dni fail-closed contract: only fall back to the
+    # fixture profile when the tenant explicitly allows it.
+    if _allow_fixture_fallback(tenant_id):
+        return fixture_profile
+    return None
 
 
 def resolve_dni(dni: str, tenant_id: str) -> dict | None:
