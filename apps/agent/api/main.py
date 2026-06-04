@@ -32,7 +32,8 @@ from shared.config.settings import settings
 from features.conversation.persistence.state import get_store
 from features.conversation.persistence.visitor_memory import VisitorMemory
 from shared.ports.agent_type_registry import AgentTypeRegistry, AgentTypeSpec  # noqa: F401
-from tenancy.agent_types.registry import default_registry
+from tenancy.agent_types.registry import InCodeAgentTypeRegistry
+from features.cobranza.agent_type import COBRANZA_AGENT_TYPE
 from shared.delivery.email_delivery import EmailService
 from features.messaging.whatsapp_service import WhatsAppService
 from features.messaging.chathub_outbound import ChathubOutboundClient
@@ -88,8 +89,9 @@ from api.wiring import (  # noqa: F401
 
 store = get_store()
 # AgentTypeRegistry singleton — wired at composition root; swappable without
-# touching any consumer. default_registry() is the in-code impl (cobranza only).
-agent_type_registry: AgentTypeRegistry = default_registry()
+# touching any consumer. api/ wires the cobranza entry here so tenancy/ stays
+# pure (no features import); swap for a DB-backed impl right here.
+agent_type_registry: AgentTypeRegistry = InCodeAgentTypeRegistry({"cobranza": COBRANZA_AGENT_TYPE})
 visitor_memory: VisitorMemory | None = None
 email_service: EmailService | None = None
 whatsapp_service: WhatsAppService | None = None

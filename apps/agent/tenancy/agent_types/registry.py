@@ -38,15 +38,3 @@ class InCodeAgentTypeRegistry:
             return self._entries[agent_type]
         except KeyError:
             raise AgentTypeNotFoundError(agent_type)
-
-
-def default_registry() -> InCodeAgentTypeRegistry:
-    """Build the default registry with all registered agent types.
-
-    This is the ONLY place that imports from features/cobranza/agent_type,
-    keeping the composition-root pattern: tenancy layer wires domain entries
-    via this factory, called from api/main.py lifespan.
-    """
-    from features.cobranza.agent_type import COBRANZA_AGENT_TYPE
-
-    return InCodeAgentTypeRegistry({"cobranza": COBRANZA_AGENT_TYPE})

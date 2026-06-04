@@ -22,12 +22,17 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _import_registry():
-    """Import the registry module — fails RED until 3.2-3.4 implemented."""
-    from tenancy.agent_types.registry import (
-        InCodeAgentTypeRegistry,
-        default_registry,
-    )
-    return InCodeAgentTypeRegistry, default_registry
+    """Import the registry impl + a builder that wires the cobranza entry the
+    way the composition root (api/main.py) does. tenancy/ no longer ships a
+    features-importing factory (W-01 fix): the cobranza entry is wired in api/.
+    """
+    from tenancy.agent_types.registry import InCodeAgentTypeRegistry
+
+    def build_cobranza_registry() -> InCodeAgentTypeRegistry:
+        from features.cobranza.agent_type import COBRANZA_AGENT_TYPE
+        return InCodeAgentTypeRegistry({"cobranza": COBRANZA_AGENT_TYPE})
+
+    return InCodeAgentTypeRegistry, build_cobranza_registry
 
 
 def _import_port():
