@@ -5,9 +5,19 @@ Covers the backend-testable parts:
     no-`*`-with-credentials, malformed specs rejected.
   · CORS behavior end-to-end via TestClient — an allowed tenant origin gets the
     Access-Control-Allow-Origin echo; a disallowed one does not.
-  · embed.js + widget.js are served by the static mount (200, JS content-type).
+  · embed.js is served by the static mount (200, JS content-type).
+  · /widget.js → 302 redirect to the current versioned path.
+  · /widget/<version>/widget.min.js → 200, immutable Cache-Control.
+  · /widget/<unknown>/widget.min.js → 404.
 
 The Shadow DOM / FAB rendering is visual and verified in the browser, not here.
+
+widget.min.js for tests:
+  The real minified file is produced by the esbuild Docker build stage (node:20-slim
+  + esbuild). For local test runs, frontend/widget.min.js is a committed stub that
+  contains the public API strings ("PubotWidget", "attachShadow") so route tests
+  can verify the response body contract without running Node/esbuild.
+  The stub is intentionally tiny — it is NOT the production artifact.
 """
 
 from __future__ import annotations
@@ -151,13 +161,38 @@ def test_embed_js_is_served(client):
     assert "attachShadow" in r.text
 
 
-def test_widget_js_is_served_and_exposes_mount(client):
-    r = client.get("/widget.js")
+def test_widget_js_redirects_to_versioned_url(client):
+    # /widget.js is the legacy alias — it must 302-redirect to the current
+    # versioned path so existing embed snippets keep working.
+    # TestClient follows redirects by default; disable to inspect the 302.
+    r = client.get("/widget.js", follow_redirects=False)
+    assert r.status_code == 302
+    location = r.headers.get("location", "")
+    assert re.match(r"^/widget/.+/widget\.min\.js$", location), (
+        f"Expected Location matching /widget/<version>/widget.min.js, got: {location!r}"
+    )
+
+
+def test_versioned_widget_served(client):
+    # GET /widget/<current-version>/widget.min.js → 200, immutable cache,
+    # application/javascript, body contains the public API surface.
+    import os
+    version = os.environ.get("WIDGET_VERSION", "dev")
+    r = client.get(f"/widget/{version}/widget.min.js")
     assert r.status_code == 200
     assert "javascript" in r.headers.get("content-type", "")
-    # The widget exposes the mount API and renders into a shadow root.
+    cache_control = r.headers.get("cache-control", "")
+    assert "immutable" in cache_control, f"Cache-Control missing 'immutable': {cache_control!r}"
+    assert "max-age=31536000" in cache_control, f"Cache-Control missing max-age: {cache_control!r}"
+    # Public API contract: minified file preserves PubotWidget global + shadow usage.
     assert "PubotWidget" in r.text
     assert "attachShadow" in r.text
+
+
+def test_unknown_widget_version_returns_404(client):
+    # A version string that does not match the deployed version → 404.
+    r = client.get("/widget/9.9.9-unknown/widget.min.js")
+    assert r.status_code == 404
 
 
 def test_embed_demo_page_served(client):
