@@ -99,21 +99,6 @@ class TestGatedRoutesValidKeyAndOrigin:
         # Gate passes; may get a 200 or other error but NOT 403 from missing key
         assert r.status_code != 403 or "publishable" not in r.text.lower()
 
-    def test_post_conversations_messages_gate_passes(self, patched_app):
-        csrf = _make_csrf_token()
-        session = _make_session_token()
-        r = patched_app.post(
-            "/api/v1/conversations/messages",
-            headers={
-                "X-Publishable-Key": VALID_PK,
-                "Origin": VALID_ORIGIN,
-                "X-CSRF-Token": csrf,
-                "X-Session-Token": session,
-            },
-            json={"text": "hola", "channel": "web"},
-        )
-        assert r.status_code != 403 or "publishable" not in r.text.lower()
-
     def test_post_page_context_gate_passes(self, patched_app):
         csrf = _make_csrf_token()
         r = patched_app.post(
@@ -173,14 +158,6 @@ class TestGatedRoutesMissingKey:
             "/api/v1/chat",
             headers={"Origin": VALID_ORIGIN},
             json={"text": "hola", "channel": "web"},
-        )
-        assert r.status_code == 403
-
-    def test_post_conversations_messages_missing_key_403(self, patched_app):
-        r = patched_app.post(
-            "/api/v1/conversations/messages",
-            headers={"Origin": VALID_ORIGIN},
-            json={"text": "hola"},
         )
         assert r.status_code == 403
 
@@ -290,3 +267,36 @@ class TestAllowNoKeyRoutes:
     def test_session_token_no_key_allowed(self, patched_app):
         r = patched_app.get("/api/v1/security/session-token")
         assert r.status_code != 403 or "publishable" not in r.text.lower()
+
+
+# ── Dead alias removed: POST /api/v1/conversations/messages → 404 ────────────
+
+class TestDeadAliasGone:
+    """Regression guard: the sorelia-legacy alias endpoint was deleted.
+    Any attempt to POST to it must return 404 (route not registered)."""
+
+    def test_alias_conversations_messages_gone(self, patched_app):
+        """The sorelia-legacy POST alias is deleted.
+
+        FastAPI resolves POST /api/v1/conversations/messages against the
+        GET /api/v1/conversations/{conversation_id}/messages route
+        (conversation_id="messages") and returns 405 Method Not Allowed.
+        Either 404 or 405 confirms there is no POST handler at this path.
+        A 200/4xx-from-gate would mean the alias was accidentally re-added.
+        """
+        csrf = _make_csrf_token()
+        session = _make_session_token()
+        r = patched_app.post(
+            "/api/v1/conversations/messages",
+            headers={
+                "X-Publishable-Key": VALID_PK,
+                "Origin": VALID_ORIGIN,
+                "X-CSRF-Token": csrf,
+                "X-Session-Token": session,
+            },
+            json={"text": "hola", "channel": "web"},
+        )
+        assert r.status_code in (404, 405), (
+            f"Expected 404 or 405 (POST alias deleted) but got {r.status_code}. "
+            "The alias endpoint must be absent from the router."
+        )

@@ -30,7 +30,6 @@ _RATE_LIMIT = 10  # max requests per window
 _RATE_WINDOW = 60  # seconds
 _RATE_LIMITED_PATHS = {
     "/api/v1/chat",
-    "/api/v1/conversations/messages",
     "/api/v1/comprobante",
 }
 _request_log: dict[str, list[float]] = defaultdict(list)

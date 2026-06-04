@@ -525,12 +525,6 @@ async def chat(request: Request, body: ChatRequest):
     }
 
 
-# Frontend compatibility alias — agent-client.ts calls this path
-@router.post("/api/v1/conversations/messages", dependencies=[Depends(require_publishable_key())])
-async def chat_compat(request: Request, body: ChatRequest):
-    return await chat(request, body)
-
-
 @router.get("/api/v1/conversations/{conversation_id}/messages", dependencies=[Depends(require_publishable_key())])
 async def get_conversation_messages(request: Request, conversation_id: str):
     """Return conversation history from backend state (source of truth)."""
