@@ -263,7 +263,7 @@ def _mount_demo_frontend() -> None:
     import os as _os
     from pathlib import Path as _FPath
     from fastapi import Request as _Request
-    from fastapi.responses import HTMLResponse as _HTMLResponse
+    from fastapi.responses import HTMLResponse as _HTMLResponse, RedirectResponse as _RedirectResponse, FileResponse as _FileResponse
     from fastapi.staticfiles import StaticFiles
 
     for candidate in (_FPath("/app/frontend"),
@@ -299,6 +299,50 @@ def _mount_demo_frontend() -> None:
             logger.info(
                 "Demo frontend GET / → {} (tenant={})", source.name, tenant
             )
+
+        # ── Widget distribution routes ─────────────────────────────────────
+        # These explicit routes MUST be registered BEFORE the catch-all
+        # StaticFiles mount, or Starlette's router will never reach them.
+        #
+        # WIDGET_VERSION is injected at Docker build time (ARG → ENV).
+        # Falls back to "dev" for local runs so tests and the dev server work
+        # without a Node build step.
+        #
+        # Minification provides size reduction and mild deterrence only —
+        # it is NOT a security control. No real secret lives in widget.min.js.
+        _widget_version = _os.environ.get("WIDGET_VERSION", "dev")
+        _widget_min_path = candidate / "widget.min.js"
+
+        @app.get("/widget/{version}/widget.min.js", include_in_schema=False)
+        async def _serve_versioned_widget(version: str) -> _FileResponse:  # noqa: RUF029
+            if version != _widget_version:
+                from fastapi import HTTPException as _HTTPException
+                raise _HTTPException(status_code=404, detail="Widget version not found")
+            if not _widget_min_path.exists():
+                from fastapi import HTTPException as _HTTPException
+                raise _HTTPException(status_code=404, detail="widget.min.js not built yet")
+            return _FileResponse(
+                path=str(_widget_min_path),
+                media_type="application/javascript",
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
+
+        @app.get("/widget.js", include_in_schema=False)
+        async def _serve_legacy_widget_alias() -> _RedirectResponse:  # noqa: RUF029
+            # Permanent-ish redirect (302 = temporary, allows clients to re-check
+            # on next deploy when WIDGET_VERSION changes). Cache-Control: no-cache
+            # so browsers always re-check this redirect target after a deploy.
+            return _RedirectResponse(
+                url=f"/widget/{_widget_version}/widget.min.js",
+                status_code=302,
+                headers={"Cache-Control": "no-cache"},
+            )
+
+        logger.info(
+            "Widget routes registered: WIDGET_VERSION={} widget.min.js={}",
+            _widget_version,
+            "found" if _widget_min_path.exists() else "missing (use Docker build for prod)",
+        )
 
         app.mount("/", StaticFiles(directory=str(candidate), html=True), name="demo")
         logger.info("Demo frontend mounted from {}", candidate)
