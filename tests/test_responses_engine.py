@@ -479,8 +479,7 @@ class _ToolProvider(LLMProvider):
         if self.agent_calls == 1:
             return LLMResponse(text="", tool_calls=[ToolCall(
                 id="vc", name="validar_comprobante",
-                input={"monto": 462.14, "nro_operacion": "OP-STICKY",
-                       "cuenta_destino": "00389801338381007048", "account_type": "cci"},
+                input={"monto": 462.14, "inversionista": "INTERBANK FONDO"},
             )])
         return LLMResponse(text="Tu comprobante quedó en revisión.", tool_calls=[])
 

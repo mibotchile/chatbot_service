@@ -317,25 +317,21 @@ class ToolRegistry:
     async def _validar_comprobante(
         self,
         monto: float,
-        nro_operacion: str,
-        cuenta_destino: str | None = None,
-        account_type: str = "cci",
-        cci: str | None = None,
+        inversionista: str | None = None,
+        id_credito: str | None = None,
     ) -> dict:
-        """Validate a payment voucher for the verified borrower (PrestamYpe).
+        """Register a payment voucher for the verified borrower (PrestamYpe).
 
-        The credit/identity come from the verified ``debt_context``; only the
-        voucher fields (account_type, cuenta_destino, monto, nro_operacion) come
-        from the user. ``cci`` is accepted as a legacy alias for
-        ``cuenta_destino``.
+        Lighter flow (Slice C): only monto is required from the user.
+        CCI is resolved server-side from the verified debt_context.
+        inversionista and id_credito are optional user-provided hints.
+        The credit/identity always come from the verified debt_context.
         """
         return await validar_comprobante(
             self._debt_context,
             monto=monto,
-            nro_operacion=nro_operacion,
-            cuenta_destino=cuenta_destino,
-            account_type=account_type,
-            cci=cci,
+            inversionista=inversionista,
+            id_credito=id_credito,
         )
 
     async def _escalate_to_human(self, reason: str = "Cliente solicitó hablar con un asesor") -> dict:

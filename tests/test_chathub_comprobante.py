@@ -120,9 +120,7 @@ class _ComprobanteProvider(LLMProvider):
                     name="validar_comprobante",
                     input={
                         "monto": 462.14,
-                        "nro_operacion": "OP-WA-001",
-                        "cuenta_destino": "00389801338381007048",
-                        "account_type": "cci",
+                        "inversionista": "INTERBANK FONDO",
                     },
                 )],
             )
@@ -248,10 +246,10 @@ async def test_typed_path_invokes_validar_comprobante(runner_env):
     assert "validar_comprobante" in tools_called
     # The tool actually registered the voucher (typed path, with monto).
     items = json.loads(validator._COMPROBANTES_PATH.read_text(encoding="utf-8"))
-    assert len(items) == 1
-    assert items[0]["credito"] == "P02137"
-    assert items[0]["nro_operacion"] == "OP-WA-001"
-    assert items[0]["monto"] == 462.14
+    typed = [i for i in items if i.get("source") == "typed"]
+    assert len(typed) == 1
+    assert typed[0]["credito"] == "P02137"
+    assert typed[0]["monto"] == 462.14
 
 
 # ── (e) photo + text → text wins (camino A), image attached to same report ────
@@ -285,7 +283,9 @@ async def test_photo_plus_text_prioritizes_text_and_attaches_image(runner_env):
     sources = sorted(str(i.get("source") or "typed") for i in items)
     assert "foto" in sources
     # The typed voucher (from the forced tool-call) is also present.
-    assert any(i.get("nro_operacion") == "OP-WA-001" for i in items)
+    typed = [i for i in items if i.get("source") == "typed"]
+    assert len(typed) == 1
+    assert typed[0]["monto"] == 462.14
 
 
 # ── (f) tool: registrar_comprobante_foto dedups by media_url ──────────────────

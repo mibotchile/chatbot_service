@@ -184,7 +184,7 @@ def test_comprobante_pago_classified_and_stored(client, tmp_path):
     body = r.json()
     assert body["cuenta_valida"] is True
     assert body["credito"] == "P02137"
-    assert body["tipo"] == "pago"
+    assert body["tipo"] == "pago_cuota"
     assert body["dedup_ok"] is True
     # image persisted under <dir>/<dni>/<op>.<ext>
     stored = tmp_path / "comprobantes" / LUIS_DNI / "OP-PAGO.png"
@@ -199,52 +199,49 @@ def test_comprobante_abono_and_cancelacion(client):
 
 
 def test_comprobante_arbitrary_cci_accepted(client):
-    # CCI pertenencia is no longer validated: any CCI is accepted and stored
-    # as-is; the voucher is classified against the DNI's credit.
+    # CCI from user is no longer forwarded to validar_comprobante (server-side
+    # resolution). Voucher is classified against the DNI's credit by monto.
     r = _post(client, cci="00000000000000000000", nro_operacion="OP-ANYCCI")
     assert r.status_code == 200
     body = r.json()
     assert body["cuenta_valida"] is True
     assert body["credito"] == "P02137"
-    assert body["tipo"] == "pago"
+    assert body["tipo"] == "pago_cuota"
     assert body["dedup_ok"] is True
     assert "no corresponde" not in body["mensaje"].lower()
 
 
-# ── account_type: número de cuenta (corto) vs CCI (20 dígitos) ──────────────
+# ── account_type / CCI format validation (still enforced at the HTTP layer) ──────────────
 
 def test_comprobante_account_type_cuenta_short_accepted(client):
-    # Jorge feedback: con account_type=cuenta se acepta un número corto, se
-    # clasifica por MONTO y se deduplica por nº de operación. No se fuerza CCI.
+    # account_type=cuenta with a short number is accepted at the HTTP layer.
+    # Classification is by MONTO (server-side CCI from profile, not from user).
     data = {"account_type": "cuenta", "cuenta_destino": "1320268376", "cci": ""}
     r = _post(client, nro_operacion="OP-CUENTA", **data)
     assert r.status_code == 200
     body = r.json()
-    assert body["cuenta_valida"] is True       # NO valida contra Doris
-    assert body["account_type"] == "cuenta"
-    assert body["cuenta_destino"] == "1320268376"
+    assert body["cuenta_valida"] is True
     assert body["credito"] == "P02137"
-    assert body["tipo"] == "pago"              # por monto
+    assert body["tipo"] == "pago_cuota"
     assert body["dedup_ok"] is True
 
 
 def test_comprobante_account_type_cci_requires_20_digits(client):
-    # account_type=cci con menos de 20 dígitos → 400 (validación de FORMATO).
+    # account_type=cci with fewer than 20 digits → 400 (format validation at HTTP layer).
     data = {"account_type": "cci", "cuenta_destino": "1320268376", "cci": ""}
     r = _post(client, nro_operacion="OP-CCISHORT", **data)
     assert r.status_code == 400
 
 
 def test_comprobante_account_type_cuenta_rejects_too_short(client):
-    # account_type=cuenta con menos de 8 dígitos → 400 (formato).
+    # account_type=cuenta with fewer than 8 digits → 400 (format).
     data = {"account_type": "cuenta", "cuenta_destino": "123", "cci": ""}
     r = _post(client, nro_operacion="OP-TOOSHORT", **data)
     assert r.status_code == 400
 
 
 def test_comprobante_account_type_cuenta_classifies_by_monto(client):
-    # La clasificación NO depende de la cuenta: mismo número de cuenta corta,
-    # distintos montos → pago / abono / cancelacion.
+    # Classification by monto regardless of account type.
     base = {"account_type": "cuenta", "cuenta_destino": "1320268376", "cci": ""}
     abono = _post(client, monto="100.00", nro_operacion="OP-CTA-AB", **base).json()
     assert abono["tipo"] == "abono"
@@ -252,20 +249,19 @@ def test_comprobante_account_type_cuenta_classifies_by_monto(client):
     assert canc["tipo"] == "cancelacion"
 
 
-def test_comprobante_dedup_by_nro_operacion_independent_of_account(client):
-    base = {"account_type": "cuenta", "cuenta_destino": "1320268376", "cci": ""}
-    first = _post(client, nro_operacion="OP-CTA-DUP", **base).json()
+def test_comprobante_dedup_by_monto_same_monto_is_dup(client):
+    # Dedup is now by (credito, monto). Same monto submitted twice = duplicate.
+    first = _post(client, monto=str(LUIS_CUOTA), nro_operacion="OP-CTA-DUP").json()
     assert first["dedup_ok"] is True
-    # mismo nº de operación con CCI distinto → igual duplicado
-    cci_args = {"account_type": "cci", "cuenta_destino": LUIS_CCI, "cci": ""}
-    second = _post(client, nro_operacion="OP-CTA-DUP", **cci_args).json()
+    second = _post(client, monto=str(LUIS_CUOTA), nro_operacion="OP-CTA-DUP2").json()
     assert second["dedup_ok"] is False
 
 
 def test_comprobante_duplicate_detected(client):
-    first = _post(client, nro_operacion="OP-DUP").json()
+    # Dedup by (credito, monto): same monto twice = duplicate.
+    first = _post(client, monto=str(LUIS_CUOTA), nro_operacion="OP-DUP").json()
     assert first["dedup_ok"] is True
-    second = _post(client, nro_operacion="OP-DUP").json()
+    second = _post(client, monto=str(LUIS_CUOTA), nro_operacion="OP-DUP2").json()
     assert second["dedup_ok"] is False
     assert "duplicad" in second["mensaje"].lower() or "ya lo recibimos" in second["mensaje"].lower()
 

@@ -221,7 +221,7 @@ async def test_gate_blocks_validar_comprobante_without_identity():
     reg = ToolRegistry(identity_verified=False, debt_context={}, tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {"cci": "00389801338381007048", "monto": 462.14, "nro_operacion": "OP-X"},
+        {"monto": 462.14},
     )
     assert r.get("blocked") == "identity_required"
 
@@ -237,11 +237,11 @@ async def test_validar_comprobante_pago(tmp_path, monkeypatch):
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {"cci": "00389801338381007048", "monto": 462.14, "nro_operacion": "OP-001"},
+        {"monto": 462.14, "inversionista": "INTERBANK FONDO"},
     )
     assert r["cuenta_valida"] is True
     assert r["credito"] == "P02137"
-    assert r["tipo"] == "pago"
+    assert r["tipo"] == "pago_cuota"
     assert r["dedup_ok"] is True
 
 
@@ -250,7 +250,7 @@ async def test_validar_comprobante_abono(tmp_path, monkeypatch):
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {"cci": "00389801338381007048", "monto": 100.00, "nro_operacion": "OP-002"},
+        {"monto": 100.00},
     )
     assert r["cuenta_valida"] is True
     assert r["tipo"] == "abono"
@@ -261,32 +261,33 @@ async def test_validar_comprobante_cancelacion(tmp_path, monkeypatch):
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {"cci": "00389801338381007048", "monto": 18420.00, "nro_operacion": "OP-003"},
+        {"monto": 18420.00},
     )
     assert r["cuenta_valida"] is True
     assert r["tipo"] == "cancelacion"
 
 
-async def test_validar_comprobante_arbitrary_cci_accepted(tmp_path, monkeypatch):
-    # CCI pertenencia is NO LONGER validated: any CCI is accepted and stored
-    # as-is. Classification is done against the DNI's credit, not the CCI.
+async def test_validar_comprobante_pago_cuota_classification(tmp_path, monkeypatch):
+    # Classification is done against the credit's cuota/saldo from the profile.
+    # CCI is resolved server-side — not from user input.
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {"cci": "99999999999999999999", "monto": 462.14, "nro_operacion": "OP-004"},
+        {"monto": 462.14},
     )
     assert r["cuenta_valida"] is True
     assert r["credito"] == "P02137"
-    assert r["tipo"] == "pago"  # classified vs the credit's cuota, not the CCI
+    assert r["tipo"] == "pago_cuota"
     assert r["dedup_ok"] is True
     assert "no corresponde" not in r["mensaje"].lower()
 
 
 async def test_validar_comprobante_dedup(tmp_path, monkeypatch):
+    # Dedup is keyed by (credito, monto) — same monto to same credit = duplicate.
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
-    args = {"cci": "00389801338381007048", "monto": 462.14, "nro_operacion": "OP-DUP"}
+    args = {"monto": 462.14}
     first = await reg.execute("validar_comprobante", args)
     assert first["dedup_ok"] is True
     second = await reg.execute("validar_comprobante", args)
@@ -294,63 +295,36 @@ async def test_validar_comprobante_dedup(tmp_path, monkeypatch):
     assert "duplicad" in second["mensaje"].lower() or "ya lo recibimos" in second["mensaje"].lower()
 
 
-async def test_validar_comprobante_cci_with_spaces_accepted(tmp_path, monkeypatch):
-    # CCIs with spaces are accepted (normalized to digits for storage); the
-    # voucher is still classified against the DNI's credit.
+async def test_validar_comprobante_inversionista_mismatch_warns(tmp_path, monkeypatch):
+    # Inversionista mismatch: stored as WARN (not reject), inversionista_match=False.
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {"cci": "003 898 013383810 07048", "monto": 462.14, "nro_operacion": "OP-005"},
+        {"monto": 462.14, "inversionista": "BANCO ERRONEO"},
     )
     assert r["cuenta_valida"] is True
-    assert r["tipo"] == "pago"
+    assert r["inversionista_match"] is False
+    assert r["estado"] == "en_revision"
+    assert r["tipo"] == "pago_cuota"
 
 
-# ── account_type: número de cuenta (corto) vs CCI (20 dígitos) ──────────────
-
-async def test_validar_comprobante_account_type_cuenta_corta(tmp_path, monkeypatch):
-    # Número de cuenta corto (Jorge feedback): se acepta, se guarda el tipo, y
-    # la clasificación sigue siendo por MONTO (no por la cuenta).
+async def test_validar_comprobante_inversionista_match(tmp_path, monkeypatch):
+    # Correct inversionista → inversionista_match=True.
     _isolate_dedup(monkeypatch, tmp_path)
-    reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
+    profile = _luis_profile()
+    profile_inv = profile.get("inversionista", "") or ""
+    reg = ToolRegistry(identity_verified=True, debt_context=profile, tenant_id=TENANT)
     r = await reg.execute(
         "validar_comprobante",
-        {
-            "account_type": "cuenta",
-            "cuenta_destino": "1320268376",
-            "monto": 462.14,
-            "nro_operacion": "OP-CUENTA",
-        },
-    )
-    assert r["cuenta_valida"] is True          # NO se valida contra Doris
-    assert r["account_type"] == "cuenta"
-    assert r["cuenta_destino"] == "1320268376"
-    assert r["tipo"] == "pago"                 # clasificado por monto
-    assert r["dedup_ok"] is True
-    # número de cuenta corto en el mensaje (NO se fuerza CCI)
-    assert "número de cuenta" in r["mensaje"].lower()
-
-
-async def test_validar_comprobante_account_type_cci_20(tmp_path, monkeypatch):
-    _isolate_dedup(monkeypatch, tmp_path)
-    reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
-    r = await reg.execute(
-        "validar_comprobante",
-        {
-            "account_type": "cci",
-            "cuenta_destino": "00389801338381007048",
-            "monto": 462.14,
-            "nro_operacion": "OP-CCI20",
-        },
+        {"monto": 462.14, "inversionista": profile_inv},
     )
     assert r["cuenta_valida"] is True
-    assert r["account_type"] == "cci"
-    assert r["tipo"] == "pago"
+    assert r["inversionista_match"] is True
 
 
-async def test_validar_comprobante_stores_account_type_in_audit(tmp_path, monkeypatch):
-    # El audit/registro debe guardar tipo + número de cuenta (y el alias cci).
+async def test_validar_comprobante_stores_cci_from_profile(tmp_path, monkeypatch):
+    # CCI in audit must come from the profile (server-side), not user input.
     _isolate_dedup(monkeypatch, tmp_path)
     import json as _json
     import features.comprobantes.validator as _validator
@@ -358,41 +332,21 @@ async def test_validar_comprobante_stores_account_type_in_audit(tmp_path, monkey
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     await reg.execute(
         "validar_comprobante",
-        {
-            "account_type": "cuenta",
-            "cuenta_destino": "1320268376",
-            "monto": 462.14,
-            "nro_operacion": "OP-AUDIT",
-        },
+        {"monto": 462.14},
     )
     items = _json.loads(_validator._COMPROBANTES_PATH.read_text(encoding="utf-8"))
-    rec = next(r for r in items if r["nro_operacion"] == "OP-AUDIT")
-    assert rec["account_type"] == "cuenta"
-    assert rec["cuenta_destino"] == "1320268376"
-    assert rec["cci"] == "1320268376"  # legacy alias preserved
+    assert len(items) == 1
+    assert items[0]["cci"] == "00389801338381007048"  # from profile, not user
 
 
-async def test_validar_comprobante_dedup_by_nro_operacion_independent_of_type(tmp_path, monkeypatch):
-    # Dedup sigue siendo por nº de operación (no por la cuenta).
+async def test_validar_comprobante_dedup_by_monto_different_monto_ok(tmp_path, monkeypatch):
+    # Different monto is NOT a duplicate even for the same credit.
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
-    first = await reg.execute(
-        "validar_comprobante",
-        {
-            "account_type": "cuenta", "cuenta_destino": "1320268376",
-            "monto": 462.14, "nro_operacion": "OP-DUP2",
-        },
-    )
+    first = await reg.execute("validar_comprobante", {"monto": 462.14})
     assert first["dedup_ok"] is True
-    # mismo nº de operación, distinta cuenta/tipo → igual se considera duplicado
-    second = await reg.execute(
-        "validar_comprobante",
-        {
-            "account_type": "cci", "cuenta_destino": "00389801338381007048",
-            "monto": 462.14, "nro_operacion": "OP-DUP2",
-        },
-    )
-    assert second["dedup_ok"] is False
+    second = await reg.execute("validar_comprobante", {"monto": 18420.00})
+    assert second["dedup_ok"] is True
 
 
 # ── scope: prestamype acotado a 2 capacidades (consulta + comprobante) ──────

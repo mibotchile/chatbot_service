@@ -1,0 +1,34 @@
+[
+  {
+    "q": "¿Qué es un inversionista en PrestamYpe?",
+    "a": "En el modelo P2P (persona a persona) de PrestamYpe, un inversionista es la persona o fondo que financió tu préstamo directamente. Cuando pagas, transfieres al inversionista asignado a tu crédito, no a PrestamYpe. Puedes ver el nombre de tu inversionista en los datos de tu crédito."
+  },
+  {
+    "q": "¿A qué cuenta debo transferir?",
+    "a": "Debes transferir a la cuenta CCI o número de cuenta del inversionista de tu crédito. Consulta tu deuda para ver los datos exactos (CCI, número de cuenta, banco e inversionista). Siempre verifica los datos antes de transferir."
+  },
+  {
+    "q": "¿Cómo registro mi comprobante de pago?",
+    "a": "Envía la foto de tu comprobante, el monto que pagaste y el nombre del inversionista al que transferiste. El ID de tu crédito es opcional: si lo tienes, inclúyelo; si no, no te preocupes. NO necesitas ingresar el CCI ni el número de operación: los verificamos del lado del servidor."
+  },
+  {
+    "q": "¿Qué pasa si el inversionista que indico no coincide con el registrado?",
+    "a": "El comprobante se registra igual en estado EN REVISIÓN. Nuestro equipo lo revisa contra el banco y, si corresponde, lo aplica a tu cuenta. Siempre concilia un humano antes de confirmar el pago."
+  },
+  {
+    "q": "¿Por qué queda EN REVISIÓN mi comprobante?",
+    "a": "Todos los comprobantes quedan EN REVISIÓN hasta que un asesor los concilia contra el movimiento bancario real. Cuando se confirme, se aplicará a tu cuenta. Es un proceso de seguridad estándar."
+  },
+  {
+    "q": "¿Cuál es mi saldo pendiente?",
+    "a": "El saldo pendiente es el monto que te falta pagar de tu crédito. Incluye las cuotas no pagadas. Para verlo actualizado, consulta tu deuda con tu DNI."
+  },
+  {
+    "q": "¿Cuánto es mi próxima cuota?",
+    "a": "La próxima cuota es el monto de la primera cuota impaga de tu cronograma. Puedes consultarla junto con la fecha de vencimiento en la consulta de deuda."
+  },
+  {
+    "q": "¿Qué es el CCI?",
+    "a": "El CCI (Código de Cuenta Interbancario) es un número de 20 dígitos que identifica tu cuenta bancaria de forma única entre bancos distintos. Se usa para transferencias entre bancos. Para pagos al mismo banco, basta el número de cuenta."
+  }
+]

@@ -356,18 +356,19 @@ async def upload_comprobante(
     (dest_dir / f"{nro}.{ext}").write_bytes(payload)
 
     # --- Validate + classify against the verified profile ---
+    # Slice C (Comprobante Liviano): lighter signature — only monto required.
+    # CCI/nro_operacion are still accepted as form fields for file storage and
+    # rate-limiting purposes but are NOT forwarded to validar_comprobante.
+    # inversionista is not collected via the HTTP form (widget path uses typed chat).
     from features.comprobantes.validator import validar_comprobante
 
     result = await validar_comprobante(
         profile,
         monto=monto,
-        nro_operacion=nro,
-        cuenta_destino=cuenta_norm,
-        account_type=acct_type,
     )
     logger.info(
-        "Comprobante uploaded: tenant={} dni={} op={} valida={} tipo={} acct_type={} dedup_ok={}",
+        "Comprobante uploaded: tenant={} dni={} op={} valida={} tipo={} dedup_ok={}",
         tenant_id, dni_norm, nro, result.get("cuenta_valida"),
-        result.get("tipo"), result.get("account_type"), result.get("dedup_ok"),
+        result.get("tipo"), result.get("dedup_ok"),
     )
     return result

@@ -190,37 +190,32 @@ TOOL_DEFINITIONS = [
     {
         "name": "validar_comprobante",
         "description": (
-            "Valida un comprobante de pago del cliente YA IDENTIFICADO (PrestamYpe). "
-            "Pídele los datos del voucher ANTES de llamar la tool: la cuenta DESTINO a la que "
-            "transfirió (la del destinatario del depósito, NO la suya), indicando si es un Número "
-            "de cuenta o un CCI (Código de Cuenta Interbancario, 20 dígitos), el monto y el número "
-            "de operación. La cuenta NO se valida contra el sistema (la concilia un humano); solo se "
-            "guarda. La tool clasifica la operación en pago / abono / cancelación según el MONTO y evita "
-            "duplicados por número de operación. La identidad y el crédito salen de su cuenta verificada; "
-            "lo ÚNICO que viene del usuario son esos datos del comprobante. No inventes ninguno."
+            "Registra un comprobante de pago del cliente YA IDENTIFICADO (PrestamYpe). "
+            "Pídele solo: foto del voucher, monto pagado e inversionista (a quién pagó). "
+            "El ID de crédito es OPCIONAL — si el usuario no lo sabe, no insistas. "
+            "NO pidas CCI ni número de operación — se resuelven del lado del servidor. "
+            "La tool clasifica la operación (pago cuota / abono / cancelación) según el monto "
+            "y deja el comprobante EN REVISIÓN para conciliación humana. Si el inversionista "
+            "no coincide con el registrado, se registra igual con una alerta para el equipo. "
+            "La identidad y el crédito salen de la cuenta verificada; no inventes ningún dato."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "account_type": {
-                    "type": "string",
-                    "enum": ["cuenta", "cci"],
-                    "description": "Tipo de cuenta destino que ingresó el usuario: 'cuenta' (número de cuenta, más corto, mismo banco) o 'cci' (Código de Cuenta Interbancario, 20 dígitos, entre bancos)",
-                },
-                "cuenta_destino": {
-                    "type": "string",
-                    "description": "Número de la cuenta DESTINO (a la que el usuario transfirió). Si account_type='cci' son 20 dígitos; si 'cuenta' es más corto.",
-                },
                 "monto": {
                     "type": "number",
-                    "description": "Monto transferido según el comprobante",
+                    "description": "Monto transferido según el comprobante del usuario",
                 },
-                "nro_operacion": {
+                "inversionista": {
                     "type": "string",
-                    "description": "Número de operación del comprobante (para evitar cargas duplicadas)",
+                    "description": "Nombre del inversionista al que el usuario realizó el pago (opcional — pregúntalo pero no bloquees si no lo tiene)",
+                },
+                "id_credito": {
+                    "type": "string",
+                    "description": "ID del crédito si el usuario lo menciona (opcional — se resuelve del crédito verificado si no se provee)",
                 },
             },
-            "required": ["account_type", "cuenta_destino", "monto", "nro_operacion"],
+            "required": ["monto"],
         },
     },
     {
