@@ -34,32 +34,48 @@ def _prestamype_schema() -> dict:
 
 
 def test_build_sql_uses_config_tables_join_and_columns():
+    """prestamype now uses window CTEs (pagos_selection + batch_selection declared).
+
+    Updated to the new contract: ROW_NUMBER() OVER CTEs replace GROUP BY / MAX.
+    The old MAX assertions are replaced by the window-CTE assertions.
+    """
     schema = _prestamype_schema()
     sql, db = dds._build_sql(schema)
     # db falls back to settings.doris_db when config db is null.
     assert db.startswith("project_")
-    # Tables + join from config (NOT hardcoded constants).
-    assert "batch_asignacion_review_bronze a" in sql
-    assert "batch_pagos_v2_bronze p" in sql
-    assert "ON p.codigo_contrato = a.id_credito" in sql
+    # Tables present in the CTE definitions (not as direct FROM aliases).
+    assert "batch_asignacion_review_bronze" in sql
+    assert "batch_pagos_v2_bronze" in sql
+    # Join condition from config.
+    assert "p.codigo_contrato = a.id_credito" in sql
     # DNI is parameterized, never interpolated.
-    assert "WHERE a.dni_ruc = %s" in sql
+    assert "%s" in sql
     assert "44218903" not in sql
-    # Aggregated pagos columns are aliased to their profile field names.
-    assert "MAX(p.cuota_esperada_actualizada) AS cuota_esperada" in sql
-    assert "MAX(p.saldo_por_cancelar) AS saldo_por_cancelar" in sql
-    assert "MAX(p.saldo_por_cancelar) AS balance" in sql
-    # Non-aggregated debt columns appear in GROUP BY.
-    assert "GROUP BY" in sql
-    assert "a.id_credito" in sql.split("GROUP BY")[1]
+    # Window CTEs with ROW_NUMBER (new contract — replaces GROUP BY / MAX).
+    assert "ROW_NUMBER() OVER" in sql
+    assert "PARTITION BY" in sql
+    assert "p.rn = 1" in sql
+    assert "a.rn = 1" in sql
+    # COALESCE for cuota (replaces MAX).
+    assert "COALESCE" in sql.upper()
+    assert "cuota_esperada_actualizada" in sql
+    assert "cuota_esperada_mensual" in sql
+    # days_overdue is derived.
+    assert "DATEDIFF" in sql.upper()
+    # MAX aggregate must NOT appear for pagos balance/cuota fields.
+    assert "MAX(p.saldo_por_cancelar)" not in sql
+    assert "MAX(p.cuota_esperada" not in sql
 
 
 def test_build_sql_db_override_from_config():
+    """DB name override is reflected in both CTEs (window strategy)."""
     schema = dict(_prestamype_schema())
     schema["db"] = "project_OTHER123"
     sql, db = dds._build_sql(schema)
     assert db == "project_OTHER123"
-    assert "project_OTHER123.batch_asignacion_review_bronze a" in sql
+    # Both tables are in CTEs and must use the overridden DB.
+    assert "project_OTHER123.batch_asignacion_review_bronze" in sql
+    assert "project_OTHER123.batch_pagos_v2_bronze" in sql
 
 
 # ── Identifier sanitization (anti-injection on corrupt config) ───────────────
@@ -91,10 +107,30 @@ def test_build_sql_rejects_malicious_column_name():
 
 
 def test_build_sql_rejects_malicious_agg():
-    schema = json.loads(json.dumps(_prestamype_schema()))
-    schema["column_map"]["cuota_esperada"]["agg"] = "MAX(x)) UNION SELECT"
+    """Legacy schema (no window blocks) with a malicious agg value must raise ValueError.
+
+    Updated to use a minimal legacy schema because the prestamype schema no longer
+    uses ``agg`` (it uses ``coalesce`` instead). The security guard lives in
+    _build_sql_legacy and must still fire when a legacy schema has a bad ``agg``.
+    """
+    legacy_schema = {
+        "db": "project_TEST",
+        "debt_table": "asig_table",
+        "pagos_table": "pagos_table",
+        "join": {"debt_key": "id_credito", "pagos_key": "codigo_contrato"},
+        "dni_column": "dni_ruc",
+        # No pagos_selection / batch_selection → legacy path
+        "column_map": {
+            "account_id": {"source": "debt", "column": "id_credito"},
+            "cuota_esperada": {
+                "source": "pagos",
+                "column": "cuota_col",
+                "agg": "MAX(x)) UNION SELECT",  # malicious
+            },
+        },
+    }
     with pytest.raises(ValueError):
-        dds._build_sql(schema)
+        dds._build_sql(legacy_schema)
 
 
 # ── Missing schema → clear error ─────────────────────────────────────────────
@@ -121,6 +157,11 @@ def test_doris_tenant_without_schema_errors(tmp_path):
 # A raw Doris result row. The query aliases every selected column to its profile
 # field name (``... AS account_id``), so the cursor returns rows keyed by the
 # profile field names. This is the row for DNI 44218903 (credit P02137).
+#
+# Updated for window-CTE schema (Slice A 2026-06-04):
+#   - principal_original removed (capital col dropped from column_map).
+#   - cuenta_bancaria added (numero_de_cuenta col).
+#   - days_overdue is SQL-derived (GREATEST(DATEDIFF(...),0)) — already an int.
 _DORIS_ROW = {
     "account_id": "P02137",
     "loan_number": "P02137",
@@ -128,12 +169,12 @@ _DORIS_ROW = {
     "dni": "44218903",
     "email": "cmendoza.demo@example.com",
     "phone": 951000111,           # Doris may return an int — coerced to str
-    "principal_original": 23800.0,
-    "days_overdue": 0,
+    "days_overdue": 0,            # SQL-derived (DATEDIFF); 0 = credit al_dia
     "next_due_date": "2026-04-18",
     "currency": "SOLES",          # raw Doris value, mapped to PEN/S/
     "banco": "INTERBANK",
     "cci": "00389801338381007048",
+    "cuenta_bancaria": "12300001234",  # numero_de_cuenta (new Slice A field)
     "inversionista": "INVERSIONISTA DEMO UNO",
     "cuota_esperada": 462.14,
     "next_installment_amount": 462.14,
@@ -143,7 +184,13 @@ _DORIS_ROW = {
 
 
 def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
-    """The config-driven mapping reproduces the previously-hardcoded profile."""
+    """The config-driven mapping produces the expected profile shape.
+
+    Updated for the window-CTE schema (Slice A):
+      - principal_original removed (capital dropped from column_map per spec).
+      - cuenta_bancaria added (numero_de_cuenta from pagos).
+      - days_overdue is SQL-derived; _row_to_profile reads it from the row as-is.
+    """
 
     class _Cursor:
         def __enter__(self):
@@ -173,7 +220,7 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
     prof = dds.resolve_dni("44218903", tenant_id=TENANT)
     assert prof is not None
 
-    # Same values the hardcoded implementation produced.
+    # Expected profile shape after Slice A (window-CTE schema).
     expected = {
         "account_id": "P02137",
         "loan_number": "P02137",
@@ -183,7 +230,6 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
         "phone": "951000111",
         "currency": "PEN",
         "currency_symbol": "S/",
-        "principal_original": 23800.0,
         "balance": 23800.0,
         "next_due_date": "2026-04-18",
         "next_installment_amount": 462.14,
@@ -191,6 +237,7 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
         "status": "al_dia",
         "status_label": "Al día",
         "cci": "00389801338381007048",
+        "cuenta_bancaria": "12300001234",
         "banco": "INTERBANK",
         "inversionista": "INVERSIONISTA DEMO UNO",
         "cuota_esperada": 462.14,
@@ -198,7 +245,7 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
     }
     for key, value in expected.items():
         assert prof[key] == value, f"{key}: {prof.get(key)!r} != {value!r}"
-    # Exact same key set as the legacy hardcoded profile — no extra fields leak.
+    # Exact key set — no extra fields leak.
     assert set(prof.keys()) == set(expected.keys())
 
 

@@ -19,6 +19,16 @@
     "pagos_table": "batch_pagos_v2_bronze",
     "join": { "debt_key": "id_credito", "pagos_key": "codigo_contrato" },
     "dni_column": "dni_ruc",
+    "pagos_selection": {
+      "_doc": "Window strategy for pagos: pick first UNPAID installment per codigo_contrato. Unpaid = fecha_de_pago_del_cliente IS NULL. Order: unpaid first (IS NULL DESC), then oldest expected date ASC.",
+      "partition_by": "codigo_contrato",
+      "order_by": "(fecha_de_pago_del_cliente IS NULL) DESC, fecha_de_pago_esperada_original ASC"
+    },
+    "batch_selection": {
+      "_doc": "Window strategy for asig: pick the latest batch per id_credito. Order: creado_el DESC, archivo DESC (lexicographic tiebreak).",
+      "partition_by": "id_credito",
+      "order_by": "creado_el DESC, archivo DESC"
+    },
     "column_map": {
       "account_id": { "source": "debt", "column": "id_credito" },
       "loan_number": { "source": "debt", "column": "id_credito" },
@@ -26,17 +36,16 @@
       "dni": { "source": "debt", "column": "dni_ruc" },
       "email": { "source": "debt", "column": "correo_electronico" },
       "phone": { "source": "debt", "column": "telefono" },
-      "principal_original": { "source": "debt", "column": "capital" },
-      "days_overdue": { "source": "debt", "column": "dias_mora" },
-      "next_due_date": { "source": "debt", "column": "fecha_vencimiento" },
       "currency": { "source": "debt", "column": "moneda" },
       "banco": { "source": "debt", "column": "banco" },
       "cci": { "source": "debt", "column": "codigo_de_cuenta_cci" },
+      "cuenta_bancaria": { "source": "debt", "column": "numero_de_cuenta" },
       "inversionista": { "source": "debt", "column": "inversionista" },
-      "cuota_esperada": { "source": "pagos", "column": "cuota_esperada_actualizada", "agg": "MAX" },
-      "next_installment_amount": { "source": "pagos", "column": "cuota_esperada_actualizada", "agg": "MAX" },
-      "saldo_por_cancelar": { "source": "pagos", "column": "saldo_por_cancelar", "agg": "MAX" },
-      "balance": { "source": "pagos", "column": "saldo_por_cancelar", "agg": "MAX" }
+      "next_due_date": { "source": "pagos", "column": "fecha_de_pago_esperada_original", "from_selected_row": true },
+      "saldo_por_cancelar": { "source": "pagos", "column": "saldo_por_cancelar", "from_selected_row": true },
+      "balance": { "source": "pagos", "column": "saldo_por_cancelar", "from_selected_row": true },
+      "cuota_esperada": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true },
+      "next_installment_amount": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true }
     }
   },
   "branding": {

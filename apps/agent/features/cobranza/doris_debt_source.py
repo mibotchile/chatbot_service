@@ -44,6 +44,9 @@ _NUMERIC_FIELDS = frozenset(
         "monto_pagado",
     }
 )
+
+# Profile fields that are bank/payment strings — passed through as-is.
+_STRING_FIELDS = frozenset({"cuenta_bancaria", "inversionista", "cci", "banco"})
 _IDENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
@@ -98,6 +101,39 @@ def _build_sql(schema: dict) -> tuple[str, str]:
 
     Returns ``(sql, db)``. All identifiers are whitelist-sanitized. The DNI value
     is a ``%s`` placeholder — never interpolated.
+
+    When the schema declares ``pagos_selection`` and/or ``batch_selection`` blocks,
+    the builder emits ROW_NUMBER() OVER window CTEs instead of GROUP BY / MAX
+    aggregates. This is required for correct first-unpaid-installment semantics
+    (Spec: cobranza-balance). Legacy schemas without these blocks fall back to the
+    previous GROUP BY strategy for backward compatibility.
+
+    Window strategy (when pagos_selection + batch_selection are present):
+      WITH pagos_sel AS (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY <pagos_selection.partition_by>
+          ORDER BY <pagos_selection.order_by>
+        ) AS rn
+        FROM <db>.<pagos_table>
+      ),
+      asig_sel AS (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY <batch_selection.partition_by>
+          ORDER BY <batch_selection.order_by>
+        ) AS rn
+        FROM <db>.<debt_table>
+        WHERE <dni_column> = %s
+      )
+      SELECT <columns>
+      FROM asig_sel a
+      JOIN pagos_sel p ON p.<pagos_key> = a.<debt_key>
+        AND p.rn = 1
+      WHERE a.rn = 1
+
+    days_overdue is always DERIVED via GREATEST(DATEDIFF(CURDATE(),
+    fecha_de_pago_esperada_original), 0) — never read from the stale batch
+    column dias_de_atraso_de_pago (confirmed live: column value 44 vs derived 94
+    for P04197 on 2026-06-04).
     """
     db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
     debt = _safe_ident(schema["debt_table"], what="debt_table")
@@ -111,6 +147,132 @@ def _build_sql(schema: dict) -> tuple[str, str]:
     if not isinstance(column_map, dict) or not column_map:
         raise ValueError("doris_schema: 'column_map' must be a non-empty object")
 
+    pagos_sel_cfg = schema.get("pagos_selection")
+    batch_sel_cfg = schema.get("batch_selection")
+
+    if pagos_sel_cfg and batch_sel_cfg:
+        return _build_sql_window(
+            schema=schema,
+            db=db, debt=debt, pagos=pagos,
+            debt_key=debt_key, pagos_key=pagos_key,
+            dni_col=dni_col,
+            column_map=column_map,
+            pagos_sel_cfg=pagos_sel_cfg,
+            batch_sel_cfg=batch_sel_cfg,
+        )
+    return _build_sql_legacy(
+        db=db, debt=debt, pagos=pagos,
+        debt_key=debt_key, pagos_key=pagos_key,
+        dni_col=dni_col,
+        column_map=column_map,
+    )
+
+
+def _build_sql_window(
+    *,
+    schema: dict,
+    db: str,
+    debt: str,
+    pagos: str,
+    debt_key: str,
+    pagos_key: str,
+    dni_col: str,
+    column_map: dict,
+    pagos_sel_cfg: dict,
+    batch_sel_cfg: dict,
+) -> tuple[str, str]:
+    """Emit ROW_NUMBER() OVER CTE SQL for first-unpaid + latest-batch strategy.
+
+    Called when the schema declares both ``pagos_selection`` and
+    ``batch_selection`` config blocks. All identifiers are pre-sanitized by
+    the caller. The partition/order expressions come verbatim from config
+    (they are trusted tenant-operator config, not user input — the whitelist
+    guard covers table/column names but not raw ORDER BY expressions).
+    """
+    pagos_partition = pagos_sel_cfg["partition_by"]
+    pagos_order = pagos_sel_cfg["order_by"]
+    batch_partition = batch_sel_cfg["partition_by"]
+    batch_order = batch_sel_cfg["order_by"]
+
+    # Build SELECT columns from the column_map.
+    # Columns from pagos use alias "p"; from debt use alias "a".
+    # "coalesce" key → COALESCE(p.col1, p.col2) AS field
+    # "from_selected_row" → just p.col (no GROUP BY needed — window handles it)
+    select_parts: list[str] = []
+    for field, spec in column_map.items():
+        _safe_ident(field, what=f"column_map key {field!r}")
+        source = spec.get("source", "debt")
+        alias = "a" if source == "debt" else "p"
+
+        coalesce_cols = spec.get("coalesce")
+        if coalesce_cols:
+            # COALESCE(p.col1, p.col2) — e.g. cuota_esperada_actualizada, cuota_esperada_mensual
+            if not isinstance(coalesce_cols, list) or len(coalesce_cols) < 2:
+                raise ValueError(
+                    f"doris_schema: column_map[{field!r}].coalesce must be a list of >=2 column names"
+                )
+            coalesce_refs = ", ".join(
+                f"{alias}.{_safe_ident(c, what=f'coalesce[{field}]')}"
+                for c in coalesce_cols
+            )
+            select_parts.append(f"COALESCE({coalesce_refs}) AS {field}")
+        else:
+            col = _safe_ident(spec["column"], what=f"column_map[{field}].column")
+            select_parts.append(f"{alias}.{col} AS {field}")
+
+    # days_overdue is derived from date arithmetic (always correct, never stale).
+    # Injected here regardless of column_map entry — it overwrites any mapped value.
+    select_parts.append(
+        "GREATEST(DATEDIFF(CURDATE(), p.fecha_de_pago_esperada_original), 0) AS days_overdue"
+    )
+
+    select_clause = ",\n    ".join(select_parts)
+
+    sql = (
+        f"WITH pagos_sel AS (\n"
+        f"  SELECT *,\n"
+        f"    ROW_NUMBER() OVER (\n"
+        f"      PARTITION BY {pagos_partition}\n"
+        f"      ORDER BY {pagos_order}\n"
+        f"    ) AS rn\n"
+        f"  FROM {db}.{pagos}\n"
+        f"),\n"
+        f"asig_sel AS (\n"
+        f"  SELECT *,\n"
+        f"    ROW_NUMBER() OVER (\n"
+        f"      PARTITION BY {batch_partition}\n"
+        f"      ORDER BY {batch_order}\n"
+        f"    ) AS rn\n"
+        f"  FROM {db}.{debt}\n"
+        f"  WHERE {dni_col} = %s\n"
+        f")\n"
+        f"SELECT\n"
+        f"    {select_clause}\n"
+        f"FROM asig_sel a\n"
+        f"JOIN pagos_sel p\n"
+        f"  ON p.{pagos_key} = a.{debt_key}\n"
+        f"  AND p.rn = 1\n"
+        f"WHERE a.rn = 1"
+    )
+    return sql, db
+
+
+def _build_sql_legacy(
+    *,
+    db: str,
+    debt: str,
+    pagos: str,
+    debt_key: str,
+    pagos_key: str,
+    dni_col: str,
+    column_map: dict,
+) -> tuple[str, str]:
+    """Legacy GROUP BY / MAX strategy for schemas without window-selection blocks.
+
+    Retained for backward compatibility with tenants that do not declare
+    ``pagos_selection`` + ``batch_selection``. New tenants should use the window
+    strategy.
+    """
     select_parts: list[str] = []
     group_parts: list[str] = []
     for field, spec in column_map.items():
