@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Portal de clientes</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2300b369'/%3E%3Ctext x='16' y='22' font-family='Inter,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --vox-bg:         #ffffff;
+      --vox-surface:    #ffffff;
+      --vox-surface-2:  #f7f8fa;
+      --vox-border:     #D7D8DB;
+      --vox-border-soft:#eef0f3;
+      --vox-text:       #1A1A1C;
+      --vox-text-muted: #4a5568;
+      --vox-text-subtle:#5b6573;
+      --vox-brand:      #00b369;
+      --vox-brand-hover:#00b369;
+      --vox-brand-soft: #C5E4F9;
+      --vox-success:    #10b981;
+    }
+    * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--vox-bg); color: var(--vox-text); }
+
+    /* ──────────────────────────────────────────────────────────────────────
+       Anti-flash gate (same as generic — tenant-neutral base markup, no
+       tenant content baked in; applyBrand() from app.js removes the gate
+       once this tenant's own data has been written).
+       ────────────────────────────────────────────────────────────────────── */
+    html.branding-pending .hero-copy,
+    html.branding-pending #cards,
+    html.branding-pending #dni-note,
+    html.branding-pending .features,
+    html.branding-pending h2.section-label { visibility: hidden; }
+
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Reset body bg: hero paints its own band; below is clean white ── */
+    body {
+      background-image: none;
+      background-color: #ffffff;
+      overflow-x: hidden;
+    }
+
+    /* ── Header: sits on top of the green hero band ── */
+    .status-chip { display: none; }
+    header {
+      border-bottom: none;
+      background: transparent;
+      backdrop-filter: none;
+      position: absolute;
+      width: 100%;
+      top: 0; left: 0;
+      z-index: 20;
+    }
+    .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
+    .wordmark { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+    .wordmark .accent { color: var(--vox-brand-hover); }
+    .wordmark img.logo {
+      filter: brightness(0) invert(1);  /* white logo on green */
+      height: 32px;
+      width: auto; display: block;
+    }
+
+    /* ── Hero: full-width green band with split grid ── */
+    main { padding-top: 0; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.27fr) minmax(0, 0.73fr);
+      gap: clamp(24px, 4vw, 60px);
+      align-items: center;
+      background-color: #00b369;
+      background-image:
+        radial-gradient(ellipse 55% 70% at 100% 50%, rgba(0,90,50,0.35), transparent 65%),
+        radial-gradient(ellipse 40% 50% at 0% 100%, rgba(0,200,120,0.15), transparent 55%);
+      margin-left: calc(-50vw + 50%);
+      margin-right: calc(-50vw + 50%);
+      padding: clamp(96px, 11vw, 136px) calc(50vw - 50%) clamp(64px, 8vw, 96px);
+      text-align: left;
+    }
+    .hero-copy { max-width: 580px; }
+
+    /* ── Hero kicker ── */
+    .kicker {
+      display: inline-flex;
+      color: rgba(255,255,255,0.85);
+      font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      padding: 5px 12px; border-radius: 9999px; gap: 7px;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.25); }
+    .kicker .dot { background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.25); }
+
+    /* ── Hero headline + lead: white on green ── */
+    .hero h1 {
+      color: #ffffff;
+      font-size: clamp(36px, 4.8vw, 58px);
+      line-height: 1.06;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 18px 0 0;
+    }
+    .hero h1 .accent { color: rgba(255,255,255,0.75); }
+    .hero p.lead {
+      color: rgba(255,255,255,0.88);
+      font-size: clamp(16px, 1.35vw, 19px);
+      line-height: 1.65;
+      margin: 20px 0 0;
+      max-width: 480px;
+      text-align: left;
+    }
+    .hero-note { color: rgba(255,255,255,0.65); }
+
+    /* ── CTA: white button with blue text (Prestamype accent) ── */
+    .hero-cta {
+      display: flex;
+      margin-top: 34px;
+    }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: #ffffff;
+      color: #0083E0;
+      box-shadow: 0 10px 32px -8px rgba(0,0,0,0.28);
+      font-size: 15px;
+      font-weight: 700;
+      padding: 14px 26px;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: background .18s, box-shadow .18s, transform .18s;
+    }
+    .btn-primary:hover {
+      background: #f0f8ff;
+      color: #005fad;
+      box-shadow: 0 14px 36px -8px rgba(0,0,0,0.32);
+      transform: translateY(-2px);
+    }
+
+    /* ── Right side: diamond shape + phone mockup ── */
+    .device-stage {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    /* Diamond / rhombus clip container — the Prestamype signature shape */
+    .device-stage::before {
+      content: "";
+      position: absolute;
+      width: clamp(280px, 30vw, 380px);
+      height: clamp(280px, 30vw, 380px);
+      background: rgba(0,0,0,0.18);
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      border-radius: 4px;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    /* Phone frame: white bezel on green */
+    .phone {
+      position: relative; z-index: 2;
+      width: 260px;
+      background: var(--vox-surface);
+      border: 9px solid rgba(255,255,255,0.92);
+      border-radius: 36px;
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.08),
+        0 32px 64px -24px rgba(0,40,20,0.48),
+        0 8px 24px -12px rgba(0,0,0,0.22);
+    }
+    .phone::after { content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      width: 88px; height: 7px; background: #cfd5dc; border-radius: 9999px; z-index: 3; }
+    .phone-screen {
+      background: var(--vox-surface); border-radius: 30px; overflow: hidden;
+      display: flex; flex-direction: column; height: 480px;
+    }
+    .ph-head { background: var(--vox-surface); color: var(--vox-text); padding: 22px 16px 12px;
+      display: flex; align-items: center; gap: 11px; flex-shrink: 0; border-bottom: 1px solid var(--vox-border-soft); }
+    .ph-avatar { width: 38px; height: 38px; border-radius: 11px; background: #00b369; color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+    .ph-name { font-weight: 700; font-size: 14.5px; line-height: 1.2; color: var(--vox-text); }
+    .ph-status { font-size: 11.5px; display: flex; align-items: center; gap: 6px; margin-top: 2px; color: #007a49; }
+    .ph-status .dot { width: 6px; height: 6px; }
+    .ph-ident { background: var(--vox-surface-2); border-bottom: 1px solid var(--vox-border-soft); padding: 8px 14px;
+      display: flex; align-items: center; justify-content: space-between; font-size: 11px; flex-shrink: 0; }
+    .ph-ident .who { font-weight: 700; color: var(--vox-text); }
+    .ph-ident .mora { font-size: 10px; font-weight: 700; color: #dc2626; background: rgba(239,68,68,0.12); padding: 3px 8px; border-radius: 9999px; }
+    .ph-msgs { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 11px; overflow: hidden; background: var(--vox-surface); }
+    .ph-row { display: flex; }
+    .ph-row.u { justify-content: flex-end; }
+    .ph-row.a { gap: 7px; }
+    .ph-ava { width: 24px; height: 24px; border-radius: 7px; background: rgba(0,179,105,0.15); color: #007a49;
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 10px; flex-shrink: 0; }
+    .bub { font-size: 12.5px; line-height: 1.45; padding: 9px 12px; max-width: 80%; }
+    .bub.u { background: #00b369; color: #fff; border-radius: 14px 14px 4px 14px; font-weight: 500; }
+    .bub.a { background: var(--vox-surface-2); color: var(--vox-text); border: 1px solid var(--vox-border-soft); border-radius: 4px 14px 14px 14px; }
+    .bub.a strong { color: #007a49; font-weight: 700; }
+    .ph-input { flex-shrink: 0; border-top: 1px solid var(--vox-border-soft); padding: 10px 12px; display: flex; align-items: center; gap: 8px; }
+    .ph-input .field { flex: 1; background: var(--vox-surface-2); border: 1px solid var(--vox-border); border-radius: 11px; padding: 9px 12px; font-size: 12px; color: var(--vox-text-subtle); }
+    .ph-input .send { width: 34px; height: 34px; border-radius: 50%; background: #00b369; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ph-input .send svg { width: 15px; height: 15px; }
+
+    /* ── Responsive: stack at 860px ── */
+    @media (max-width: 860px) {
+      .hero {
+        grid-template-columns: 1fr;
+        text-align: left;
+        padding-bottom: clamp(40px, 6vw, 64px);
+      }
+      .hero p.lead { max-width: none; }
+      .device-stage {
+        order: -1;
+        margin-bottom: 8px;
+      }
+      .device-stage::before {
+        width: 200px; height: 200px;
+      }
+      .phone { width: 200px; }
+      .phone-screen { height: 360px; }
+    }
+
+    /* ── Production landing: no demo section below the hero. The cases table,
+       feature grid, DNI note and section labels are hidden for prestamype —
+       real borrowers identify by typing their DNI in the chat (CTA → widget). ── */
+    .features,
+    .dni-note,
+    h2.section-label { display: none; }
+    footer {
+      margin-top: clamp(48px, 7vw, 80px);
+      border-top: 1px solid #eef2f0;
+      padding: 28px 0;
+      color: var(--vox-text-subtle);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 480px) {
+      body { padding-bottom: 120px; }
+      footer { margin-top: 40px; padding-bottom: 24px; }
+    }
+  </style>
+
+  <!-- Server-injected tenant sentinel. Value replaced at startup by
+       _mount_demo_frontend() with the actual DEFAULT_TENANT env value. -->
+  <script>window.__TENANT__ = "__TENANT__";</script>
+  <script>
+    (() => {
+      "use strict";
+      // First-paint theme hint for prestamype (this file IS the prestamype landing).
+      // Sets brand color + body class synchronously before first paint.
+      try {
+        document.documentElement.classList.add("branding-pending");
+        const root = document.documentElement.style;
+        root.setProperty("--vox-brand", "#00b369");
+        root.setProperty("--vox-brand-hover", "#00b369");
+        document.addEventListener("DOMContentLoaded", () => {
+          document.body.classList.add("tenant-prestamype");
+        });
+        if (document.body) document.body.classList.add("tenant-prestamype");
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <div class="wrap header-inner">
+      <div class="wordmark" id="wordmark"></div>
+      <span class="status-chip"><span class="dot"></span> Asistente <span id="agent-name">Ada</span> · en línea</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="kicker"><span class="dot"></span> <span id="kicker"></span></span>
+        <h1 id="hero-h1"></h1>
+        <p class="lead" id="hero-lead"></p>
+        <div class="hero-cta">
+          <a class="btn-primary" id="hero-cta-link" href="#acceso">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            <span id="hero-cta-text">Probar la demo</span>
+          </a>
+          <span class="hero-note" id="hero-note"></span>
+        </div>
+      </div>
+
+      <!-- Product in action: CSS phone mockup with a real Ada conversation. -->
+      <div class="device-stage" aria-hidden="true">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="ph-head">
+              <div class="ph-avatar">A</div>
+              <div>
+                <div class="ph-name" id="ph-name">Ada</div>
+                <div class="ph-status"><span class="dot"></span> En línea ahora</div>
+              </div>
+            </div>
+            <div class="ph-ident">
+              <span class="who">Carlos Huamán Flores</span>
+              <span class="mora">En mora</span>
+            </div>
+            <div class="ph-msgs">
+              <div class="ph-row u"><div class="bub u">Hola, ¿cuál es mi saldo?</div></div>
+              <div class="ph-row a">
+                <div class="ph-ava">A</div>
+                <div class="bub a">Carlos, tu saldo es <strong>S/ 2,300</strong>. Tienes una cuota vencida hace 8 días con un recargo de <strong>S/ 85</strong>. Regularizarla detiene el recargo. ¿Te muestro cómo pagar?</div>
+              </div>
+              <div class="ph-row u"><div class="bub u">Sí, por favor</div></div>
+              <div class="ph-row a">
+                <div class="ph-ava">A</div>
+                <div class="bub a">Puedes pagar por el enlace seguro o en agentes autorizados. ¿Te envío el detalle a tu correo o WhatsApp?</div>
+              </div>
+            </div>
+            <div class="ph-input">
+              <span class="field">Escribe tu mensaje...</span>
+              <span class="send"><svg fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <h2 class="section-label" id="acceso">Ingresa a la demo como uno de estos clientes</h2>
+    <div class="cards" id="cards"></div>
+
+    <div class="dni-note" id="dni-note">
+      <div class="dni-note-title">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 9h3m-3 4h2M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2zm4-13a2 2 0 11-4 0 2 2 0 014 0zM7 16a3 3 0 016 0v.5H7V16z"/></svg>
+        DNIs de prueba (identifícate por DNI en el chat)
+      </div>
+      <p id="dni-hint"></p>
+      <ul class="dni-list" id="dni-list"></ul>
+    </div>
+
+    <h2 class="section-label" id="features-label">Qué puede hacer Ada</h2>
+    <div class="features" id="features"></div>
+  </main>
+
+  <footer class="wrap" id="footer">
+    <span id="footer-disclaimer">Prestamype · </span><span id="footer-powered">Powered by Onbotgo</span>.
+  </footer>
+
+  <!-- Shared branding logic — tenant-neutral, reads window.__TENANT__ -->
+  <script src="app.js"></script>
+  <!-- Floating chat widget -->
+  <script src="widget.js"></script>
+</body>
+</html>

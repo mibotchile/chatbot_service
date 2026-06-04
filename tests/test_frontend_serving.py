@@ -158,3 +158,41 @@ def test_get_root_does_not_serve_unresolved_sentinel(
     r = client.get("/")
 
     assert b'"__TENANT__"' not in r.content
+
+
+def test_app_js_served_as_static(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """GET /app.js returns 200 with javascript content-type (served by StaticFiles)."""
+    _write_generic(tmp_path)
+    # app.js must exist in the frontend dir for StaticFiles to serve it.
+    (tmp_path / "app.js").write_bytes(b"/* app */")
+    client = _fresh_client(tmp_path, "prestaunion", monkeypatch)
+
+    r = client.get("/app.js")
+
+    assert r.status_code == 200
+    assert "javascript" in r.headers.get("content-type", "")
+
+
+def test_prestamype_parity_serves_per_tenant_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Parity guard: DEFAULT_TENANT=prestamype activates the per-tenant file path.
+
+    After the PR2 DRY split, GET / with DEFAULT_TENANT=prestamype must serve
+    frontend/tenants/prestamype/index.html (not the generic index.html).
+    The per-tenant file carries the prestamype sentinel marker confirming the
+    correct file was selected.
+    """
+    _write_generic(tmp_path)
+    _write_per_tenant(tmp_path, "prestamype")
+    client = _fresh_client(tmp_path, "prestamype", monkeypatch)
+
+    r = client.get("/")
+
+    assert r.status_code == 200
+    # Per-tenant file body contains "prestamype-landing" (set by _write_per_tenant).
+    assert b"prestamype-landing" in r.content
+    # Tenant sentinel must be resolved.
+    assert b'window.__TENANT__ = "prestamype"' in r.content
+    # Generic body marker must NOT be present (correct file was chosen).
+    assert b"generic" not in r.content
