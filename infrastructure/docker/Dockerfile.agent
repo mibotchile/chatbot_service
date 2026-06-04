@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 # Dependency resolution (build context = repo root)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
+# Smoke gate: fail the build loudly if pymysql is not installed in the image.
+# ModuleNotFoundError at container start is too late — catch it at build time.
+RUN uv run python -c "import pymysql"
 
 # Application source + frontend (served same-origin) + tenant fixtures.
 COPY apps/agent/ apps/agent/

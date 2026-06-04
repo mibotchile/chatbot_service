@@ -5,6 +5,7 @@
   "name": "PrestamYpe",
   "domain": "prestamype.com",
   "data_source": "mock",
+  "allow_fixture_fallback": false,
   "embed_origins": [
     "https://demos.mibot.cl",
     "http://localhost:*",

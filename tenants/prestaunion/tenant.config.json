@@ -1,5 +1,6 @@
 {
   "slug": "prestaunion",
+  "allow_fixture_fallback": true,
   "agent_type": "cobranza",
   "id": "prestaunion",
   "name": "PrestaUnion",
