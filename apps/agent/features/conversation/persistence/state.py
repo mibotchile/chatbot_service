@@ -14,10 +14,17 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from features.conversation.hooks import extract_implicit_data
-from features.conversation.debtor_state import DebtorState
+from features.conversation.record import Record
+from shared.ports.capture_spec import CaptureSpec
 
 if TYPE_CHECKING:
     import asyncpg
+
+
+def _default_spec() -> CaptureSpec:
+    """Return COBRANZA_SPEC as the default — keeps zero behavior change."""
+    from features.cobranza.debtor import COBRANZA_SPEC
+    return COBRANZA_SPEC
 
 
 class ConversationState:
@@ -33,6 +40,7 @@ class ConversationState:
         history: list[dict] | None = None,
         debtor_data: dict | None = None,
         lead_data: dict | None = None,  # backward-compat fallback (dual-read)
+        capture_spec: CaptureSpec | None = None,
     ):
         self.conversation_id = conversation_id
         self.db_pool = db_pool
@@ -41,7 +49,8 @@ class ConversationState:
         self.history: list[dict] = list(history) if history else []
         # Dual-read: prefer debtor_data; fall back to lead_data for existing rows
         initial = debtor_data if debtor_data is not None else lead_data
-        self.debtor = DebtorState(initial_data=initial)
+        _spec = capture_spec if capture_spec is not None else _default_spec()
+        self.debtor = Record(spec=_spec, initial_data=initial)
         self.page_context: dict = {}
         self.brochures_sent: set[str] = set()  # project slugs already emailed
         self.debtor_notified: bool = False  # sales team already notified
@@ -104,10 +113,12 @@ class StateStore:
         self,
         db_pool: asyncpg.Pool | None = None,
         db_schema: str = "dev",
+        capture_spec: CaptureSpec | None = None,
     ):
         self._conversations: dict[str, ConversationState] = {}
         self.db_pool = db_pool
         self.db_schema = db_schema
+        self._capture_spec = capture_spec  # None → each ConversationState uses default
 
     # -- Sync API (in-memory, backwards-compatible) --
 
@@ -119,6 +130,7 @@ class StateStore:
                 conversation_id,
                 db_pool=self.db_pool,
                 db_schema=self.db_schema,
+                capture_spec=self._capture_spec,
             )
         return self._conversations[conversation_id]
 
@@ -166,6 +178,7 @@ class StateStore:
                 visitor_id=visitor_id,
                 history=history,
                 debtor_data=debtor_data,
+                capture_spec=self._capture_spec,
             )
             conv.page_context = page_context
             self._conversations[conversation_id] = conv
@@ -177,13 +190,14 @@ def get_store(
     redis_url: str | None = None,
     db_pool: asyncpg.Pool | None = None,
     db_schema: str = "dev",
+    capture_spec: CaptureSpec | None = None,
 ) -> StateStore:
     """Factory: returns the appropriate StateStore variant."""
     if redis_url:
         from features.conversation.persistence.redis_store import RedisStateStore
 
-        return RedisStateStore(redis_url)  # type: ignore[return-value]
-    return StateStore(db_pool=db_pool, db_schema=db_schema)
+        return RedisStateStore(redis_url, capture_spec=capture_spec)  # type: ignore[return-value]
+    return StateStore(db_pool=db_pool, db_schema=db_schema, capture_spec=capture_spec)
 
 
 # Default singleton (in-memory for dev/tests)

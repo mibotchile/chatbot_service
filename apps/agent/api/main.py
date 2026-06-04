@@ -31,6 +31,8 @@ from loguru import logger
 from shared.config.settings import settings
 from features.conversation.persistence.state import get_store
 from features.conversation.persistence.visitor_memory import VisitorMemory
+from shared.ports.agent_type_registry import AgentTypeRegistry, AgentTypeSpec  # noqa: F401
+from tenancy.agent_types.registry import default_registry
 from shared.delivery.email_delivery import EmailService
 from features.messaging.whatsapp_service import WhatsAppService
 from features.messaging.chathub_outbound import ChathubOutboundClient
@@ -85,6 +87,9 @@ from api.wiring import (  # noqa: F401
 # ---------------------------------------------------------------------------
 
 store = get_store()
+# AgentTypeRegistry singleton — wired at composition root; swappable without
+# touching any consumer. default_registry() is the in-code impl (cobranza only).
+agent_type_registry: AgentTypeRegistry = default_registry()
 visitor_memory: VisitorMemory | None = None
 email_service: EmailService | None = None
 whatsapp_service: WhatsAppService | None = None
@@ -144,8 +149,14 @@ async def lifespan(app: FastAPI):
     if db_pool is not None:
         try:
             from shared.persistence.persistence import ensure_tables
+            # Resolve capture spec from registry (default agent_type = "cobranza")
+            _default_spec = agent_type_registry.get("cobranza").capture_spec
             await ensure_tables(db_pool, settings.database_schema)
-            store = get_store(db_pool=db_pool, db_schema=settings.database_schema)
+            store = get_store(
+                db_pool=db_pool,
+                db_schema=settings.database_schema,
+                capture_spec=_default_spec,
+            )
             logger.info("PostgreSQL persistence active (schema={})", settings.database_schema)
         except Exception:
             logger.opt(exception=True).warning(

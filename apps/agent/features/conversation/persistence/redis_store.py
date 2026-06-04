@@ -6,9 +6,16 @@ import uuid
 from redis.asyncio import Redis
 
 from features.conversation.hooks import extract_implicit_data
-from features.conversation.debtor_state import DebtorState
+from features.conversation.record import Record
+from shared.ports.capture_spec import CaptureSpec
 
 TTL_SECONDS = 86400  # 24 hours
+
+
+def _default_spec() -> CaptureSpec:
+    """Return COBRANZA_SPEC as the default — keeps zero behavior change."""
+    from features.cobranza.debtor import COBRANZA_SPEC
+    return COBRANZA_SPEC
 
 
 def _key(conversation_id: str, suffix: str) -> str:
@@ -18,10 +25,17 @@ def _key(conversation_id: str, suffix: str) -> str:
 class RedisConversationState:
     """Conversation state backed by Redis. Mirrors ConversationState interface."""
 
-    def __init__(self, conversation_id: str, redis: Redis):
+    def __init__(
+        self,
+        conversation_id: str,
+        redis: Redis,
+        capture_spec: CaptureSpec | None = None,
+    ):
         self.conversation_id = conversation_id
         self._redis = redis
-        self.debtor = DebtorState()
+        _spec = capture_spec if capture_spec is not None else _default_spec()
+        self._capture_spec = _spec
+        self.debtor = Record(spec=_spec)
         self.page_context: dict = {}
         self.history: list[dict] = []
         self._dirty_history = False
@@ -54,7 +68,7 @@ class RedisConversationState:
         # Dual-read: prefer debtor_data key; fall back to lead_data key
         raw = debtor_raw or lead_raw
         if raw:
-            self.debtor = DebtorState(initial_data=json.loads(raw))
+            self.debtor = Record(spec=self._capture_spec, initial_data=json.loads(raw))
         if page_raw:
             self.page_context = json.loads(page_raw)
 
@@ -83,13 +97,16 @@ class RedisConversationState:
 class RedisStateStore:
     """Redis-backed store for conversation states."""
 
-    def __init__(self, redis_url: str):
+    def __init__(self, redis_url: str, capture_spec: CaptureSpec | None = None):
         self._redis = Redis.from_url(redis_url, decode_responses=True)
+        self._capture_spec = capture_spec
 
     async def get_or_create(self, conversation_id: str | None) -> RedisConversationState:
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
-        state = RedisConversationState(conversation_id, self._redis)
+        state = RedisConversationState(
+            conversation_id, self._redis, capture_spec=self._capture_spec
+        )
         await state.load()
         return state
 
