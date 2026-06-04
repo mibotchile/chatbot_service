@@ -23,3 +23,22 @@ def _reset_rate_limiter():
     rate_limiter.reset()
     yield
     rate_limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def _force_mock_data_source(monkeypatch):
+    """Tests run against the deterministic seeded fixture, never live Doris.
+
+    Production tenants (e.g. prestamype) set ``data_source: "doris"`` in their
+    tenant.config.json, which the test env has no live Doris to satisfy. We force
+    ``_data_source`` to "mock" so the end-to-end flow resolves against the fixture
+    (the pre-prod-flip behaviour the suite was written against). Doris-specific
+    behaviour is covered separately by tests that call ``doris_debt_source``
+    directly — they bypass ``_data_source``/``_backend`` and are unaffected.
+    """
+    try:
+        import features.cobranza.debt_source as _dsrc
+        monkeypatch.setattr(_dsrc, "_data_source", lambda tenant_id="": "mock")
+    except Exception:
+        pass
+    yield
