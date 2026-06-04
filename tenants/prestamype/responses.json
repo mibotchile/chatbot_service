@@ -35,10 +35,10 @@
       "label": "datos de pago",
       "correo": {
         "subject": "Datos para pagar tu crédito {loan} — PrestamYpe",
-        "body": "Hola {nombre}, para pagar tu crédito {loan} usa la cuenta CCI {cci} del banco {banco}. Próxima cuota: {cuota}, vence el {fecha_venc}. Cuando pagues, envíanos tu comprobante (CCI, monto y número de operación)."
+        "body": "Hola {nombre}, para pagar tu crédito {loan} realiza la transferencia al inversionista {inversionista}:\n\nCCI: {cci}\nNúmero de cuenta: {cuenta_bancaria}\nBanco: {banco}\n\nPróxima cuota: {cuota} (vence {fecha_venc}). Cuando pagues, envíanos foto del comprobante con el monto y te lo registramos."
       },
       "whatsapp": {
-        "text": "*Datos de pago — PrestamYpe*\nCrédito {loan}\nCuenta CCI: {cci}\nBanco: {banco}\nPróxima cuota: {cuota} (vence {fecha_venc})\nEnvíanos tu comprobante cuando pagues."
+        "text": "*Datos de pago — PrestamYpe*\nCrédito {loan}\nInversionista: {inversionista}\nCuenta CCI: {cci}\nNúmero de cuenta: {cuenta_bancaria}\nBanco: {banco}\nPróxima cuota: {cuota} (vence {fecha_venc})\nEnvíanos foto del comprobante cuando pagues."
       }
     },
     "constancia_comprobante": {
@@ -118,7 +118,7 @@
     "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
     "patterns": ["cu[aá]nt[oa].*(debo|pago|deuda|cuota)", "(saldo|deuda).*(pendiente|actual|tengo)"],
     "chips": ["Subir comprobante", "Datos de pago", "Hablar con un asesor"],
-    "template": "Tu crédito {loan} tiene un saldo de {saldo}. La próxima cuota es de {cuota} y vence el {fecha_venc}. Estado: {estado}.",
+    "template": "Tu crédito {loan} tiene un saldo pendiente de {saldo}. La próxima cuota es de {cuota} y vence el {fecha_venc}. Banco: {banco} | Inversionista: {inversionista}. Estado: {estado}.",
     "list": {
       "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
       "item": "• Crédito {loan}: saldo {saldo}, cuota {cuota} (vence {fecha_venc}) — {estado}.",
@@ -159,7 +159,7 @@
     "keywords": ["donde pago", "dónde pago", "como pago", "cómo pago", "a que cuenta", "a qué cuenta", "numero de cuenta", "cuenta para pagar", "cci"],
     "patterns": ["(d[oó]nde|c[oó]mo|qu[eé] cuenta).*(pag|abon|deposit)"],
     "chips": ["Subir comprobante", "Ver mi deuda", "Hablar con un asesor"],
-    "template": "Puedes pagar tu crédito {loan} a la cuenta CCI {cci} del banco {banco}. Cuando pagues, envíame el comprobante (CCI, monto y número de operación) y lo registro."
+    "template": "Puedes pagar tu crédito {loan} al inversionista {inversionista} a la cuenta CCI {cci} del banco {banco} (número de cuenta: {cuenta_bancaria}). Cuando pagues, envíame foto del comprobante con el monto y te lo registro."
   },
 
   "comprobante_reportar": {

@@ -116,9 +116,15 @@ async def consultar_deuda(profile: dict) -> dict:
         # destination account the borrower must transfer to (shown complete in
         # the panel so they can pay); ``cci_masked`` is kept for any consumer
         # that still wants the masked form (e.g. chat copy).
+        # ``cuenta_bancaria`` is the banco's own account number (numero_de_cuenta),
+        # shorter than the CCI — surfaced for PrestamYpe P2P display.
+        # ``inversionista`` is the fund/person who financed the loan (P2P model).
+        # ``capital`` (principal_original) is intentionally omitted — not user-facing.
         "banco": profile.get("banco"),
         "cci": profile.get("cci"),
         "cci_masked": _mask_cci(profile.get("cci")),
+        "cuenta_bancaria": profile.get("cuenta_bancaria") or None,
+        "inversionista": profile.get("inversionista") or None,
     }
 
     # PrestamYpe casuística: un mismo DNI puede tener VARIOS créditos vigentes.
@@ -167,6 +173,8 @@ def _credit_brief(c: dict, sym: str) -> dict:
         "banco": c.get("banco"),
         "cci": c.get("cci"),
         "cci_masked": _mask_cci(c.get("cci")),
+        "cuenta_bancaria": c.get("cuenta_bancaria") or None,
+        "inversionista": c.get("inversionista") or None,
     }
 
 

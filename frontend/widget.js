@@ -981,6 +981,10 @@
     if (c.next_due_date) {
       rows.push(`<div class="pu-card-row"><span class="k">Vence</span><span class="v">${escapeHtml(c.next_due_date)}</span></div>`);
     }
+    // Inversionista (P2P fund / person who financed the loan — PrestamYpe model).
+    if (c.inversionista) {
+      rows.push(`<div class="pu-card-row"><span class="k">Inversionista</span><span class="v">${escapeHtml(c.inversionista)}</span></div>`);
+    }
     // Destination account for the payment — shown COMPLETE so the borrower can
     // transfer. Falls back to the masked form only if the full one is absent.
     const account = c.cci || c.cci_masked;
@@ -988,7 +992,11 @@
       const acct = c.banco
         ? `${escapeHtml(account)} · ${escapeHtml(c.banco)}`
         : escapeHtml(account);
-      rows.push(`<div class="pu-card-row pu-card-acct"><span class="k">Cuenta para realizar el pago</span><span class="v">${acct}</span></div>`);
+      rows.push(`<div class="pu-card-row pu-card-acct"><span class="k">Cuenta CCI para el pago</span><span class="v">${acct}</span></div>`);
+    }
+    // Banco account number (numero_de_cuenta — shorter, same-bank reference).
+    if (c.cuenta_bancaria) {
+      rows.push(`<div class="pu-card-row"><span class="k">Número de cuenta</span><span class="v">${escapeHtml(c.cuenta_bancaria)}</span></div>`);
     }
     let grupal = "";
     if (c.is_grupal && Array.isArray(c.codeudores) && c.codeudores.length) {
