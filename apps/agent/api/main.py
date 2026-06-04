@@ -250,18 +250,60 @@ app.include_router(webhooks_router)
 app.include_router(chathub_router)
 
 
-# ── Demo frontend (PrestaUnion landing + chat widget) ──
-# Mounted LAST so it never shadows API routes.
+# ── Demo frontend (landing + chat widget) ──────────────────────────────────
+# GET / is registered as an explicit route BEFORE the StaticFiles mount so
+# Starlette's router picks it up before the catch-all static handler.
+# The route reads DEFAULT_TENANT once at startup, selects the per-tenant
+# index.html (frontend/tenants/<tenant>/index.html) when it exists, falls
+# back to the generic frontend/index.html otherwise, replaces the __TENANT__
+# sentinel with the resolved tenant name, and caches the result in memory.
+# All other assets (widget.js, embed.js, favicon, /assets/…) continue to be
+# served by the StaticFiles mount unchanged.
 def _mount_demo_frontend() -> None:
+    import os as _os
     from pathlib import Path as _FPath
+    from fastapi import Request as _Request
+    from fastapi.responses import HTMLResponse as _HTMLResponse
     from fastapi.staticfiles import StaticFiles
 
     for candidate in (_FPath("/app/frontend"),
                       _FPath(__file__).resolve().parent.parent.parent.parent / "frontend"):
-        if candidate.exists():
-            app.mount("/", StaticFiles(directory=str(candidate), html=True), name="demo")
-            logger.info("Demo frontend mounted from {}", candidate)
-            return
+        if not candidate.exists():
+            continue
+
+        # Resolve tenant from environment.  "prestaunion" is the documented
+        # dev fallback only — production containers MUST set DEFAULT_TENANT.
+        tenant = _os.environ.get("DEFAULT_TENANT", "prestaunion")
+
+        # Select per-tenant file when available, otherwise use the generic one.
+        per_tenant_path = candidate / "tenants" / tenant / "index.html"
+        generic_path = candidate / "index.html"
+        source = per_tenant_path if per_tenant_path.exists() else generic_path
+
+        if not source.exists():
+            logger.warning(
+                "Demo frontend: neither tenants/{}/index.html nor index.html found — "
+                "skipping GET / handler",
+                tenant,
+            )
+        else:
+            _cached_html = source.read_bytes().replace(b'"__TENANT__"', b'"' + tenant.encode() + b'"')
+
+            @app.get("/", include_in_schema=False)
+            async def _serve_root() -> _HTMLResponse:  # noqa: RUF029
+                return _HTMLResponse(
+                    content=_cached_html,
+                    media_type="text/html; charset=utf-8",
+                )
+
+            logger.info(
+                "Demo frontend GET / → {} (tenant={})", source.name, tenant
+            )
+
+        app.mount("/", StaticFiles(directory=str(candidate), html=True), name="demo")
+        logger.info("Demo frontend mounted from {}", candidate)
+        return
+
     logger.info("Demo frontend directory not found — skipping static mount")
 
 

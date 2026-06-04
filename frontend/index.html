@@ -369,6 +369,10 @@
        tenant absent from THEME_HINTS just paints the neutral default color and
        reveals content once /branding lands — still no cross-tenant flash.
        ──────────────────────────────────────────────────────────────────────── -->
+  <!-- Server-injected tenant sentinel. The value "__TENANT__" is replaced at
+       startup by _mount_demo_frontend() with the actual DEFAULT_TENANT env value.
+       Keep this script BEFORE THEME_HINTS so the anti-flash gate can read it. -->
+  <script>window.__TENANT__ = "__TENANT__";</script>
   <script>
     (() => {
       "use strict";
@@ -382,7 +386,7 @@
       };
       try {
         document.documentElement.classList.add("branding-pending");
-        const t = (new URLSearchParams(location.search).get("tenant") || "prestaunion")
+        const t = (window.__TENANT__ || new URLSearchParams(location.search).get("tenant") || "prestaunion")
           .replace(/[^a-z0-9_-]/gi, "");
         const hint = THEME_HINTS[t];
         if (hint) {
@@ -491,7 +495,7 @@
     (() => {
       "use strict";
       const qs = new URLSearchParams(location.search);
-      const TENANT = (qs.get("tenant") || "prestaunion").replace(/[^a-z0-9_-]/gi, "");
+      const TENANT = (window.__TENANT__ || qs.get("tenant") || "prestaunion").replace(/[^a-z0-9_-]/gi, "");
 
       // Derive the API base from this page's own path (works under a proxy prefix).
       const API = (() => {

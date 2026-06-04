@@ -67,7 +67,7 @@
     CT = opts.ct || (scriptEl && scriptEl.dataset.ct) || qs.get("ct") || null;
     // Tenant-aware: selects which tenant the widget talks to and skins for.
     // Default "prestaunion" keeps the original Vox theme untouched.
-    TENANT = (opts.tenant || (scriptEl && scriptEl.dataset.tenant) || qs.get("tenant") || "prestaunion")
+    TENANT = (opts.tenant || (scriptEl && scriptEl.dataset.tenant) || window.__TENANT__ || qs.get("tenant") || "prestaunion")
       .replace(/[^a-z0-9_-]/gi, "");
   }
 

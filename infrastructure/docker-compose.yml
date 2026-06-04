@@ -6,6 +6,10 @@ services:
     container_name: pubot-demo
     env_file:
       - ../.env
+    environment:
+      # Deployment-time tenant identity. Overrides any ?tenant= query param.
+      # Set DEFAULT_TENANT: prestamype on the prestamype remote compose.
+      DEFAULT_TENANT: prestaunion
     # Front + API in one container on :8000. Traefik (file-based dynamic config,
     # see infrastructure/traefik/pubot.yml) routes demos.mibot.cl/pubot-gj5w2a0p
     # here and strips the prefix. No published host port — Traefik reaches it on
