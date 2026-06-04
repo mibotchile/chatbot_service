@@ -45,8 +45,9 @@ def _session_token(visitor_id: str = "test-visitor") -> str:
     return m._generate_session_token(visitor_id)
 
 
-_GATE_PK = "pk_live_PLACEHOLDER_PRESTAUNION"
-_GATE_ORIGIN = "https://demos.mibot.cl"
+from _gate import GATE_ORIGIN as _GATE_ORIGIN, current_pk as _current_pk
+
+_GATE_PK = _current_pk("prestaunion")
 
 
 def _gate_headers() -> dict:

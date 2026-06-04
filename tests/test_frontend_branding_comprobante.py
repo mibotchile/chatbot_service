@@ -35,8 +35,9 @@ def client(monkeypatch, tmp_path):
     return TestClient(m.app)
 
 
-_GATE_PK = "pk_live_PLACEHOLDER_PRESTAMYPE"
-_GATE_ORIGIN = "https://demos.mibot.cl"
+from _gate import GATE_ORIGIN as _GATE_ORIGIN, current_pk as _current_pk
+
+_GATE_PK = _current_pk("prestamype")
 
 
 def _security_headers():
