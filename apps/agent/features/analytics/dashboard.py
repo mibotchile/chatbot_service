@@ -96,7 +96,7 @@ def _schema() -> str:
 @dashboard_router.get("/leads", dependencies=[Depends(verify_dashboard_key)])
 async def list_leads(
     request: Request,
-    status: str | None = Query(None, description="Filter by debtor_level"),
+    status: str | None = Query(None, description="Filter by record_level"),
     from_date: date | None = Query(None, alias="from", description="Created after (YYYY-MM-DD)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -109,7 +109,7 @@ async def list_leads(
     idx = 1
 
     if status:
-        conditions.append(f"debtor_level = ${idx}")
+        conditions.append(f"record_level = ${idx}")
         args.append(status)
         idx += 1
 
@@ -128,8 +128,8 @@ async def list_leads(
 
     query = f"""
         SELECT conversation_id, visitor_id, name, email, phone,
-               project_interest, debtor_level, created_at
-        FROM {schema}.sorelia_debtors
+               project_interest, record_level, created_at
+        FROM {schema}.debtors
         {where}
         ORDER BY created_at DESC
         LIMIT ${limit_idx} OFFSET ${offset_idx}
@@ -138,7 +138,7 @@ async def list_leads(
     rows = await _safe_fetch(pool, query, *args)
 
     # Total count for pagination
-    count_query = f"SELECT COUNT(*) FROM {schema}.sorelia_debtors {where}"
+    count_query = f"SELECT COUNT(*) FROM {schema}.debtors {where}"
     count_args = [a for a in args[:len(conditions)]]  # only filter args
     total = await _safe_fetchval(pool, count_query, *count_args) if conditions else await _safe_fetchval(pool, count_query)
 
@@ -157,7 +157,7 @@ async def get_lead_detail(request: Request, conversation_id: str):
     lead = await _safe_fetchrow(
         pool,
         f"""
-        SELECT * FROM {schema}.sorelia_debtors
+        SELECT * FROM {schema}.debtors
         WHERE conversation_id = $1
         """,
         conversation_id,
@@ -170,7 +170,7 @@ async def get_lead_detail(request: Request, conversation_id: str):
         pool,
         f"""
         SELECT role, content, created_at
-        FROM {schema}.sorelia_conversations
+        FROM {schema}.conversations
         WHERE conversation_id = $1
         ORDER BY created_at ASC
         """,
@@ -193,22 +193,22 @@ async def get_stats(request: Request):
 
     total_conversations = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(DISTINCT conversation_id) FROM {schema}.sorelia_conversations",
+        f"SELECT COUNT(DISTINCT conversation_id) FROM {schema}.conversations",
     )
 
     total_debtors = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_debtors WHERE debtor_level IN ('DEBTOR', 'DEBTOR_VERIFIED')",
+        f"SELECT COUNT(*) FROM {schema}.debtors WHERE record_level IN ('DEBTOR', 'DEBTOR_VERIFIED')",
     )
 
     total_verified = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_debtors WHERE debtor_level = 'DEBTOR_VERIFIED'",
+        f"SELECT COUNT(*) FROM {schema}.debtors WHERE record_level = 'DEBTOR_VERIFIED'",
     )
 
     debtors_today = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_debtors WHERE created_at >= $1",
+        f"SELECT COUNT(*) FROM {schema}.debtors WHERE created_at >= $1",
         today_start,
     )
 
@@ -216,7 +216,7 @@ async def get_stats(request: Request):
         pool,
         f"""
         SELECT project_interest AS name, COUNT(*) AS count
-        FROM {schema}.sorelia_debtors
+        FROM {schema}.debtors
         WHERE project_interest IS NOT NULL AND project_interest != ''
         GROUP BY project_interest
         ORDER BY count DESC
@@ -226,7 +226,7 @@ async def get_stats(request: Request):
 
     total_visitors = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(*) FROM {schema}.sorelia_visitors",
+        f"SELECT COUNT(*) FROM {schema}.visitors",
     )
 
     return {
@@ -263,18 +263,18 @@ async def list_conversations(
                 conversation_id,
                 content AS last_message,
                 created_at AS last_message_at
-            FROM {schema}.sorelia_conversations
+            FROM {schema}.conversations
             ORDER BY conversation_id, created_at DESC
         )
         SELECT
             lm.conversation_id,
             lm.last_message,
             lm.last_message_at,
-            d.debtor_level,
+            d.record_level,
             d.name AS visitor_name,
             d.project_interest
         FROM last_msg lm
-        LEFT JOIN {schema}.sorelia_debtors d ON lm.conversation_id = d.conversation_id
+        LEFT JOIN {schema}.debtors d ON lm.conversation_id = d.conversation_id
         ORDER BY lm.last_message_at DESC
         LIMIT $1 OFFSET $2
     """
@@ -283,7 +283,7 @@ async def list_conversations(
 
     total = await _safe_fetchval(
         pool,
-        f"SELECT COUNT(DISTINCT conversation_id) FROM {schema}.sorelia_conversations",
+        f"SELECT COUNT(DISTINCT conversation_id) FROM {schema}.conversations",
     )
 
     return {"conversations": rows, "total": total, "limit": limit, "offset": offset}

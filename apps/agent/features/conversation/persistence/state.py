@@ -1,7 +1,7 @@
 """Conversation state with PostgreSQL persistence.
 
 When a db_pool (asyncpg.Pool) is provided with a schema name, messages and
-lead data are persisted to sorelia_conversations automatically.  Without it,
+record data are persisted to the conversations table automatically.  Without it,
 everything stays in-memory -- this is the default and keeps existing tests
 working without changes.
 """
@@ -38,8 +38,7 @@ class ConversationState:
         db_schema: str = "dev",
         visitor_id: str | None = None,
         history: list[dict] | None = None,
-        debtor_data: dict | None = None,
-        lead_data: dict | None = None,  # backward-compat fallback (dual-read)
+        record_data: dict | None = None,
         capture_spec: CaptureSpec | None = None,
     ):
         self.conversation_id = conversation_id
@@ -47,10 +46,8 @@ class ConversationState:
         self.db_schema = db_schema
         self.visitor_id = visitor_id
         self.history: list[dict] = list(history) if history else []
-        # Dual-read: prefer debtor_data; fall back to lead_data for existing rows
-        initial = debtor_data if debtor_data is not None else lead_data
         _spec = capture_spec if capture_spec is not None else _default_spec()
-        self.debtor = Record(spec=_spec, initial_data=initial)
+        self.debtor = Record(spec=_spec, initial_data=record_data)
         self.page_context: dict = {}
         self.brochures_sent: set[str] = set()  # project slugs already emailed
         self.debtor_notified: bool = False  # sales team already notified
@@ -96,8 +93,8 @@ class ConversationState:
                 self.conversation_id,
                 visitor_id=self.visitor_id,
                 history=self.history,
-                debtor_data=self.debtor.collected,
-                debtor_level=self.debtor.level,
+                record_data=self.debtor.collected,
+                record_level=self.debtor.level,
                 page_context=self.page_context,
             )
         except Exception:
@@ -146,7 +143,7 @@ class StateStore:
 
         if conversation_id not in self._conversations:
             history: list[dict] = []
-            debtor_data: dict = {}
+            record_data: dict = {}
             page_context: dict = {}
 
             # Try loading from DB
@@ -159,10 +156,7 @@ class StateStore:
                     )
                     if row:
                         history = row.get("history") or []
-                        # Dual-read: prefer debtor_data; fall back to lead_data when debtor_data
-                        # is absent or still '{}' (falsy) — expected during the pre-migration window
-                        # when rows were written by old code and debtor_data has not been backfilled.
-                        debtor_data = row.get("debtor_data") or row.get("lead_data") or {}
+                        record_data = row.get("record_data") or {}
                         page_context = row.get("page_context") or {}
                         visitor_id = visitor_id or row.get("visitor_id")
                 except Exception:
@@ -177,7 +171,7 @@ class StateStore:
                 db_schema=self.db_schema,
                 visitor_id=visitor_id,
                 history=history,
-                debtor_data=debtor_data,
+                record_data=record_data,
                 capture_spec=self._capture_spec,
             )
             conv.page_context = page_context

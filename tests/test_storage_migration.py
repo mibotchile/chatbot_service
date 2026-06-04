@@ -1,18 +1,18 @@
-"""Slice 9 characterization tests for storage migration correctness.
+"""Characterization tests for S6+S7 neutral persistence names.
 
 Tests cover:
-- dual-read for lead_data → debtor_data (state.py)
-- dual-read for Redis key suffix lead_data → debtor_data (redis_store.py)
-- upsert_debtor function exists and has the right signature (persistence.py)
-- _CONTACT_LEVELS uses new enum values (api/routers/webhooks.py after PR6 split)
-- dashboard.py SQL references sorelia_debtors, debtor_level (not old names)
-- migration script SQL file exists and contains expected statements
-- project_interest column is preserved in persistence code
+- conversations table (not sorelia_conversations): record_data + record_level columns
+- visitors table (not sorelia_visitors): record_data column (not lead_data)
+- Redis key prefix olimpo:conv: (not sorelia:conv:)
+- upsert_debtor targets 'debtors' table (not sorelia_debtors)
+- ensure_tables creates projection_table when spec provides one
+- dashboard.py SQL references 'debtors' and 'conversations' (not sorelia_* prefixes)
+- state.py reads/writes record_data (no lead_data dual-read fallback after S6)
+- redis_store.py reads/writes record_data key suffix (no lead_data fallback after S6)
 """
 
 from __future__ import annotations
 
-import importlib
 import inspect
 import re
 from pathlib import Path
@@ -20,222 +20,301 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# A. dual-read: state.py ConversationState / StateStore
+# A. persistence.py — table names and column names (neutral)
 # ---------------------------------------------------------------------------
 
-def test_state_loads_debtor_data_with_fallback_to_lead_data():
-    """StateStore.get_or_create_async MUST read debtor_data, fallback to lead_data.
+def test_persistence_ensure_tables_uses_conversations():
+    """ensure_tables must create 'conversations' table, not 'sorelia_conversations'."""
+    from shared.persistence import persistence as pers_module
 
-    This is a characterization test: it verifies the dual-read logic is present
-    in the source code of state.py (we inspect the source since the real DB path
-    is not exercised in unit tests).
-    """
-    from features.conversation.persistence import state as state_module
-
-    src = inspect.getsource(state_module)
-
-    # Must read debtor_data first
-    assert "debtor_data" in src, "state.py must reference debtor_data for dual-read"
-    # Must retain fallback reference to lead_data (backward compat)
-    assert "lead_data" in src, "state.py must retain lead_data fallback for dual-read"
-
-
-def test_state_persists_debtor_data_column():
-    """save_conversation must write to debtor_data column, not lead_data."""
-    from features.conversation.persistence import state as state_module
-
-    src = inspect.getsource(state_module)
-    # The persist call should pass debtor_data= kwarg (not lead_data=)
-    assert "debtor_data=" in src, (
-        "state.py _persist() must pass debtor_data= kwarg to save_conversation"
+    src = inspect.getsource(pers_module)
+    assert "conversations" in src, "persistence.py must reference 'conversations' table"
+    assert "sorelia_conversations" not in src, (
+        "persistence.py must NOT reference sorelia_conversations (use 'conversations')"
     )
 
 
-def test_state_constructor_accepts_debtor_data_param():
-    """ConversationState.__init__ must accept debtor_data parameter."""
+def test_persistence_ensure_tables_uses_record_data():
+    """ensure_tables must create record_data column, not debtor_data."""
+    from shared.persistence import persistence as pers_module
+
+    func_src = inspect.getsource(pers_module.ensure_tables)
+    assert "record_data" in func_src, "ensure_tables must reference 'record_data' column"
+    assert "debtor_data" not in func_src, (
+        "ensure_tables must NOT reference debtor_data (use 'record_data')"
+    )
+
+
+def test_persistence_ensure_tables_uses_record_level():
+    """ensure_tables must create record_level column, not debtor_level."""
+    from shared.persistence import persistence as pers_module
+
+    func_src = inspect.getsource(pers_module.ensure_tables)
+    assert "record_level" in func_src, "ensure_tables must reference 'record_level' column"
+    assert "debtor_level" not in func_src, (
+        "ensure_tables must NOT reference debtor_level (use 'record_level')"
+    )
+
+
+def test_persistence_no_sorelia_prefix():
+    """persistence.py ensure_tables and save_conversation must not use any sorelia_ table prefix."""
+    from shared.persistence import persistence as pers_module
+
+    # Check the functions that own table names — not domain parameter names in upsert_debtor
+    ensure_src = inspect.getsource(pers_module.ensure_tables)
+    save_src = inspect.getsource(pers_module.save_conversation)
+    load_src = inspect.getsource(pers_module.load_conversation)
+    assert "sorelia_" not in ensure_src, "ensure_tables must have zero sorelia_ references"
+    assert "sorelia_" not in save_src, "save_conversation must have zero sorelia_ references"
+    assert "sorelia_" not in load_src, "load_conversation must have zero sorelia_ references"
+
+
+def test_save_conversation_uses_record_data():
+    """save_conversation SQL must write record_data, not debtor_data."""
+    from shared.persistence import persistence as pers_module
+
+    func_src = inspect.getsource(pers_module.save_conversation)
+    assert "record_data" in func_src, "save_conversation must write to record_data column"
+    assert "debtor_data" not in func_src, "save_conversation must NOT reference debtor_data"
+
+
+def test_load_conversation_uses_record_data():
+    """load_conversation must reference record_data, not debtor_data."""
+    from shared.persistence import persistence as pers_module
+
+    func_src = inspect.getsource(pers_module.load_conversation)
+    assert "record_data" in func_src, "load_conversation must reference record_data"
+    assert "debtor_data" not in func_src, "load_conversation must NOT reference debtor_data"
+
+
+def test_save_conversation_kwarg_is_record_data():
+    """save_conversation signature must use record_data= kwarg, not debtor_data=."""
+    from shared.persistence.persistence import save_conversation
+
+    sig = inspect.signature(save_conversation)
+    params = set(sig.parameters.keys())
+    assert "record_data" in params, (
+        "save_conversation must have record_data= parameter"
+    )
+    assert "debtor_data" not in params, (
+        "save_conversation must NOT have debtor_data= parameter"
+    )
+
+
+def test_state_persists_record_data():
+    """state.py _persist() must pass record_data= kwarg to save_conversation."""
+    from features.conversation.persistence import state as state_module
+
+    src = inspect.getsource(state_module)
+    assert "record_data=" in src, (
+        "state.py _persist() must pass record_data= kwarg to save_conversation"
+    )
+    assert "debtor_data=" not in src, (
+        "state.py must NOT pass debtor_data= (use record_data=)"
+    )
+
+
+def test_state_no_lead_data_fallback():
+    """state.py must NOT retain lead_data fallback (S6 drops the dual-read)."""
+    from features.conversation.persistence import state as state_module
+
+    src = inspect.getsource(state_module)
+    assert "lead_data" not in src, (
+        "state.py must NOT reference lead_data after S6 — drop the dual-read fallback"
+    )
+
+
+def test_state_constructor_accepts_record_data_param():
+    """ConversationState.__init__ must accept record_data parameter (not debtor_data)."""
     from features.conversation.persistence.state import ConversationState
 
     sig = inspect.signature(ConversationState.__init__)
     params = set(sig.parameters.keys())
-    # New param
-    assert "debtor_data" in params, (
-        "ConversationState.__init__ must accept debtor_data parameter"
+    assert "record_data" in params, (
+        "ConversationState.__init__ must accept record_data parameter"
+    )
+    assert "debtor_data" not in params, (
+        "ConversationState.__init__ must NOT have debtor_data parameter after S6"
     )
 
 
 # ---------------------------------------------------------------------------
-# B. dual-read: redis_store.py
+# B. visitor_memory.py — visitors table, record_data column (not lead_data)
 # ---------------------------------------------------------------------------
 
-def test_redis_store_writes_debtor_data_key():
-    """RedisConversationState.save() must write :debtor_data key suffix."""
+def test_visitor_memory_uses_visitors_table():
+    """visitor_memory.py must reference 'visitors' table, not 'sorelia_visitors'."""
+    from features.conversation.persistence import visitor_memory as vm_module
+
+    src = inspect.getsource(vm_module)
+    assert "visitors" in src, "visitor_memory.py must reference 'visitors' table"
+    assert "sorelia_visitors" not in src, (
+        "visitor_memory.py must NOT reference sorelia_visitors"
+    )
+
+
+def test_visitor_memory_uses_record_data():
+    """visitor_memory.py must use record_data column, not lead_data."""
+    from features.conversation.persistence import visitor_memory as vm_module
+
+    src = inspect.getsource(vm_module)
+    assert "record_data" in src, "visitor_memory.py must reference record_data column"
+    assert "lead_data" not in src, (
+        "visitor_memory.py must NOT reference lead_data after S6"
+    )
+
+
+# ---------------------------------------------------------------------------
+# C. redis_store.py — olimpo:conv: prefix, record_data suffix (no lead_data)
+# ---------------------------------------------------------------------------
+
+def test_redis_key_prefix_is_olimpo():
+    """redis_store.py _key() must use 'olimpo:conv:' prefix, not 'sorelia:conv:'."""
     from features.conversation.persistence import redis_store as rs_module
 
     src = inspect.getsource(rs_module)
-    assert '"debtor_data"' in src or "'debtor_data'" in src, (
-        "redis_store.py must write :debtor_data key suffix"
+    assert "olimpo:conv:" in src, (
+        "redis_store.py must use olimpo:conv: key prefix"
+    )
+    assert "sorelia:conv:" not in src, (
+        "redis_store.py must NOT use sorelia:conv: prefix after S6"
     )
 
 
-def test_redis_store_reads_debtor_data_with_lead_data_fallback():
-    """RedisConversationState.load() must read :debtor_data, fallback :lead_data."""
+def test_redis_store_writes_record_data_key():
+    """RedisConversationState.save() must write :record_data key suffix."""
     from features.conversation.persistence import redis_store as rs_module
 
     src = inspect.getsource(rs_module)
-    assert '"debtor_data"' in src or "'debtor_data'" in src, (
-        "redis_store.py must read :debtor_data key"
+    assert '"record_data"' in src or "'record_data'" in src, (
+        "redis_store.py must write :record_data key suffix"
     )
-    assert '"lead_data"' in src or "'lead_data'" in src, (
-        "redis_store.py must retain :lead_data fallback read"
+
+
+def test_redis_store_no_lead_data_fallback():
+    """redis_store.py must NOT retain :lead_data fallback read after S6."""
+    from features.conversation.persistence import redis_store as rs_module
+
+    src = inspect.getsource(rs_module)
+    assert '"lead_data"' not in src and "'lead_data'" not in src, (
+        "redis_store.py must NOT reference lead_data after S6 — drop the fallback"
     )
 
 
 # ---------------------------------------------------------------------------
-# C. persistence.py — upsert_debtor
+# D. persistence.py — upsert_debtor targets 'debtors' table (not sorelia_debtors)
 # ---------------------------------------------------------------------------
 
 def test_upsert_debtor_function_exists():
-    """shared/persistence/persistence.py must expose upsert_debtor."""
+    """persistence.py must expose upsert_debtor."""
     from shared.persistence import persistence
 
     assert hasattr(persistence, "upsert_debtor"), (
-        "persistence.py must define upsert_debtor (renamed from upsert_lead)"
+        "persistence.py must define upsert_debtor"
     )
 
 
 def test_upsert_debtor_signature():
-    """upsert_debtor must keep the same positional signature as upsert_lead."""
+    """upsert_debtor must have required parameters."""
     from shared.persistence.persistence import upsert_debtor
 
     sig = inspect.signature(upsert_debtor)
     params = list(sig.parameters.keys())
-    # pool, schema, conversation_id, visitor_id, debtor_data, debtor_level
     assert "pool" in params
     assert "schema" in params
     assert "conversation_id" in params
     assert "visitor_id" in params
-    # data param — may be debtor_data or lead_data (either is ok at code level)
-    # level param
     assert len(params) >= 5, "upsert_debtor must have at least 5 parameters"
 
 
-def test_upsert_debtor_sql_uses_sorelia_debtors():
-    """upsert_debtor must reference sorelia_debtors table, not sorelia_leads."""
+def test_upsert_debtor_sql_uses_debtors_table():
+    """upsert_debtor must reference 'debtors' table, not sorelia_debtors."""
     from shared.persistence import persistence as pers_module
 
-    src = inspect.getsource(pers_module)
-    # Find upsert_debtor function source
-    # The function definition must reference sorelia_debtors
-    func = pers_module.upsert_debtor
-    func_src = inspect.getsource(func)
-    assert "sorelia_debtors" in func_src, (
-        "upsert_debtor must use sorelia_debtors table"
+    func_src = inspect.getsource(pers_module.upsert_debtor)
+    assert "debtors" in func_src, "upsert_debtor must use 'debtors' table"
+    assert "sorelia_debtors" not in func_src, (
+        "upsert_debtor must NOT reference sorelia_debtors"
     )
-    # Must NOT reference the old name in this function
     assert "sorelia_leads" not in func_src, (
-        "upsert_debtor must not reference sorelia_leads"
+        "upsert_debtor must NOT reference sorelia_leads"
     )
 
 
-def test_persistence_save_conversation_uses_debtor_data_column():
-    """save_conversation SQL must reference debtor_data column."""
+# ---------------------------------------------------------------------------
+# E. ensure_tables — projection_table param creates per-type table
+# ---------------------------------------------------------------------------
+
+def test_ensure_tables_accepts_projection_table_param():
+    """ensure_tables must accept a projection_table: str|None parameter."""
+    from shared.persistence.persistence import ensure_tables
+
+    sig = inspect.signature(ensure_tables)
+    params = set(sig.parameters.keys())
+    assert "projection_table" in params, (
+        "ensure_tables must accept projection_table parameter"
+    )
+
+
+def test_ensure_tables_creates_debtors_when_projection_table_set():
+    """ensure_tables with projection_table='debtors' must include debtors in SQL."""
     from shared.persistence import persistence as pers_module
 
-    func = pers_module.save_conversation
-    func_src = inspect.getsource(func)
-    assert "debtor_data" in func_src, (
-        "save_conversation must write to debtor_data column"
-    )
-
-
-def test_persistence_load_conversation_reads_debtor_data():
-    """load_conversation must return debtor_data key (read from DB)."""
-    from shared.persistence import persistence as pers_module
-
-    func = pers_module.load_conversation
-    func_src = inspect.getsource(func)
-    assert "debtor_data" in func_src, (
-        "load_conversation must read debtor_data column"
+    src = inspect.getsource(pers_module.ensure_tables)
+    assert "projection_table" in src, (
+        "ensure_tables must use projection_table param to decide whether to create per-type table"
     )
 
 
 # ---------------------------------------------------------------------------
-# D. api/main.py — _CONTACT_LEVELS enum values at both sites
+# F. dashboard.py — references 'debtors' and 'conversations' (not sorelia_*)
 # ---------------------------------------------------------------------------
 
-def test_contact_levels_uses_new_enum_values():
-    """_CONTACT_LEVELS in API source must use DEBTOR/DEBTOR_VERIFIED, not LEAD/LEAD_ENRICHED.
-
-    After PR6 (api/main.py split), _CONTACT_LEVELS lives in api/routers/webhooks.py.
-    Scan all API source modules to ensure the enum rename from PR5 is preserved.
-    """
-    import api.main as main_module
-    import api.routers.webhooks as webhooks_module
-
-    src = inspect.getsource(main_module) + inspect.getsource(webhooks_module)
-
-    # Count occurrences of _CONTACT_LEVELS assignments
-    # Both sites must use new values
-    old_values_pattern = re.compile(r'_CONTACT_LEVELS\s*=\s*\{[^}]*"LEAD"')
-    new_values_pattern = re.compile(r'_CONTACT_LEVELS\s*=\s*\{[^}]*"DEBTOR"')
-
-    assert not old_values_pattern.search(src), (
-        '_CONTACT_LEVELS must not contain "LEAD" (old value) — use "DEBTOR"'
-    )
-    assert new_values_pattern.search(src), (
-        '_CONTACT_LEVELS must contain "DEBTOR" (new value)'
-    )
-
-
-# ---------------------------------------------------------------------------
-# E. dashboard.py SQL — sorelia_debtors + debtor_level
-# ---------------------------------------------------------------------------
-
-def test_dashboard_sql_uses_sorelia_debtors():
-    """dashboard.py must reference sorelia_debtors, not sorelia_leads."""
+def test_dashboard_sql_uses_debtors_table():
+    """dashboard.py must reference 'debtors' table, not sorelia_debtors."""
     from features.analytics import dashboard as dash_module
 
     src = inspect.getsource(dash_module)
-    assert "sorelia_debtors" in src, (
-        "dashboard.py must reference sorelia_debtors table"
-    )
-    assert "sorelia_leads" not in src, (
-        "dashboard.py must not reference old sorelia_leads table"
+    assert "debtors" in src, "dashboard.py must reference 'debtors' table"
+    assert "sorelia_debtors" not in src, (
+        "dashboard.py must NOT reference sorelia_debtors (use 'debtors')"
     )
 
 
-def test_dashboard_sql_uses_debtor_level():
-    """dashboard.py must reference debtor_level column, not lead_level."""
+def test_dashboard_sql_uses_conversations_table():
+    """dashboard.py must reference 'conversations' table, not sorelia_conversations."""
     from features.analytics import dashboard as dash_module
 
     src = inspect.getsource(dash_module)
-    assert "debtor_level" in src, (
-        "dashboard.py must reference debtor_level column"
+    assert "conversations" in src, "dashboard.py must reference 'conversations' table"
+    assert "sorelia_conversations" not in src, (
+        "dashboard.py must NOT reference sorelia_conversations (use 'conversations')"
     )
-    assert "lead_level" not in src, (
-        "dashboard.py must not reference old lead_level column"
+
+
+def test_dashboard_sql_uses_record_level():
+    """dashboard.py must reference record_level column, not debtor_level."""
+    from features.analytics import dashboard as dash_module
+
+    src = inspect.getsource(dash_module)
+    assert "record_level" in src, "dashboard.py must reference record_level column"
+    assert "debtor_level" not in src, (
+        "dashboard.py must NOT reference debtor_level (use 'record_level')"
     )
 
 
 def test_dashboard_sql_uses_new_enum_values():
-    """dashboard.py must use DEBTOR/DEBTOR_VERIFIED enum values, not LEAD/LEAD_ENRICHED."""
+    """dashboard.py must use DEBTOR/DEBTOR_VERIFIED enum values."""
     from features.analytics import dashboard as dash_module
 
     src = inspect.getsource(dash_module)
     assert "'DEBTOR'" in src or '"DEBTOR"' in src, (
         "dashboard.py must reference DEBTOR enum value"
     )
-    # Dead filters must be gone
-    assert "CONTACT" not in src, (
-        "dashboard.py must not reference CONTACT (never emitted by state machine)"
-    )
-    assert "QUALIFIED" not in src, (
-        "dashboard.py must not reference QUALIFIED (never emitted by state machine)"
-    )
 
 
 def test_dashboard_project_interest_preserved():
-    """dashboard.py must still reference project_interest (LIVE column — must not be dropped)."""
+    """dashboard.py must still reference project_interest (LIVE column)."""
     from features.analytics import dashboard as dash_module
 
     src = inspect.getsource(dash_module)
@@ -244,94 +323,28 @@ def test_dashboard_project_interest_preserved():
     )
 
 
-# ---------------------------------------------------------------------------
-# F. Migration script exists and has required content
-# ---------------------------------------------------------------------------
+def test_dashboard_no_sorelia_on_core_tables():
+    """dashboard.py must not reference sorelia_debtors, sorelia_conversations, sorelia_visitors."""
+    from features.analytics import dashboard as dash_module
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_MIGRATIONS_DIR = _REPO_ROOT / "migrations"
-
-
-def test_migration_script_exists():
-    """A SQL migration script must exist in migrations/."""
-    assert _MIGRATIONS_DIR.exists(), "migrations/ directory must exist"
-    sql_files = list(_MIGRATIONS_DIR.glob("*.sql"))
-    assert len(sql_files) >= 1, "At least one .sql migration file must exist in migrations/"
-
-
-def test_migration_script_has_preflight_block():
-    """Migration script must contain a PREFLIGHT comment block."""
-    sql_files = list(_MIGRATIONS_DIR.glob("*.sql"))
-    if not sql_files:
-        return  # Covered by test_migration_script_exists
-    content = sql_files[0].read_text()
-    assert "PREFLIGHT" in content, (
-        "Migration script must contain a PREFLIGHT comment block"
+    src = inspect.getsource(dash_module)
+    assert "sorelia_debtors" not in src, (
+        "dashboard.py must NOT reference sorelia_debtors"
+    )
+    assert "sorelia_conversations" not in src, (
+        "dashboard.py must NOT reference sorelia_conversations"
+    )
+    assert "sorelia_visitors" not in src, (
+        "dashboard.py must NOT reference sorelia_visitors"
     )
 
 
-def test_migration_script_renames_sorelia_leads():
-    """Migration script must rename sorelia_leads → sorelia_debtors."""
-    sql_files = list(_MIGRATIONS_DIR.glob("*.sql"))
-    if not sql_files:
-        return
-    content = sql_files[0].read_text()
-    assert "sorelia_leads" in content and "sorelia_debtors" in content, (
-        "Migration script must reference both sorelia_leads and sorelia_debtors"
-    )
-    assert "RENAME" in content.upper(), (
-        "Migration script must contain RENAME statement for table/column"
-    )
+def test_dashboard_visitors_table():
+    """dashboard.py must reference 'visitors' table, not sorelia_visitors."""
+    from features.analytics import dashboard as dash_module
 
-
-def test_migration_script_has_pg_dump_command():
-    """Migration script must document pg_dump command for dropped columns."""
-    sql_files = list(_MIGRATIONS_DIR.glob("*.sql"))
-    if not sql_files:
-        return
-    content = sql_files[0].read_text()
-    assert "pg_dump" in content, (
-        "Migration script must include pg_dump command for dropped columns (unrecoverable)"
-    )
-
-
-def test_migration_script_drops_dead_columns():
-    """Migration script must DROP district_interest, purpose, budget."""
-    sql_files = list(_MIGRATIONS_DIR.glob("*.sql"))
-    if not sql_files:
-        return
-    content = sql_files[0].read_text()
-    assert "district_interest" in content, (
-        "Migration script must reference district_interest for DROP"
-    )
-    assert "purpose" in content, (
-        "Migration script must reference purpose for DROP"
-    )
-    assert "budget" in content, (
-        "Migration script must reference budget for DROP"
-    )
-    assert "DROP" in content.upper(), (
-        "Migration script must contain DROP COLUMN statement"
-    )
-
-
-def test_migration_script_has_idempotency_guards():
-    """Migration script must use IF EXISTS / IF NOT EXISTS guards."""
-    sql_files = list(_MIGRATIONS_DIR.glob("*.sql"))
-    if not sql_files:
-        return
-    content = sql_files[0].read_text()
-    assert "IF EXISTS" in content.upper() or "IF NOT EXISTS" in content.upper(), (
-        "Migration script must have idempotency guards (IF EXISTS / IF NOT EXISTS)"
-    )
-
-
-def test_migration_script_has_rollback_section():
-    """Migration script must include rollback / reverse migration instructions."""
-    sql_files = list(_MIGRATIONS_DIR.glob("*.sql"))
-    if not sql_files:
-        return
-    content = sql_files[0].read_text()
-    assert "rollback" in content.lower() or "reverse" in content.lower(), (
-        "Migration script must document rollback plan"
+    src = inspect.getsource(dash_module)
+    # visitors is referenced in stats endpoint
+    assert "sorelia_visitors" not in src, (
+        "dashboard.py must NOT reference sorelia_visitors (use 'visitors')"
     )

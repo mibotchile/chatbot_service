@@ -151,9 +151,14 @@ async def lifespan(app: FastAPI):
     if db_pool is not None:
         try:
             from shared.persistence.persistence import ensure_tables
-            # Resolve capture spec from registry (default agent_type = "cobranza")
-            _default_spec = agent_type_registry.get("cobranza").capture_spec
-            await ensure_tables(db_pool, settings.database_schema)
+            # Resolve spec from registry (default agent_type = "cobranza")
+            _agent_spec = agent_type_registry.get("cobranza")
+            _default_spec = _agent_spec.capture_spec
+            await ensure_tables(
+                db_pool,
+                settings.database_schema,
+                projection_table=_agent_spec.projection_table,
+            )
             store = get_store(
                 db_pool=db_pool,
                 db_schema=settings.database_schema,

@@ -50,7 +50,7 @@ class VisitorMemory:
         async with self._pool.acquire() as conn:
             await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {self.schema}")
             await conn.execute(f"""
-                CREATE TABLE IF NOT EXISTS {self.schema}.sorelia_visitors (
+                CREATE TABLE IF NOT EXISTS {self.schema}.visitors (
                     visitor_id   TEXT PRIMARY KEY,
                     name         TEXT,
                     email        TEXT,
@@ -58,7 +58,7 @@ class VisitorMemory:
                     preferences  JSONB DEFAULT '{{}}'::jsonb,
                     projects_viewed TEXT[] DEFAULT '{{}}',
                     conversation_summaries JSONB DEFAULT '[]'::jsonb,
-                    lead_data    JSONB DEFAULT '{{}}'::jsonb,
+                    record_data  JSONB DEFAULT '{{}}'::jsonb,
                     first_visit  TIMESTAMPTZ DEFAULT NOW(),
                     last_visit   TIMESTAMPTZ DEFAULT NOW(),
                     visit_count  INTEGER DEFAULT 1,
@@ -68,19 +68,19 @@ class VisitorMemory:
             """)
             # Add columns to existing tables (idempotent)
             await conn.execute(f"""
-                ALTER TABLE {self.schema}.sorelia_visitors
+                ALTER TABLE {self.schema}.visitors
                 ADD COLUMN IF NOT EXISTS messages_today INTEGER DEFAULT 0
             """)
             await conn.execute(f"""
-                ALTER TABLE {self.schema}.sorelia_visitors
+                ALTER TABLE {self.schema}.visitors
                 ADD COLUMN IF NOT EXISTS last_message_date DATE DEFAULT CURRENT_DATE
             """)
             await conn.execute(f"""
-                ALTER TABLE {self.schema}.sorelia_visitors
+                ALTER TABLE {self.schema}.visitors
                 ADD COLUMN IF NOT EXISTS searches JSONB DEFAULT '[]'::jsonb
             """)
             await conn.execute(f"""
-                ALTER TABLE {self.schema}.sorelia_visitors
+                ALTER TABLE {self.schema}.visitors
                 ADD COLUMN IF NOT EXISTS entry_source TEXT DEFAULT 'direct'
             """)
 
@@ -98,7 +98,7 @@ class VisitorMemory:
             return None
         try:
             row = await self._pool.fetchrow(
-                f"SELECT * FROM {self.schema}.sorelia_visitors WHERE visitor_id = $1",
+                f"SELECT * FROM {self.schema}.visitors WHERE visitor_id = $1",
                 visitor_id,
             )
             if row is None:
@@ -118,8 +118,8 @@ class VisitorMemory:
                 # Insert new visitor
                 await self._pool.execute(
                     f"""
-                    INSERT INTO {self.schema}.sorelia_visitors
-                        (visitor_id, name, email, phone, preferences, lead_data, entry_source)
+                    INSERT INTO {self.schema}.visitors
+                        (visitor_id, name, email, phone, preferences, record_data, entry_source)
                     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
                     """,
                     visitor_id,
@@ -127,7 +127,7 @@ class VisitorMemory:
                     data.get("email"),
                     data.get("phone"),
                     json.dumps(data.get("preferences", {})),
-                    json.dumps(data.get("lead_data", {})),
+                    json.dumps(data.get("record_data", {})),
                     data.get("entry_source", "direct"),
                 )
             else:
@@ -150,14 +150,14 @@ class VisitorMemory:
                     args.append(json.dumps(data["preferences"]))
                     idx += 1
 
-                if data.get("lead_data"):
-                    sets.append(f"lead_data = lead_data || ${idx}::jsonb")
-                    args.append(json.dumps(data["lead_data"]))
+                if data.get("record_data"):
+                    sets.append(f"record_data = record_data || ${idx}::jsonb")
+                    args.append(json.dumps(data["record_data"]))
                     idx += 1
 
                 set_clause = ", ".join(sets)
                 await self._pool.execute(
-                    f"UPDATE {self.schema}.sorelia_visitors SET {set_clause} WHERE visitor_id = $1",
+                    f"UPDATE {self.schema}.visitors SET {set_clause} WHERE visitor_id = $1",
                     *args,
                 )
         except Exception:
@@ -170,13 +170,13 @@ class VisitorMemory:
         try:
             # Ensure visitor exists first
             exists = await self._pool.fetchval(
-                f"SELECT 1 FROM {self.schema}.sorelia_visitors WHERE visitor_id = $1",
+                f"SELECT 1 FROM {self.schema}.visitors WHERE visitor_id = $1",
                 visitor_id,
             )
             if not exists:
                 await self._pool.execute(
                     f"""
-                    INSERT INTO {self.schema}.sorelia_visitors (visitor_id, projects_viewed)
+                    INSERT INTO {self.schema}.visitors (visitor_id, projects_viewed)
                     VALUES ($1, ARRAY[$2]::text[])
                     """,
                     visitor_id,
@@ -185,7 +185,7 @@ class VisitorMemory:
             else:
                 await self._pool.execute(
                     f"""
-                    UPDATE {self.schema}.sorelia_visitors
+                    UPDATE {self.schema}.visitors
                     SET projects_viewed = array_append(
                             array_remove(projects_viewed, $2), $2
                         ),
@@ -205,7 +205,7 @@ class VisitorMemory:
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(f"""
-                    UPDATE {self.schema}.sorelia_visitors
+                    UPDATE {self.schema}.visitors
                     SET searches = (
                         SELECT jsonb_agg(elem)
                         FROM (
@@ -233,7 +233,7 @@ class VisitorMemory:
             row = await self._pool.fetchrow(
                 f"""
                 SELECT messages_today, last_message_date
-                FROM {self.schema}.sorelia_visitors
+                FROM {self.schema}.visitors
                 WHERE visitor_id = $1
                 """,
                 visitor_id,
@@ -264,7 +264,7 @@ class VisitorMemory:
         try:
             await self._pool.execute(
                 f"""
-                UPDATE {self.schema}.sorelia_visitors
+                UPDATE {self.schema}.visitors
                 SET messages_today = CASE
                         WHEN last_message_date < CURRENT_DATE THEN 1
                         ELSE COALESCE(messages_today, 0) + 1
@@ -288,7 +288,7 @@ class VisitorMemory:
             })
             await self._pool.execute(
                 f"""
-                UPDATE {self.schema}.sorelia_visitors
+                UPDATE {self.schema}.visitors
                 SET conversation_summaries = conversation_summaries || $2::jsonb,
                     last_visit = NOW()
                 WHERE visitor_id = $1
@@ -303,7 +303,7 @@ class VisitorMemory:
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
     """Convert asyncpg Record to a plain dict with JSON-safe values."""
     d = dict(row)
-    for key in ("preferences", "conversation_summaries", "lead_data", "searches"):
+    for key in ("preferences", "conversation_summaries", "record_data", "searches"):
         if key in d and isinstance(d[key], str):
             d[key] = json.loads(d[key])
     for key in ("first_visit", "last_visit"):
