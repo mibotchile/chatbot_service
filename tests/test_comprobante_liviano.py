@@ -1,12 +1,13 @@
 """SLICE C — RED tests: Comprobante Liviano (server-side validation, lighter flow).
 
 Spec: cobranza-comprobante
-  - validate_comprobante(profile, monto, *, inversionista=None, id_credito=None)
+  - validate_comprobante(profile, monto, *, image_sha256=None, inversionista=None, id_credito=None)
   - CCI resolved server-side from profile, never from user input
   - Classification: pago_cuota / abono / cancelacion by monto vs cuota/saldo
   - Inversionista mismatch → inversionista_match=False, estado=en_revision (WARN, not reject)
-  - Anti-dup by (credito, monto) within window — dedup_ok=False on repeat
-  - Audit captures inversionista
+  - Anti-dup by image_sha256 (within same credito) — dedup_ok=False on same image re-upload
+  - Different images with same (credito, monto) → BOTH accepted (no false-positive dedup)
+  - Audit captures inversionista and image_sha256
   - schema: monto required; inversionista+id_credito optional; CCI+nro_operacion NOT required
 """
 
@@ -162,25 +163,66 @@ async def test_validate_comprobante_inversionista_none_match_is_none(tmp_comprob
     assert result["inversionista_match"] is None
 
 
-# ── C.4: anti-dup by (credito, monto) ────────────────────────────────────────
+# ── C.4: anti-dup by image_sha256 (not by monto) ─────────────────────────────
 
-async def test_validate_comprobante_anti_dup_same_monto(tmp_comprobantes):
-    """Second submission with same credito+monto → dedup_ok=False."""
+_SHA_A = "a" * 64  # fake sha256 hex digest — image A
+_SHA_B = "b" * 64  # fake sha256 hex digest — image B (different file, same amount)
+
+
+async def test_validate_comprobante_same_image_same_credito_is_dup(tmp_comprobantes):
+    """Same image (same sha256) uploaded twice for same credito → second dedup_ok=False."""
     from features.comprobantes.validator import validar_comprobante
     profile = _prestamype_profile()
-    first = await validar_comprobante(profile, monto=7031.91, inversionista="FONDO A")
+    first = await validar_comprobante(profile, monto=7031.91, image_sha256=_SHA_A)
     assert first["dedup_ok"] is True
-    second = await validar_comprobante(profile, monto=7031.91, inversionista="FONDO A")
-    assert second["dedup_ok"] is False, "Duplicate submission must be flagged"
+    second = await validar_comprobante(profile, monto=7031.91, image_sha256=_SHA_A)
+    assert second["dedup_ok"] is False, "Same image re-upload must be flagged as duplicate"
 
 
-async def test_validate_comprobante_different_monto_not_dup(tmp_comprobantes):
-    """Different monto is not a duplicate."""
+async def test_validate_comprobante_different_images_same_amount_both_accepted(tmp_comprobantes):
+    """Two DIFFERENT images with the SAME (credito, monto) must BOTH be accepted.
+
+    This is the core regression test for the old (credito, monto) dedup bug:
+    previously the second would be flagged as duplicate even though it's a
+    distinct payment voucher (different image file → different sha256).
+    """
     from features.comprobantes.validator import validar_comprobante
     profile = _prestamype_profile()
-    await validar_comprobante(profile, monto=7031.91, inversionista="FONDO A")
-    second = await validar_comprobante(profile, monto=81510.15, inversionista="FONDO A")
-    assert second["dedup_ok"] is True
+    first = await validar_comprobante(profile, monto=7031.91, image_sha256=_SHA_A)
+    assert first["dedup_ok"] is True, "First upload must be accepted"
+    second = await validar_comprobante(profile, monto=7031.91, image_sha256=_SHA_B)
+    assert second["dedup_ok"] is True, (
+        "Different image (different sha256) with same monto must NOT be flagged as duplicate"
+    )
+
+
+async def test_validate_comprobante_same_image_different_credito_not_dup(tmp_comprobantes):
+    """Same image sha256 on a DIFFERENT credito is NOT a duplicate (dedup is per-credito)."""
+    from features.comprobantes.validator import validar_comprobante
+    profile_a = _prestamype_profile()
+    profile_b = {**_prestamype_profile(), "account_id": "P99999", "loan_number": "P99999"}
+    first = await validar_comprobante(profile_a, monto=7031.91, image_sha256=_SHA_A)
+    assert first["dedup_ok"] is True
+    second = await validar_comprobante(profile_b, monto=7031.91, image_sha256=_SHA_A)
+    assert second["dedup_ok"] is True, "Same sha256 on different credito must not be flagged"
+
+
+async def test_validate_comprobante_sha256_stored_in_audit(tmp_comprobantes):
+    """image_sha256 must be persisted in the audit record."""
+    from features.comprobantes.validator import validar_comprobante
+    profile = _prestamype_profile()
+    await validar_comprobante(profile, monto=7031.91, image_sha256=_SHA_A)
+    records = json.loads(tmp_comprobantes.read_text())
+    assert records[0].get("image_sha256") == _SHA_A, "image_sha256 must be in the audit record"
+
+
+async def test_validate_comprobante_no_sha256_still_works(tmp_comprobantes):
+    """When image_sha256 is not provided (None), the call still succeeds without dedup check."""
+    from features.comprobantes.validator import validar_comprobante
+    profile = _prestamype_profile()
+    result = await validar_comprobante(profile, monto=7031.91, image_sha256=None)
+    assert result["cuenta_valida"] is True
+    assert result["dedup_ok"] is True, "No sha256 → no dedup check → dedup_ok=True"
 
 
 # ── C.5: CCI resolved server-side (not from user) ─────────────────────────────

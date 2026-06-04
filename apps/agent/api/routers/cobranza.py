@@ -6,6 +6,7 @@ preserved verbatim — only the module boundary moves.
 
 from __future__ import annotations
 
+import hashlib
 import re
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
@@ -360,11 +361,15 @@ async def upload_comprobante(
     # CCI/nro_operacion are still accepted as form fields for file storage and
     # rate-limiting purposes but are NOT forwarded to validar_comprobante.
     # inversionista is not collected via the HTTP form (widget path uses typed chat).
+    # SHA-256 is computed here from the already-read bytes (magic-byte sniff above)
+    # so the validator can dedup by image content, not by (credito, monto).
     from features.comprobantes.validator import validar_comprobante
 
+    image_sha256 = hashlib.sha256(payload).hexdigest()
     result = await validar_comprobante(
         profile,
         monto=monto,
+        image_sha256=image_sha256,
     )
     logger.info(
         "Comprobante uploaded: tenant={} dni={} op={} valida={} tipo={} dedup_ok={}",

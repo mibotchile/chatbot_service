@@ -283,16 +283,20 @@ async def test_validar_comprobante_pago_cuota_classification(tmp_path, monkeypat
     assert "no corresponde" not in r["mensaje"].lower()
 
 
-async def test_validar_comprobante_dedup(tmp_path, monkeypatch):
-    # Dedup is keyed by (credito, monto) — same monto to same credit = duplicate.
+async def test_validar_comprobante_dedup_tool_path_no_sha256_both_accepted(tmp_path, monkeypatch):
+    # The tool-invoked path never has image bytes (typed chat, no upload).
+    # Without an image_sha256 the dedup check is skipped → both calls accepted.
+    # True duplicate detection (same image re-uploaded) only fires on the HTTP
+    # upload path where SHA-256 of the image bytes is computed.
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     args = {"monto": 462.14}
     first = await reg.execute("validar_comprobante", args)
     assert first["dedup_ok"] is True
     second = await reg.execute("validar_comprobante", args)
-    assert second["dedup_ok"] is False
-    assert "duplicad" in second["mensaje"].lower() or "ya lo recibimos" in second["mensaje"].lower()
+    assert second["dedup_ok"] is True, (
+        "Tool path has no image bytes → no sha256 → dedup skipped → both accepted"
+    )
 
 
 async def test_validar_comprobante_inversionista_mismatch_warns(tmp_path, monkeypatch):
@@ -339,8 +343,9 @@ async def test_validar_comprobante_stores_cci_from_profile(tmp_path, monkeypatch
     assert items[0]["cci"] == "00389801338381007048"  # from profile, not user
 
 
-async def test_validar_comprobante_dedup_by_monto_different_monto_ok(tmp_path, monkeypatch):
-    # Different monto is NOT a duplicate even for the same credit.
+async def test_validar_comprobante_different_monto_both_accepted(tmp_path, monkeypatch):
+    # Different amounts to the same credit are independent payments — both accepted.
+    # (No image sha256 in the tool path, so dedup is not active regardless.)
     _isolate_dedup(monkeypatch, tmp_path)
     reg = ToolRegistry(identity_verified=True, debt_context=_luis_profile(), tenant_id=TENANT)
     first = await reg.execute("validar_comprobante", {"monto": 462.14})

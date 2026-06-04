@@ -258,12 +258,13 @@ def test_comprobante_dedup_by_monto_same_monto_is_dup(client):
 
 
 def test_comprobante_duplicate_detected(client):
-    # Dedup by (credito, monto): same monto twice = duplicate.
+    # Dedup is now by image sha256 (same image bytes → same sha256 → duplicate).
+    # Both POSTs send the same fixture image, so the second is correctly flagged.
     first = _post(client, monto=str(LUIS_CUOTA), nro_operacion="OP-DUP").json()
     assert first["dedup_ok"] is True
     second = _post(client, monto=str(LUIS_CUOTA), nro_operacion="OP-DUP2").json()
     assert second["dedup_ok"] is False
-    assert "duplicad" in second["mensaje"].lower() or "ya lo recibimos" in second["mensaje"].lower()
+    assert "misma imagen" in second["mensaje"].lower() or "ya registramos" in second["mensaje"].lower()
 
 
 def test_comprobante_unknown_dni_404(client):

@@ -112,6 +112,7 @@ async def validar_comprobante(
     profile: dict,
     monto: float,
     *,
+    image_sha256: str | None = None,
     inversionista: str | None = None,
     id_credito: str | None = None,
 ) -> dict:
@@ -124,11 +125,13 @@ async def validar_comprobante(
       - mismatch  → inversionista_match=False, WARN (not reject), estado=en_revision
       - not given → inversionista_match=None (not checked)
 
-    Anti-dup: keyed by (credito, monto) within the dedup store. Same credito+monto
-    in the same session → dedup_ok=False, no second record.
+    Anti-dup: keyed by (credito, image_sha256) — same image uploaded twice to the
+    same credito → dedup_ok=False. Different images with the same monto are NOT
+    flagged (distinct payment vouchers). When image_sha256 is None (no image
+    available, e.g. tool-invoked typed path), dedup check is skipped → dedup_ok=True.
 
     CCI is stored from the verified profile for human bank reconciliation.
-    The audit record captures inversionista (user-provided value).
+    The audit record captures inversionista and image_sha256 (user-provided value).
 
     Returns:
       cuenta_valida        bool  — always True when profile resolves
@@ -161,19 +164,27 @@ async def validar_comprobante(
     # (c) CCI from verified profile — never from user input
     profile_cci = normalize_cci(profile.get("cci") or "")
 
-    # (d) anti-dup by (credito, monto) — same amount to same credit = duplicate
+    # (d) anti-dup by (credito, image_sha256).
+    # Only applied when image_sha256 is provided: same image bytes → same hash →
+    # true duplicate (same voucher re-uploaded). Different images, same monto → NOT
+    # a duplicate. When image_sha256 is None (typed/tool path without an image),
+    # skip the check entirely.
     monto_f = float(monto or 0.0)
     items = _load_comprobantes()
-    duplicate = any(
-        r.get("credito") == credito and float(r.get("monto") or 0.0) == monto_f
-        for r in items
-    )
+    sha = (image_sha256 or "").strip() or None
+    if sha is not None:
+        duplicate = any(
+            r.get("credito") == credito and r.get("image_sha256") == sha
+            for r in items
+        )
+    else:
+        duplicate = False
     dedup_ok = not duplicate
 
     if duplicate:
         mensaje = (
-            f"Ya registramos un comprobante por ese monto (S/ {monto_f:,.2f}) "
-            f"para tu crédito {credito}. No lo registré de nuevo para evitar duplicados."
+            f"Ya registramos ese comprobante para tu crédito {credito}. "
+            f"Parece que subiste la misma imagen dos veces — no la registré de nuevo."
         )
     else:
         record: dict = {
@@ -181,6 +192,7 @@ async def validar_comprobante(
             "dni": profile.get("dni"),
             "cci": profile_cci,  # server-side, from profile
             "monto": monto_f,
+            "image_sha256": sha,
             "tipo": tipo,
             "inversionista": user_inv,          # user-provided (may differ from profile)
             "inversionista_profile": profile_inv,  # authoritative (for reconciliation)
