@@ -173,6 +173,21 @@ def test_widget_js_redirects_to_versioned_url(client):
     )
 
 
+def test_widget_js_redirect_respects_root_path():
+    # Behind a strip-prefix proxy (Traefik strips /<slug>), the app runs with
+    # root_path=/<slug>. The 302 target MUST stay under that prefix, otherwise
+    # the browser requests a slug-less URL that the proxy routes elsewhere (404).
+    import os
+
+    import api.main as m
+
+    version = os.environ.get("WIDGET_VERSION", "dev")
+    c = TestClient(m.app, root_path="/pubot-c02e78e1")
+    r = c.get("/widget.js", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers.get("location", "") == f"/pubot-c02e78e1/widget/{version}/widget.min.js"
+
+
 def test_versioned_widget_served(client):
     # GET /widget/<current-version>/widget.min.js → 200, immutable cache,
     # application/javascript, body contains the public API surface.

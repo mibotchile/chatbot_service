@@ -350,12 +350,15 @@ def _mount_demo_frontend() -> None:
             )
 
         @app.get("/widget.js", include_in_schema=False)
-        async def _serve_legacy_widget_alias() -> _RedirectResponse:  # noqa: RUF029
+        async def _serve_legacy_widget_alias(request: Request) -> _RedirectResponse:  # noqa: RUF029
             # Permanent-ish redirect (302 = temporary, allows clients to re-check
             # on next deploy when WIDGET_VERSION changes). Cache-Control: no-cache
             # so browsers always re-check this redirect target after a deploy.
+            # Prefix root_path so the target stays under the slug when the app is
+            # behind a strip-prefix proxy (Traefik /pubot-c02e78e1); empty locally.
+            _root = request.scope.get("root_path", "")
             return _RedirectResponse(
-                url=f"/widget/{_widget_version}/widget.min.js",
+                url=f"{_root}/widget/{_widget_version}/widget.min.js",
                 status_code=302,
                 headers={"Cache-Control": "no-cache"},
             )
