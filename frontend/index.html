@@ -341,70 +341,15 @@
       body.tenant-prestamype .phone-screen { height: 360px; }
     }
 
-    /* ── Section below hero: white bg, cases table ── */
+    /* ── Production landing: no demo section below the hero. The cases table,
+       feature grid, DNI note and section labels are hidden for prestamype —
+       real borrowers identify by typing their DNI in the chat (CTA → widget). ── */
     body.tenant-prestamype .features,
-    body.tenant-prestamype .dni-note { display: none; }
-    body.tenant-prestamype h2.section-label:not(#acceso) { display: none; }
-    body.tenant-prestamype h2.section-label {
-      text-align: center;
-      letter-spacing: 0.14em;
-      margin: clamp(40px, 6vw, 64px) 0 24px;
-      color: var(--vox-text-subtle);
-    }
+    body.tenant-prestamype .dni-note,
+    body.tenant-prestamype h2.section-label { display: none; }
     body.tenant-prestamype footer {
       margin-top: clamp(48px, 7vw, 80px);
       border-top-color: #eef2f0;
-    }
-
-    /* ── DNI-first cases TABLE: clean, airy, minimal ── */
-    body.tenant-prestamype #cards.cases-table {
-      display: block; grid-template-columns: none;
-      max-width: 800px; margin: 0 auto; gap: 0;
-    }
-    body.tenant-prestamype table.cases {
-      width: 100%; border-collapse: separate; border-spacing: 0;
-      background: var(--vox-surface); border: 1px solid #e8ecea; border-radius: 16px;
-      overflow: hidden; box-shadow: 0 2px 16px -8px rgba(0,80,45,0.14); font-size: 14px;
-    }
-    body.tenant-prestamype table.cases thead th {
-      text-align: left; font-size: 11px; font-weight: 600;
-      letter-spacing: 0.09em; text-transform: uppercase;
-      color: var(--vox-text-subtle); background: var(--vox-surface-2);
-      padding: 12px 16px; border-bottom: 1px solid #e8ecea;
-    }
-    body.tenant-prestamype table.cases td {
-      padding: 14px 16px; border-bottom: 1px solid #f0f3f1; vertical-align: middle;
-    }
-    body.tenant-prestamype table.cases tbody tr:last-child td { border-bottom: none; }
-    body.tenant-prestamype table.cases tbody tr:hover { background: #f9fefb; }
-    body.tenant-prestamype table.cases .c-casu { font-weight: 600; color: var(--vox-text); }
-    body.tenant-prestamype table.cases .c-name { color: var(--vox-text-muted); }
-    body.tenant-prestamype table.cases .c-dni code {
-      font-family: ui-monospace, monospace; font-size: 13.5px; font-weight: 600;
-      color: #007a49;
-      background: rgba(0,179,105,0.10);
-      padding: 3px 9px; border-radius: 7px;
-    }
-    body.tenant-prestamype table.cases .c-estado {
-      font-size: 12.5px; color: var(--vox-text-muted); white-space: nowrap;
-    }
-    body.tenant-prestamype .cases-hint {
-      text-align: center; font-size: 13.5px; color: var(--vox-text-subtle);
-      margin: 20px auto 0; max-width: 560px; line-height: 1.6;
-    }
-
-    @media (max-width: 600px) {
-      body.tenant-prestamype table.cases { font-size: 13px; }
-      body.tenant-prestamype table.cases thead { display: none; }
-      body.tenant-prestamype table.cases tbody tr {
-        display: grid; grid-template-columns: 1fr auto;
-        gap: 2px 12px; padding: 12px 14px; border-bottom: 1px solid #f0f3f1;
-      }
-      body.tenant-prestamype table.cases td { display: block; padding: 2px 0; border: none; }
-      body.tenant-prestamype table.cases .c-casu { grid-column: 1; }
-      body.tenant-prestamype table.cases .c-estado { grid-column: 2; grid-row: 1; text-align: right; }
-      body.tenant-prestamype table.cases .c-name { grid-column: 1; }
-      body.tenant-prestamype table.cases .c-dni { grid-column: 2; grid-row: 2; text-align: right; }
     }
   </style>
 
@@ -472,9 +417,9 @@
         <h1 id="hero-h1"></h1>
         <p class="lead" id="hero-lead"></p>
         <div class="hero-cta">
-          <a class="btn-primary" href="#acceso">
+          <a class="btn-primary" id="hero-cta-link" href="#acceso">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.84L3 20l1.05-3.5A7.6 7.6 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-            Probar la demo
+            <span id="hero-cta-text">Probar la demo</span>
           </a>
           <span class="hero-note" id="hero-note"></span>
         </div>
@@ -594,28 +539,35 @@
 
         // Footer.
         $("footer-powered").textContent = b.footer || "Powered by Onbotgo";
-        $("footer-disclaimer").textContent = `${b.name} · Demostración con datos ficticios. `;
+        // PrestamYpe runs against REAL data (Doris) — no demo disclaimer.
+        // Demo tenants keep the "datos ficticios" notice.
+        if (TENANT === "prestamype") {
+          $("footer-disclaimer").textContent = `${b.name} · `;
+        } else {
+          $("footer-disclaimer").textContent = `${b.name} · Demostración con datos ficticios. `;
+        }
+
+        // ── PrestamYpe: PRODUCTION landing (real borrowers via Doris) ──
+        // No demo cards, no test-DNI table. The flow is: landing → CTA opens the
+        // chat → the borrower types their REAL DNI. Hide the whole cases section
+        // and wire the hero CTA to open the chat widget.
+        if (TENANT === "prestamype") {
+          hideDemoCards();
+          const note = $("dni-note");
+          if (note) note.style.display = "none";
+          wireCtaToChat("Consultar mi deuda");
+          revealContent();
+          return;
+        }
 
         // ── Identification UI ──
         // Some tenants hide the "Ingresa como uno de estos clientes" cards and
-        // rely on DNI-first identification in the chat (e.g. prestamype).
+        // rely on DNI-first identification in the chat.
         if (b.show_demo_cards === false) {
           hideDemoCards();
           // No-PII contract: /branding never carries borrower DNIs/names, so the
           // landing must not render any. Show a neutral instruction instead.
           neutralizeDniNote(b.name);
-          revealContent();
-          return;
-        }
-
-        // PrestamYpe: NO clickable pre-identified cards. Informational TABLE of
-        // test cases — the user reads a DNI and TYPES it in the chat (DNI-first).
-        if (TENANT === "prestamype" && Array.isArray(b.demo_cases) && b.demo_cases.length) {
-          renderCasesTable(b.demo_cases, agentName);
-          const note = $("dni-note");
-          if (note) note.style.display = "none";
-          const heading = $("acceso");
-          if (heading) heading.textContent = "Casos de prueba";
           revealContent();
           return;
         }
@@ -631,6 +583,33 @@
       // Remove the anti-flash gate now this tenant's data is written.
       function revealContent() {
         document.documentElement.classList.remove("branding-pending");
+      }
+
+      // Production tenants (no demo section to scroll to): the hero CTA opens
+      // the chat widget directly. The widget lives in its own Shadow DOM and
+      // exposes no public open(); we click its FAB (reuses the widget's own
+      // toggle, no widget.js changes). The FAB mounts async, so retry briefly.
+      function wireCtaToChat(label) {
+        const link = $("hero-cta-link");
+        const text = $("hero-cta-text");
+        if (text && label) text.textContent = label;
+        if (!link) return;
+        link.removeAttribute("href");
+        link.style.cursor = "pointer";
+        link.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          openChatWidget();
+        });
+      }
+
+      // Click the widget's FAB inside its Shadow DOM. Retries a few times in
+      // case the CTA is clicked before the widget finished mounting.
+      function openChatWidget(tries) {
+        tries = tries || 0;
+        const host = document.getElementById("pu-widget-host");
+        const fab = host && host.shadowRoot && host.shadowRoot.getElementById("pu-fab");
+        if (fab) { fab.click(); return; }
+        if (tries < 20) setTimeout(() => openChatWidget(tries + 1), 100);
       }
 
       // Render the "Qué puede hacer" feature grid from data. Empty → hide block.
@@ -663,29 +642,6 @@
           const note = $("dni-note");
           if (note) note.style.display = "none";
         }
-      }
-
-      // Informational table of test cases for DNI-first tenants. NOT clickable:
-      // the user copies a DNI into the chat to identify.
-      function renderCasesTable(cases, agentName) {
-        const wrap = $("cards");
-        if (!wrap) return;
-        wrap.classList.add("cases-table");
-        const rows = cases.map((c) => {
-          const moneda = c.currency === "USD" ? "US$" : "S/";
-          return `<tr>
-            <td class="c-casu">${_esc(c.casuistica || c.status_label || "")}</td>
-            <td class="c-name">${_esc(c.name || "")}</td>
-            <td class="c-dni"><code>${_esc(c.dni || "")}</code></td>
-            <td class="c-estado"><span class="badge ${_badgeClass(c.status)}">${_esc(c.status_label || "")}</span> · ${moneda}</td>
-          </tr>`;
-        }).join("");
-        wrap.innerHTML = `
-          <table class="cases">
-            <thead><tr><th>Casuística</th><th>Cliente</th><th>DNI</th><th>Estado</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-          <p class="cases-hint">Abre el chat con ${_esc(agentName)} y escribe uno de estos DNI para identificarte.</p>`;
       }
 
       // Hide the demo-account cards + their section heading.
