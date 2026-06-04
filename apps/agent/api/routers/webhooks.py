@@ -250,6 +250,7 @@ async def _process_whatsapp_message(
             )
 
         _deliverables, _delivery_mode = m._delivery_for(tenant_id)
+        _wa_agent_spec = m.agent_type_registry.get("cobranza")
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.debtor,
@@ -264,6 +265,8 @@ async def _process_whatsapp_message(
             deliverables=_deliverables,
             delivery_mode=_delivery_mode,
             chathub_outbound=m.chathub_outbound_client,
+            gated_tools=_wa_agent_spec.gated_tools,
+            tools=_wa_agent_spec.tools,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry)
 

@@ -35,20 +35,34 @@ from features.cobranza.tools import (
 )
 from features.comprobantes.validator import validar_comprobante
 
-# Tools that require a verified identity before they may execute.
-# identificar_cliente is NOT gated — it is the mechanism that OPENS the gate.
-_GATED_TOOLS = {
+# Default gated tools for the cobranza domain (hard_dni gate model).
+# Sourced from COBRANZA_AGENT_TYPE.gated_tools at composition roots; this
+# constant is the fallback when ToolRegistry is constructed without an
+# explicit gated_tools param (e.g. unit tests, backward-compat callers).
+# identificar_cliente is NOT here — it is the mechanism that OPENS the gate.
+_DEFAULT_GATED_TOOLS: frozenset[str] = frozenset({
     "consultar_deuda",
     "registrar_reclamo",
     "emitir_certificado_no_adeudo",
     "enviar_documento",
     "enviar_info",
     "validar_comprobante",
-}
+})
 
 
 class ToolRegistry:
-    """Routes tool calls to implementations. Enforces the identity gate."""
+    """Routes tool calls to implementations. Enforces the identity gate.
+
+    Gate model (per-domain):
+        gate_model='hard_dni' → tools in gated_tools are blocked until
+        identity_verified=True. The gate set is passed via the gated_tools
+        param (sourced from AgentTypeSpec.gated_tools at composition roots).
+        Defaults to _DEFAULT_GATED_TOOLS (the cobranza set) for backward
+        compatibility.
+
+        identificar_cliente is NEVER in gated_tools — it is the tool that
+        opens the gate.
+    """
 
     def __init__(
         self,
@@ -74,6 +88,14 @@ class ToolRegistry:
         deliverables: dict | None = None,
         delivery_mode: str = "simulate",
         chathub_outbound=None,
+        # Per-domain gate (S5): set of tool names blocked until identity_verified.
+        # Sourced from AgentTypeSpec.gated_tools at composition roots.
+        # Default = _DEFAULT_GATED_TOOLS (cobranza set) for backward compat.
+        gated_tools: frozenset[str] | None = None,
+        # Per-domain tool surface (S5): controls which tools are registered.
+        # Sourced from AgentTypeSpec.tools at composition roots.
+        # Default = None (register all cobranza tools, current behavior).
+        tools: tuple[str, ...] | None = None,
     ):
         self._lead_machine = lead_machine
         self._webhook_config = webhook_config
@@ -96,7 +118,12 @@ class ToolRegistry:
         # WITHOUT touching the data source (rate / DNI-sweep protection). None in
         # contexts without rate limiting (e.g. unit tests, WhatsApp).
         self._on_identification_attempt = on_identification_attempt
-        self._tools: dict[str, Any] = {
+        # Per-domain gate: tools blocked until identity_verified=True.
+        # Defaults to _DEFAULT_GATED_TOOLS (cobranza set) when not explicitly set.
+        self._gated_tools: frozenset[str] = (
+            gated_tools if gated_tools is not None else _DEFAULT_GATED_TOOLS
+        )
+        _all_tools: dict[str, Any] = {
             # generic engine tools
             "get_debtor_status": self._get_debtor_status,
             "navigate_page": self._navigate_page,
@@ -113,6 +140,16 @@ class ToolRegistry:
             "validar_comprobante": self._validar_comprobante,
             "escalate_to_human": self._escalate_to_human,
         }
+        # Per-domain tool surface: when tools= is provided, restrict _tools to
+        # only the names declared for this agent type (preserving impl lookup).
+        # Names not found in _all_tools are silently skipped (future tools).
+        if tools is not None:
+            tools_set = set(tools)
+            self._tools: dict[str, Any] = {
+                k: v for k, v in _all_tools.items() if k in tools_set
+            }
+        else:
+            self._tools = _all_tools
 
     def has_tool(self, name: str) -> bool:
         return name in self._tools
@@ -121,7 +158,7 @@ class ToolRegistry:
         if name not in self._tools:
             return {"error": f"Unknown tool: {name}"}
         # ── HARD GATE: no verified identity → gated tools never run ──
-        if name in _GATED_TOOLS and not self._identity_verified:
+        if name in self._gated_tools and not self._identity_verified:
             return {
                 "blocked": "identity_required",
                 "message": (

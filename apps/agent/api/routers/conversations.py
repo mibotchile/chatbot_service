@@ -247,6 +247,10 @@ async def chat(request: Request, body: ChatRequest):
             return m.rate_limiter.check_identification(client_ip, dni)
 
         _deliverables, _delivery_mode = m._delivery_for(body.tenant_id)
+        _agent_type = (
+            _tenant_config.agent_type if _tenant_config is not None else "cobranza"
+        )
+        _agent_spec = m.agent_type_registry.get(_agent_type)
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.debtor,
@@ -262,6 +266,8 @@ async def chat(request: Request, body: ChatRequest):
             deliverables=_deliverables,
             delivery_mode=_delivery_mode,
             chathub_outbound=m.chathub_outbound_client,
+            gated_tools=_agent_spec.gated_tools,
+            tools=_agent_spec.tools,
         )
         agent = SoreliaAgent(provider=provider, tool_registry=registry, tenant=_tenant_config)
 

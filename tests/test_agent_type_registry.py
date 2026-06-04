@@ -71,19 +71,21 @@ class TestAgentTypePort:
         assert issubclass(AgentTypeNotFoundError, Exception)
 
     def test_agent_type_spec_has_required_fields(self):
-        """AgentTypeSpec dataclass must have capture_spec, tools, skills,
-        gate_model, projection_table fields."""
+        """AgentTypeSpec dataclass must have capture_spec, tools, gated_tools,
+        skills, gate_model, projection_table fields (S5: gated_tools added)."""
         _, AgentTypeSpec, _ = _import_port()
         from features.cobranza.debtor import COBRANZA_SPEC
         spec = AgentTypeSpec(
             capture_spec=COBRANZA_SPEC,
             tools=("consultar_deuda",),
+            gated_tools=frozenset({"consultar_deuda"}),
             skills=None,
             gate_model="hard_dni",
             projection_table="debtors",
         )
         assert spec.capture_spec is COBRANZA_SPEC
         assert spec.tools == ("consultar_deuda",)
+        assert spec.gated_tools == frozenset({"consultar_deuda"})
         assert spec.skills is None
         assert spec.gate_model == "hard_dni"
         assert spec.projection_table == "debtors"
@@ -95,6 +97,7 @@ class TestAgentTypePort:
         spec = AgentTypeSpec(
             capture_spec=COBRANZA_SPEC,
             tools=(),
+            gated_tools=frozenset(),
             skills=None,
             gate_model="none",
             projection_table=None,
@@ -220,6 +223,7 @@ class TestRegistrySwappability:
                     return AgentTypeSpec(
                         capture_spec=COBRANZA_SPEC,
                         tools=("consultar_deuda",),
+                        gated_tools=frozenset({"consultar_deuda"}),
                         skills=None,
                         gate_model="hard_dni",
                         projection_table="debtors",

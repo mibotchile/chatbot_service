@@ -41,6 +41,10 @@ class AgentTypeSpec:
     Fields:
         capture_spec: The CaptureSpec parametrizing the Record capture machine.
         tools: Ordered tuple of tool names available for this agent type.
+        gated_tools: Frozenset of tool names that require a verified identity
+            before they may execute (per-domain; driven by gate_model).
+            Empty frozenset means no gate. identificar_cliente must never appear
+            here — it is the mechanism that OPENS the gate.
         skills: Optional list of skill names (None = no overrides).
         gate_model: Identifier for the gate behaviour (e.g. 'hard_dni').
         projection_table: Per-type DB table name (None = no projection table).
@@ -48,6 +52,7 @@ class AgentTypeSpec:
 
     capture_spec: CaptureSpec
     tools: tuple[str, ...]
+    gated_tools: frozenset[str]
     skills: list[str] | None
     gate_model: str
     projection_table: str | None
