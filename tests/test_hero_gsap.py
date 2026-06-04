@@ -146,3 +146,39 @@ def test_prestaunion_index_does_not_reference_hero_js(
 
     assert r.status_code == 200
     assert b"hero.js" not in r.content
+
+
+def test_vendor_favicon_served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /vendor/favicon-prestamype.ico returns 200 with an icon content-type."""
+    _write_generic(tmp_path)
+    vendor_dir = tmp_path / "vendor"
+    vendor_dir.mkdir()
+    (vendor_dir / "favicon-prestamype.ico").write_bytes(b"\x00\x00\x01\x00")  # ICO magic header
+    client = _fresh_client(tmp_path, "prestaunion", monkeypatch)
+
+    r = client.get("/vendor/favicon-prestamype.ico")
+
+    assert r.status_code == 200
+    assert "icon" in r.headers.get("content-type", "")
+
+
+def test_prestamype_index_references_real_favicon(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GET / (DEFAULT_TENANT=prestamype) references the self-hosted .ico, not a data-URI SVG."""
+    _write_generic(tmp_path)
+    d = tmp_path / "tenants" / "prestamype"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "index.html").write_bytes(
+        b"<!DOCTYPE html><html><head>"
+        + _SENTINEL
+        + b'<link rel="icon" type="image/x-icon" href="/vendor/favicon-prestamype.ico" />'
+        + b"</head><body>prestamype-landing</body></html>"
+    )
+    client = _fresh_client(tmp_path, "prestamype", monkeypatch)
+
+    r = client.get("/")
+
+    assert r.status_code == 200
+    assert b"/vendor/favicon-prestamype.ico" in r.content
+    assert b"data:image/svg+xml" not in r.content
