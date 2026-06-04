@@ -4,7 +4,7 @@
   "id": "prestamype",
   "name": "PrestamYpe",
   "domain": "prestamype.com",
-  "data_source": "mock",
+  "data_source": "doris",
   "allow_fixture_fallback": false,
   "embed_origins": [
     "https://demos.mibot.cl",
