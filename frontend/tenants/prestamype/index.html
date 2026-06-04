@@ -103,9 +103,10 @@
     }
     .hero-copy { max-width: 580px; }
 
-    /* ── Hero kicker ── */
+    /* ── Hero kicker ── hidden for prestamype: branding has no kicker text, so
+       it would render as a stray white pill + dot above the headline. */
     .kicker {
-      display: inline-flex;
+      display: none;
       color: rgba(255,255,255,0.85);
       font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
       background: rgba(255,255,255,0.15);
@@ -194,8 +195,8 @@
       width: 88px; height: 7px; background: #cfd5dc; border-radius: 9999px; z-index: 3; }
     .phone-screen {
       background: var(--vox-surface); border-radius: 30px; overflow: hidden;
-      /* Cap to viewport height on short screens so the phone never forces scroll. */
-      display: flex; flex-direction: column; height: min(480px, 52vh);
+      /* Taller phone; still capped to viewport height so it never forces scroll. */
+      display: flex; flex-direction: column; height: min(560px, 66vh);
     }
     .ph-head { background: var(--vox-surface); color: var(--vox-text); padding: 22px 16px 12px;
       display: flex; align-items: center; gap: 11px; flex-shrink: 0; border-bottom: 1px solid var(--vox-border-soft); }

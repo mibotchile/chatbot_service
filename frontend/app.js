@@ -65,7 +65,7 @@
       hideDemoCards();
       const note = $("dni-note");
       if (note) note.style.display = "none";
-      wireCtaToChat("Consultar mi deuda");
+      wireCtaToChat("Consultar mi préstamo");
       revealContent();
       return;
     }
