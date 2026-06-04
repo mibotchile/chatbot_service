@@ -38,11 +38,27 @@
 
     .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
 
+    /* ── Footer: full-width light-grey bar, pinned to the bottom of the flex column ── */
+    footer.wrap {
+      background: #F5F5F5;
+      max-width: none;
+      margin: 0;
+      width: 100%;
+      padding: 16px 24px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
     /* ── Reset body bg: hero paints its own band; below is clean white ── */
     body {
       background-image: none;
       background-color: #ffffff;
       overflow-x: hidden;
+      /* Fit the prestamype landing to the viewport (header overlay + hero + footer)
+         so the production landing needs no scroll. main grows, footer pins. */
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
 
     /* ── Header: sits on top of the green hero band ── */
@@ -66,8 +82,9 @@
     }
 
     /* ── Hero: full-width green band with split grid ── */
-    main { padding-top: 0; }
+    main { padding-top: 0; flex: 1 0 auto; display: flex; }
     .hero {
+      flex: 1;
       display: grid;
       grid-template-columns: minmax(0, 1.27fr) minmax(0, 0.73fr);
       gap: clamp(24px, 4vw, 60px);
@@ -78,7 +95,9 @@
         radial-gradient(ellipse 40% 50% at 0% 100%, rgba(0,200,120,0.15), transparent 55%);
       margin-left: calc(-50vw + 50%);
       margin-right: calc(-50vw + 50%);
-      padding: clamp(96px, 11vw, 136px) calc(50vw - 50%) clamp(64px, 8vw, 96px);
+      /* vh-based vertical padding so the hero scales with viewport height and
+         stays inside one screen; align-items:center handles vertical centering. */
+      padding: clamp(72px, 9vh, 128px) calc(50vw - 50%) clamp(40px, 6vh, 80px);
       text-align: left;
     }
     .hero-copy { max-width: 580px; }
@@ -174,7 +193,8 @@
       width: 88px; height: 7px; background: #cfd5dc; border-radius: 9999px; z-index: 3; }
     .phone-screen {
       background: var(--vox-surface); border-radius: 30px; overflow: hidden;
-      display: flex; flex-direction: column; height: 480px;
+      /* Cap to viewport height on short screens so the phone never forces scroll. */
+      display: flex; flex-direction: column; height: min(480px, 52vh);
     }
     .ph-head { background: var(--vox-surface); color: var(--vox-text); padding: 22px 16px 12px;
       display: flex; align-items: center; gap: 11px; flex-shrink: 0; border-bottom: 1px solid var(--vox-border-soft); }
