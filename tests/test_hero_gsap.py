@@ -182,3 +182,26 @@ def test_prestamype_index_references_real_favicon(
     assert r.status_code == 200
     assert b"/vendor/favicon-prestamype.ico" in r.content
     assert b"data:image/svg+xml" not in r.content
+
+
+def test_prestamype_index_uses_slug_safe_relative_asset_paths() -> None:
+    """Asset refs in the REAL prestamype index must be relative (no leading slash).
+
+    The landing is served under a strip-prefix proxy at /<slug>/ (root_path). An
+    absolute ref like ``/vendor/gsap.min.js`` resolves against the ORIGIN (slug
+    dropped) → 404 on the wrong service. Relative refs resolve under the slug.
+    This guards the prod bug where gsap/hero.js/favicon 404'd behind Traefik.
+    """
+    html = (
+        Path(__file__).resolve().parent.parent
+        / "frontend" / "tenants" / "prestamype" / "index.html"
+    ).read_text()
+
+    for bad in ('src="/vendor/', 'src="/tenants/', 'href="/vendor/', 'href="/tenants/'):
+        assert bad not in html, (
+            f"Absolute asset path {bad!r} breaks behind the /<slug> proxy — use a relative path."
+        )
+
+    assert 'src="vendor/gsap.min.js"' in html
+    assert 'src="tenants/prestamype/hero.js"' in html
+    assert 'href="vendor/favicon-prestamype.ico"' in html
