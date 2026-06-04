@@ -231,25 +231,47 @@ def _query_dni(dni: str, tenant_id: str) -> list[dict]:
         conn.close()
 
 
+@lru_cache(maxsize=16)
+def _allow_fixture_fallback(tenant_id: str) -> bool:
+    """Return the per-tenant fixture-fallback policy (default: False = fail-closed).
+
+    Reads ``allow_fixture_fallback`` from ``tenant.config.json`` directly,
+    mirroring the ``_load_schema`` pattern. Result is cached per tenant.
+
+    Cache bleed between tests: callers that toggle this via monkeypatch MUST
+    call ``_allow_fixture_fallback.cache_clear()`` before and after each test
+    case that modifies the underlying config or patches _tenants_root.
+    """
+    path = _tenants_root() / tenant_id / "tenant.config.json"
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(config.get("allow_fixture_fallback", False))
+
+
 def _resolve_dni_credits(dni: str, tenant_id: str) -> list[dict]:
     """Return ALL credit profiles for a DNI (Doris first, fixture fallback).
 
-    Handles multicrédito (a DNI with >1 credit). On any Doris error falls back
-    to the seeded fixture (single profile per DNI there).
+    Handles multicrédito (a DNI with >1 credit).
+
+    Control flow:
+      - Doris OK + rows  → return mapped profiles (fixture NOT consulted)
+      - Doris OK + empty → return []              (fixture NOT consulted)
+      - Doris raises     → if _allow_fixture_fallback(tenant_id): fixture
+                           else: return []  (prod fail-closed)
     """
     norm = _normalize_dni(dni)
     if not norm:
         return []
     try:
         rows = _query_dni(norm, tenant_id)
-        if rows:
-            return [_row_to_profile(r) for r in rows]
-        # No rows in Doris for this DNI → fall through to fixture.
-    except Exception:  # noqa: BLE001 — any driver/connection error → fixture
-        pass
-    # Fixture fallback: the mock source resolves a single profile by DNI.
-    profile = mock_debt_source.resolve_dni(norm, tenant_id=tenant_id)
-    return [profile] if profile else []
+    except Exception:  # noqa: BLE001 — any driver/connection error
+        if _allow_fixture_fallback(tenant_id):
+            profile = mock_debt_source.resolve_dni(norm, tenant_id=tenant_id)
+            return [profile] if profile else []
+        return []
+    return [_row_to_profile(r) for r in rows]
 
 
 # ── Public interface (mirrors mock_debt_source) ────────────────────────────
