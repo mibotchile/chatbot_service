@@ -28,6 +28,9 @@ class TenantConfig:
     sales_arsenal: dict = field(default_factory=dict)
     company: dict = field(default_factory=dict)
     guardrails: str = ""
+    # Agent type — determines which AgentTypeSpec (tools, gate, spec) to load.
+    # Default "cobranza" keeps zero behavior change for all existing tenants.
+    agent_type: str = "cobranza"
     # Curated-responses feature (tenant-agnostic). ``response_mode`` is the flag;
     # ``responses`` is the loaded responses.json spec (empty when the tenant has
     # none → mode degrades to "llm", current behavior, nothing breaks).
@@ -77,6 +80,10 @@ class TenantConfig:
         skills = agent_cfg.get("skills", None)
         excluded_tools = agent_cfg.get("excluded_tools", None)
 
+        # Agent type — defaults to "cobranza" when not declared (zero-change for
+        # all existing tenants). Future tenants declare agent_type in config.
+        agent_type = (config.get("agent_type") or "cobranza").strip().lower()
+
         # Curated-responses feature: flag from tenant.config.json + responses.json.
         # Default "llm" (current behavior) when the tenant ships neither.
         response_mode = (config.get("response_mode") or "llm").strip().lower()
@@ -93,6 +100,7 @@ class TenantConfig:
             sales_arsenal=sales_arsenal if isinstance(sales_arsenal, dict) else {},
             company=company if isinstance(company, dict) else {},
             guardrails=guardrails,
+            agent_type=agent_type,
             response_mode=response_mode,
             responses=responses,
         )

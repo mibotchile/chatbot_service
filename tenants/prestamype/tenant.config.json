@@ -1,5 +1,6 @@
 {
   "slug": "prestamype",
+  "agent_type": "cobranza",
   "id": "prestamype",
   "name": "PrestamYpe",
   "domain": "prestamype.com",

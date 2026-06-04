@@ -1,5 +1,6 @@
 {
   "slug": "prestaunion",
+  "agent_type": "cobranza",
   "id": "prestaunion",
   "name": "PrestaUnion",
   "domain": "demo.prestaunion.pe",
