@@ -50,5 +50,13 @@
       "Acompañamiento para regularizar tu préstamo",
       "Atención clara, sin letra chica"
     ]
-  }
+  },
+  "publishable_keys": [
+    {"key": "pk_live_PLACEHOLDER_PRESTAUNION", "status": "current", "added": "2026-01-01"}
+  ],
+  "embed_origins": [
+    "https://demos.mibot.cl",
+    "http://localhost:*",
+    "http://127.0.0.1:*"
+  ]
 }

@@ -35,13 +35,19 @@ def client(monkeypatch, tmp_path):
     return TestClient(m.app)
 
 
+_GATE_PK = "pk_live_PLACEHOLDER_PRESTAMYPE"
+_GATE_ORIGIN = "https://demos.mibot.cl"
+
+
 def _security_headers():
-    """Valid session + CSRF tokens, same gate as /chat (HIGH-02)."""
+    """Valid session + CSRF tokens + publishable-key gate for widget routes."""
     import api.main as m
 
     return {
         "X-Session-Token": m._generate_session_token("test-visitor"),
         "X-CSRF-Token": m._generate_csrf_token(),
+        "X-Publishable-Key": _GATE_PK,
+        "Origin": _GATE_ORIGIN,
     }
 
 
@@ -275,9 +281,11 @@ def test_comprobante_rejects_bad_filetype(client):
 
 
 def test_comprobante_requires_session_and_csrf(client):
-    # HIGH-02: no session/CSRF token → rejected (401 session checked first).
+    # HIGH-02: no auth at all → rejected. The publishable-key gate now runs first
+    # (returns 403 for missing key), so the response is 403 rather than 401.
+    # The invariant is: unauthenticated requests MUST be rejected (4xx).
     r = _post(client, nro_operacion="OP-NOAUTH", headers={})
-    assert r.status_code == 401
+    assert r.status_code in (401, 403)
 
 
 def test_comprobante_rejects_html_disguised_as_png(client):

@@ -18,6 +18,15 @@ from fastapi.testclient import TestClient
 from shared.llm import LLMProvider, LLMResponse, ToolCall
 
 
+_GATE_PK = "pk_live_PLACEHOLDER_PRESTAUNION"
+_GATE_ORIGIN = "https://demos.mibot.cl"
+
+
+def _gate_headers() -> dict:
+    """Publishable-key + origin required by gated widget routes."""
+    return {"X-Publishable-Key": _GATE_PK, "Origin": _GATE_ORIGIN}
+
+
 def _tokens():
     import api.main as m
 
@@ -69,7 +78,7 @@ def test_chat_with_token_opens_gate(client):
     r = client.post(
         "/api/v1/chat",
         json=body,
-        headers={"X-CSRF-Token": csrf, "X-Session-Token": session},
+        headers={"X-CSRF-Token": csrf, "X-Session-Token": session, **_gate_headers()},
     )
     assert r.status_code == 200, r.text
     assert "verdict=OK" in r.json()["message"]["content"]
@@ -85,7 +94,7 @@ def test_chat_without_token_keeps_gate_closed(client):
     r = client.post(
         "/api/v1/chat",
         json=body,
-        headers={"X-CSRF-Token": csrf, "X-Session-Token": session},
+        headers={"X-CSRF-Token": csrf, "X-Session-Token": session, **_gate_headers()},
     )
     assert r.status_code == 200, r.text
     assert "verdict=BLOCKED" in r.json()["message"]["content"]
@@ -98,7 +107,7 @@ def test_response_identity_includes_business_name(client):
     r = client.post(
         "/api/v1/chat",
         json={"channel": "web", "tenant_id": "prestaunion", "text": "hola", "campaign_token": "demo-juan"},
-        headers={"X-CSRF-Token": csrf, "X-Session-Token": session},
+        headers={"X-CSRF-Token": csrf, "X-Session-Token": session, **_gate_headers()},
     )
     assert r.status_code == 200, r.text
     ident = r.json()["message"]["identity"]
@@ -132,7 +141,7 @@ def test_response_document_field_for_certificate(monkeypatch):
     r = client.post(
         "/api/v1/chat",
         json={"channel": "web", "tenant_id": "prestaunion", "text": "mi certificado", "campaign_token": "demo-maria"},
-        headers={"X-CSRF-Token": csrf, "X-Session-Token": session},
+        headers={"X-CSRF-Token": csrf, "X-Session-Token": session, **_gate_headers()},
     )
     assert r.status_code == 200, r.text
     doc = r.json()["message"]["document"]
@@ -157,7 +166,7 @@ def test_chat_per_min_returns_429_with_retry_after(monkeypatch):
     m.store = m.get_store()
     client = TestClient(m.app)
     csrf, session = _tokens()
-    headers = {"X-CSRF-Token": csrf, "X-Session-Token": session}
+    headers = {"X-CSRF-Token": csrf, "X-Session-Token": session, **_gate_headers()}
     # campaign_token resolves identity so the post-processing (quick replies) has
     # a populated lead — keeps the 200 turns clean and isolates the 429 assertion.
     body = {"channel": "web", "tenant_id": "prestaunion", "text": "hola", "campaign_token": "demo-juan"}
@@ -205,7 +214,7 @@ def test_chat_dni_sweep_blocks_via_tool(monkeypatch):
     m.store = m.get_store()
     client = TestClient(m.app)
     csrf, session = _tokens()
-    headers = {"X-CSRF-Token": csrf, "X-Session-Token": session}
+    headers = {"X-CSRF-Token": csrf, "X-Session-Token": session, **_gate_headers()}
 
     def _try(dni: str):
         return client.post(

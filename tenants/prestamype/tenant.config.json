@@ -84,5 +84,8 @@
       "Préstamos con garantía hipotecaria o vehicular",
       "Consulta tu deuda y valida tus comprobantes desde el chat"
     ]
-  }
+  },
+  "publishable_keys": [
+    {"key": "pk_live_PLACEHOLDER_PRESTAMYPE", "status": "current", "added": "2026-01-01"}
+  ]
 }

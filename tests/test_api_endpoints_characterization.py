@@ -45,6 +45,15 @@ def _session_token(visitor_id: str = "test-visitor") -> str:
     return m._generate_session_token(visitor_id)
 
 
+_GATE_PK = "pk_live_PLACEHOLDER_PRESTAUNION"
+_GATE_ORIGIN = "https://demos.mibot.cl"
+
+
+def _gate_headers() -> dict:
+    """Publishable-key + origin required by gated routes."""
+    return {"X-Publishable-Key": _GATE_PK, "Origin": _GATE_ORIGIN}
+
+
 def _security_headers(visitor_id: str = "test-visitor") -> dict:
     import api.main as m
     return {
@@ -210,14 +219,14 @@ def test_reclamos_returns_list_when_file_exists(client, tmp_path):
 
 
 def test_get_conversation_messages_invalid_id_returns_400(client):
-    r = client.get("/api/v1/conversations/not-a-uuid/messages")
+    r = client.get("/api/v1/conversations/not-a-uuid/messages", headers=_gate_headers())
     assert r.status_code == 400
 
 
 def test_get_conversation_messages_empty_conversation(client):
     """A fresh UUID returns empty messages list (no history)."""
     cid = str(uuid.uuid4())
-    r = client.get(f"/api/v1/conversations/{cid}/messages")
+    r = client.get(f"/api/v1/conversations/{cid}/messages", headers=_gate_headers())
     assert r.status_code == 200
     data = r.json()
     assert data["messages"] == []
@@ -245,7 +254,7 @@ def test_page_context_returns_initial_message(client):
     r = client.post(
         "/api/v1/page-context",
         json={"project_slug": "test", "entry_source": "direct"},
-        headers={"X-CSRF-Token": csrf},
+        headers={"X-CSRF-Token": csrf, **_gate_headers()},
     )
     assert r.status_code == 200
     data = r.json()
@@ -263,7 +272,7 @@ def test_page_context_echoes_metadata(client):
     r = client.post(
         "/api/v1/page-context",
         json={"project_slug": "slug123", "entry_source": "referral"},
-        headers={"X-CSRF-Token": csrf},
+        headers={"X-CSRF-Token": csrf, **_gate_headers()},
     )
     assert r.status_code == 200
     meta = r.json()["conversation_metadata"]

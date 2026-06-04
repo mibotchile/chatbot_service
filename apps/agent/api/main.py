@@ -236,7 +236,7 @@ app.add_middleware(
     allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-CSRF-Token", "X-Session-Token", "X-Dashboard-Key"],
+    allow_headers=["Content-Type", "X-CSRF-Token", "X-Session-Token", "X-Dashboard-Key", "X-Publishable-Key"],
     expose_headers=["X-CSRF-Token"],
 )
 

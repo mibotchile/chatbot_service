@@ -19,5 +19,12 @@
     "agent_name": "Agente",
     "excluded_tools": [],
     "skills": null
-  }
+  },
+  "publishable_keys": [
+    {"key": "pk_live_PLACEHOLDER_TEMPLATE", "status": "current", "added": "2026-01-01"}
+  ],
+  "embed_origins": [
+    "https://demos.mibot.cl",
+    "http://localhost:*"
+  ]
 }

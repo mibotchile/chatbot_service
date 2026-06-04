@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
+
+from api.deps.widget_gate import require_publishable_key
 
 router = APIRouter()
 
@@ -80,7 +82,7 @@ class PageContextRequest(BaseModel):
     entry_source: str = "direct"
 
 
-@router.post("/api/v1/chat")
+@router.post("/api/v1/chat", dependencies=[Depends(require_publishable_key())])
 async def chat(request: Request, body: ChatRequest):
     import api.main as m
 
@@ -524,12 +526,12 @@ async def chat(request: Request, body: ChatRequest):
 
 
 # Frontend compatibility alias — agent-client.ts calls this path
-@router.post("/api/v1/conversations/messages")
+@router.post("/api/v1/conversations/messages", dependencies=[Depends(require_publishable_key())])
 async def chat_compat(request: Request, body: ChatRequest):
     return await chat(request, body)
 
 
-@router.get("/api/v1/conversations/{conversation_id}/messages")
+@router.get("/api/v1/conversations/{conversation_id}/messages", dependencies=[Depends(require_publishable_key())])
 async def get_conversation_messages(request: Request, conversation_id: str):
     """Return conversation history from backend state (source of truth)."""
     import re as _re
@@ -559,7 +561,7 @@ async def get_conversation_messages(request: Request, conversation_id: str):
     }
 
 
-@router.post("/api/v1/page-context")
+@router.post("/api/v1/page-context", dependencies=[Depends(require_publishable_key())])
 async def page_context(request: Request, body: PageContextRequest):
     import api.main as m
 

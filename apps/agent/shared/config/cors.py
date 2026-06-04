@@ -25,8 +25,11 @@ so a tenant can't smuggle a permissive regex into the union.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _tenants_root() -> Path:
@@ -72,8 +75,19 @@ def collect_embed_origins() -> list[str]:
         except (ValueError, OSError):
             continue
         for o in cfg.get("embed_origins") or []:
-            if isinstance(o, str) and o.strip():
-                out.append(o.strip())
+            if not isinstance(o, str):
+                continue
+            o = o.strip()
+            if not o:
+                continue
+            if o == "*":
+                logger.warning(
+                    "Tenant config %s has wildcard '*' in embed_origins — "
+                    "ignored (wildcards are not allowed with credentialed CORS).",
+                    cfg_path,
+                )
+                continue
+            out.append(o)
     return out
 
 

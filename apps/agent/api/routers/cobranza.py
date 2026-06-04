@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, File, Form, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from loguru import logger
+
+from api.deps.widget_gate import require_publishable_key
 
 router = APIRouter()
 
 
 # ── Cobranza: certificate download (no-debt certificate PDF) ──
 
-@router.get("/api/v1/cobranza/certificate/{filename}")
+@router.get("/api/v1/cobranza/certificate/{filename}", dependencies=[Depends(require_publishable_key(allow_no_key=True))])
 async def download_certificate(filename: str):
     """Serve a generated no-debt certificate PDF. Filename is sanitized to a
     safe pattern so it cannot escape the certificates directory."""
@@ -143,7 +145,7 @@ def _demo_cases_for(tenant_id: str) -> list[dict]:
     return rows
 
 
-@router.get("/api/v1/tenant/{tenant_id}/branding")
+@router.get("/api/v1/tenant/{tenant_id}/branding", dependencies=[Depends(require_publishable_key(allow_no_key=True))])
 async def tenant_branding(tenant_id: str):
     """Return the public branding bundle for a tenant (drives index.html + widget).
 
@@ -214,7 +216,7 @@ def _sniff_comprobante_ext(payload: bytes) -> str | None:
     return None
 
 
-@router.post("/api/v1/comprobante")
+@router.post("/api/v1/comprobante", dependencies=[Depends(require_publishable_key())])
 async def upload_comprobante(
     request: Request,
     tenant_id: str = Form(...),
