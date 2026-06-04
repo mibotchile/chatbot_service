@@ -23,9 +23,12 @@ wires it unchanged. Real-estate-only collaborators (meilisearch, visit_manager,
 google_calendar) are accepted but ignored — kept for engine compatibility.
 """
 
+import re
 from typing import Any, Callable
 
 from features.cobranza.debt_source import resolve_dni
+
+_DNI_CLEAN_RE = re.compile(r"\D")
 from features.cobranza.tools import (
     consultar_deuda,
     emitir_certificado_no_adeudo,
@@ -221,6 +224,22 @@ class ToolRegistry:
         rate or DNI-sweep violation short-circuits with a neutral message
         (no internal detail) and never queries the data source.
         """
+        # ── Format validation (BEFORE attempt counter and BEFORE resolve_dni) ──
+        # Normalize: strip anything that isn't a digit (dots, spaces, dashes).
+        # Garbage is not a probe — do NOT count it as an attempt; doing so would
+        # trip rate-limiting for clumsy real users and leak the 8-digit rule.
+        normalized = _DNI_CLEAN_RE.sub("", dni or "")
+        if len(normalized) not in (8, 11):
+            return {
+                "identified": False,
+                "reason": "invalid_format",
+                "message": (
+                    "Necesito tu DNI (8 dígitos) o RUC (11). ¿Me lo confirmas?"
+                ),
+            }
+        # Use the normalized form for all downstream resolution.
+        dni = normalized
+
         # ── Anti-enumeration gate (counts + checks BEFORE touching data) ──
         if self._on_identification_attempt is not None:
             decision = self._on_identification_attempt(dni)
