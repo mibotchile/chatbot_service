@@ -1,18 +1,30 @@
 /* PubotWidget embed loader — the ~minimal snippet a client pastes on their site.
  *
  *   <script src="https://demos.mibot.cl/pubot-c02e78e1/embed.js"
- *           data-tenant="prestamype" async></script>
+ *           data-tenant="prestamype"
+ *           data-pk="pk_live_your_tenant_key_here"
+ *           async></script>
+ *
+ * Supported data-* attributes:
+ *   data-tenant  — tenant slug (default: "prestaunion")
+ *   data-pk      — publishable key for this tenant's embed (PUBLIC, not a secret).
+ *                  Required on third-party pages so the widget can authenticate
+ *                  gated API routes. Same-origin landings inject it via window.__PK__
+ *                  (server-side sentinel replacement) so data-pk is optional there.
+ *                  Get your key from the tenant config publishable_keys[status=current].
+ *   data-ct      — optional demo campaign token (pre-identified visitor)
+ *   data-api     — optional backend base URL override
  *
  * What it does (Intercom/Drift style):
- *   1. Reads its OWN config from the <script> tag: data-tenant / data-ct /
- *      data-api (document.currentScript at parse time, captured up front).
+ *   1. Reads its OWN config from the <script> tag: data-tenant / data-pk /
+ *      data-ct / data-api (document.currentScript at parse time, captured up front).
  *   2. Derives the backend base URL from its own src (origin + path up to
  *      /embed.js), e.g. https://demos.mibot.cl/pubot-c02e78e1. data-api wins.
  *   3. Creates a host <div> on the client page and attaches a Shadow DOM
  *      (mode:"open") — this ISOLATES the widget's CSS/JS from the client site
  *      (their styles can't break the widget; the widget's can't touch them).
  *   4. Loads widget.js once (with data-no-automount so it doesn't make its own
- *      host) and calls window.PubotWidget.mount({ shadowRoot, api, tenant, ct }).
+ *      host) and calls window.PubotWidget.mount({ shadowRoot, api, tenant, ct, pk }).
  *   5. Idempotent: including the snippet twice mounts only once.
  *
  * Framework-free. Served alongside widget.min.js from the demo container.
@@ -66,6 +78,10 @@
   var api = deriveApi();
   var tenant = attr("data-tenant", "prestaunion");
   var ct = attr("data-ct", null);
+  // Publishable key — PUBLIC, not a secret. Required on third-party embeds so
+  // the widget can authenticate gated API routes. Same-origin landings use the
+  // server-injected window.__PK__ instead (no data-pk needed there).
+  var pk = attr("data-pk", null);
 
   // ── Host element + Shadow DOM (the isolation boundary). ──
   function makeShadowHost() {
@@ -85,7 +101,7 @@
 
     function doMount() {
       if (!window.PubotWidget || !window.PubotWidget.mount) return false;
-      window.PubotWidget.mount({ shadowRoot: shadowRoot, api: api, tenant: tenant, ct: ct });
+      window.PubotWidget.mount({ shadowRoot: shadowRoot, api: api, tenant: tenant, ct: ct, pk: pk });
       return true;
     }
 

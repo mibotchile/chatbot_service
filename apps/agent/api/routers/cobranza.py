@@ -160,12 +160,31 @@ async def tenant_branding(tenant_id: str):
     branding = cfg.get("branding", {}) or {}
     content = cfg.get("content", {}) or {}
     soul = cfg.get("soul", {}) or {}
+
+    # Resolve the current publishable key for this tenant.
+    # It is PUBLIC by design (the widget needs it to authenticate API calls).
+    # Accepts: publishable_keys list [{key, status, ...}] or legacy scalar publishable_key.
+    def _resolve_current_pk(c: dict) -> str:
+        keys_list = c.get("publishable_keys")
+        if isinstance(keys_list, list) and keys_list:
+            for entry in keys_list:
+                if isinstance(entry, dict) and entry.get("status") == "current":
+                    return entry.get("key", "")
+            first = keys_list[0]
+            return first.get("key", "") if isinstance(first, dict) else ""
+        scalar = c.get("publishable_key")
+        return scalar if isinstance(scalar, str) else ""
+
     return {
         "tenant_id": cfg.get("id", tenant_id),
         "name": cfg.get("name", tenant_id),
         "primary_color": branding.get("primary_color", "#0083E0"),
         "logo_url": branding.get("logo_url", ""),
         "favicon_url": branding.get("favicon_url", ""),
+        # The current publishable key — PUBLIC, required by the widget to call gated
+        # routes. Returned here so third-party embeds can discover it without a
+        # separate config lookup. Empty string when the tenant has no key configured.
+        "publishable_key": _resolve_current_pk(cfg),
         "hero_headline": content.get("hero_headline", ""),
         # Landing content (data-driven, uniform for every tenant). Tenants that
         # opt out of the rich landing (e.g. prestamype, minimalist) simply omit

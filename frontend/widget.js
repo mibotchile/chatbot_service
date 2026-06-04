@@ -55,11 +55,20 @@
     return location.origin.replace(/\/$/, "");
   }
 
-  // Resolved at mount() time so the loader (embed.js) can override api/ct/tenant
+  // Resolved at mount() time so the loader (embed.js) can override api/ct/tenant/pk
   // without depending on document.currentScript (which is null when injected).
   let API, CT, TENANT;
   // The shadow root the widget renders into. ALL DOM queries go through it.
   let shadow = null;
+
+  // Publishable key — resolves in priority order at init:
+  //   1. opts.pk (embed.js / external caller passing data-pk attribute)
+  //   2. scriptEl.dataset.pk (same-origin <script data-pk="...">)
+  //   3. window.__PK__ (server-injected sentinel — covers same-origin landing)
+  //   4. branding.publishable_key (fetched from /branding — covers non-default tenants)
+  // Sent as X-Publishable-Key on every gated API route call.
+  // PUBLIC — no secret value; the server still validates origin + key together.
+  let PK = null;
 
   function _resolveConfig(opts) {
     opts = opts || {};
@@ -69,6 +78,11 @@
     // Default "prestaunion" keeps the original Vox theme untouched.
     TENANT = (opts.tenant || (scriptEl && scriptEl.dataset.tenant) || window.__TENANT__ || qs.get("tenant") || "prestaunion")
       .replace(/[^a-z0-9_-]/gi, "");
+    // Resolve publishable key (steps 1-3; step 4 happens after branding loads).
+    PK = opts.pk || (scriptEl && scriptEl.dataset.pk) || window.__PK__ || null;
+    // Reject the unresolved sentinel value — should not happen in production but
+    // guards against a misconfigured deploy serving the raw template.
+    if (PK === "__PK__") PK = null;
   }
 
   // Branding (fetched for non-default tenants). Drives header name/logo, brand
@@ -870,7 +884,12 @@
     try {
       const r = await fetch(`${API}/api/v1/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken || "", "X-Session-Token": sessionToken || "" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken || "",
+          "X-Session-Token": sessionToken || "",
+          ...(PK ? { "X-Publishable-Key": PK } : {}),
+        },
         credentials: "include",
         body: JSON.stringify(body),
       });
@@ -1163,7 +1182,11 @@
     try {
       const r = await fetch(`${API}/api/v1/comprobante`, {
         method: "POST",
-        headers: { "X-CSRF-Token": csrfToken || "", "X-Session-Token": sessionToken || "" },
+        headers: {
+          "X-CSRF-Token": csrfToken || "",
+          "X-Session-Token": sessionToken || "",
+          ...(PK ? { "X-Publishable-Key": PK } : {}),
+        },
         credentials: "include",
         body: fd,
       });
@@ -1254,7 +1277,14 @@
     if (TENANT === "prestaunion") return;  // native theme, no fetch
     try {
       const r = await fetch(`${API}/api/v1/tenant/${TENANT}/branding`);
-      if (r.ok) applyBranding(await r.json());
+      if (r.ok) {
+        const b = await r.json();
+        // Step-4 fallback: use branding.publishable_key if we don't have one yet.
+        // This covers non-default tenants embedded on third-party pages where
+        // window.__PK__ is absent and no data-pk was provided.
+        if (!PK && b.publishable_key) PK = b.publishable_key;
+        applyBranding(b);
+      }
     } catch (e) {
       console.error("[pu-widget] branding fetch failed", e);
     }

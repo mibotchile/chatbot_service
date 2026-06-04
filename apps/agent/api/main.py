@@ -287,7 +287,29 @@ def _mount_demo_frontend() -> None:
                 tenant,
             )
         else:
-            _cached_html = source.read_bytes().replace(b'"__TENANT__"', b'"' + tenant.encode() + b'"')
+            _raw_html = source.read_bytes()
+            # Replace __TENANT__ sentinel (existing logic).
+            _cached_html = _raw_html.replace(b'"__TENANT__"', b'"' + tenant.encode() + b'"')
+
+            # Replace __PK__ sentinel with the DEFAULT_TENANT's current publishable key.
+            # The key is PUBLIC — the widget needs it to authenticate gated API calls.
+            # Accepts publishable_keys list or legacy scalar publishable_key.
+            def _resolve_default_pk(slug: str) -> str:
+                cfg = _load_tenant_config(slug)
+                if cfg is None:
+                    return ""
+                keys_list = cfg.get("publishable_keys")
+                if isinstance(keys_list, list) and keys_list:
+                    for _e in keys_list:
+                        if isinstance(_e, dict) and _e.get("status") == "current":
+                            return _e.get("key", "")
+                    first = keys_list[0]
+                    return first.get("key", "") if isinstance(first, dict) else ""
+                scalar = cfg.get("publishable_key")
+                return scalar if isinstance(scalar, str) else ""
+
+            _default_pk = _resolve_default_pk(tenant)
+            _cached_html = _cached_html.replace(b'"__PK__"', b'"' + _default_pk.encode() + b'"')
 
             @app.get("/", include_in_schema=False)
             async def _serve_root() -> _HTMLResponse:  # noqa: RUF029
@@ -297,7 +319,7 @@ def _mount_demo_frontend() -> None:
                 )
 
             logger.info(
-                "Demo frontend GET / → {} (tenant={})", source.name, tenant
+                "Demo frontend GET / → {} (tenant={} pk={}...)", source.name, tenant, _default_pk[:12]
             )
 
         # ── Widget distribution routes ─────────────────────────────────────

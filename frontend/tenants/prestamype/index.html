@@ -245,6 +245,11 @@
   <!-- Server-injected tenant sentinel. Value replaced at startup by
        _mount_demo_frontend() with the actual DEFAULT_TENANT env value. -->
   <script>window.__TENANT__ = "__TENANT__";</script>
+  <!-- Server-injected publishable key sentinel. The value "__PK__" is replaced
+       at startup with the DEFAULT_TENANT's current publishable key. The widget
+       reads window.__PK__ to authenticate calls to gated API routes.
+       PUBLIC — no secret value, safe to embed in HTML. -->
+  <script>window.__PK__ = "__PK__";</script>
   <script>
     (() => {
       "use strict";
