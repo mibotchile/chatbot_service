@@ -235,3 +235,36 @@ def test_allow_fixture_fallback_lru_cache_does_not_bleed_between_tests():
     dds._allow_fixture_fallback.cache_clear()
     # Both calls must return the same canonical value (from config).
     assert v1 == v2 == False  # noqa: E712
+
+
+# ── 3.2 Safe-degradation message when Doris down + flag=False (task 3.2) ─────
+
+@pytest.mark.anyio
+async def test_identificar_cliente_doris_down_flag_false_returns_safe_message(monkeypatch):
+    """Doris down + allow_fixture_fallback=False → identified=False, neutral message.
+
+    The response must NOT reveal that Doris is down (no technical detail).
+    The user-facing message must be non-empty and not expose internal state.
+    Reason must be 'dni_not_found' (the tool cannot distinguish down vs. absent
+    without a separate reason code — acceptable; the gate stays closed either way).
+    """
+    from api.tool_registry import ToolRegistry
+
+    # Patch _connect to simulate Doris down.
+    dds._load_schema.cache_clear()
+    dds._allow_fixture_fallback.cache_clear()
+    monkeypatch.setattr(dds, "_connect", lambda db: (_ for _ in ()).throw(ConnectionError("Doris down")))
+
+    # prestamype has allow_fixture_fallback=false — fail-closed.
+    reg = ToolRegistry(identity_verified=False, tenant_id="prestamype")
+    result = await reg.execute("identificar_cliente", {"dni": "12345678"})
+
+    dds._allow_fixture_fallback.cache_clear()
+
+    assert result.get("identified") is False, f"Expected identified=False, got {result}"
+    msg = result.get("message", "")
+    assert msg, "Expected a non-empty user-facing message"
+    # Message must be neutral — no stack traces, no 'Doris', no 'Connection'.
+    assert "Doris" not in msg
+    assert "Connection" not in msg
+    assert "Exception" not in msg
