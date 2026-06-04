@@ -1,24 +1,25 @@
-"""Behavioral tests for DebtorState.level — runtime vocabulary contract.
+"""Behavioral tests for Record(COBRANZA_SPEC).level — runtime vocabulary contract.
 
-These tests instantiate DebtorState with real data and assert the emitted
+These tests instantiate Record(COBRANZA_SPEC) with real data and assert the emitted
 level strings match the post-rename vocabulary (DEBTOR, DEBTOR_VERIFIED,
-PRE_DEBTOR, VISITOR).  They will FAIL if debtor_state.py still returns
-the old vocabulary (LEAD, LEAD_ENRICHED, PRE_LEAD).
+PRE_DEBTOR, VISITOR). Previously these tests used DebtorState; after S8 deletes the
+shim they use Record(COBRANZA_SPEC) directly. Behavioral coverage is identical.
 
-This is the lock the source-inspection tests in test_storage_migration.py
-could not provide — they exercise actual runtime behavior.
+They will FAIL if record.py still returns the old vocabulary (LEAD, LEAD_ENRICHED,
+PRE_LEAD).
 """
 
 from __future__ import annotations
 
 import pytest
 
-from features.conversation.debtor_state import (
+from features.cobranza.debtor import (
     CONTACT_FIELDS,
     ENRICHMENT_FIELDS,
     INTEREST_FIELDS,
-    DebtorState,
+    COBRANZA_SPEC,
 )
+from features.conversation.record import Record
 
 # ---------------------------------------------------------------------------
 # Helpers — build collected dicts that reach specific levels
@@ -47,13 +48,13 @@ def _enrichment_data() -> dict:
 
 def test_level_visitor_with_no_data():
     """Empty state must return 'VISITOR'."""
-    state = DebtorState()
+    state = Record(spec=COBRANZA_SPEC)
     assert state.level == "VISITOR"
 
 
 def test_level_visitor_with_partial_contact():
     """Partial contact fields (< full set) must still return 'VISITOR' when no interest."""
-    state = DebtorState(initial_data={"name": "Juan"})
+    state = Record(spec=COBRANZA_SPEC, initial_data={"name": "Juan"})
     assert state.level == "VISITOR"
 
 
@@ -63,10 +64,10 @@ def test_level_visitor_with_partial_contact():
 
 def test_level_pre_debtor_with_interest_fields():
     """Two interest fields but no contact → PRE_DEBTOR (was PRE_LEAD)."""
-    state = DebtorState(initial_data=_interest_data())
+    state = Record(spec=COBRANZA_SPEC, initial_data=_interest_data())
     assert state.level == "PRE_DEBTOR", (
         f"Expected PRE_DEBTOR, got {state.level!r} — "
-        "debtor_state.py must return PRE_DEBTOR not PRE_LEAD"
+        "record.py must return PRE_DEBTOR not PRE_LEAD"
     )
     # Must NOT be the old vocabulary
     assert state.level != "PRE_LEAD"
@@ -78,10 +79,10 @@ def test_level_pre_debtor_with_interest_fields():
 
 def test_level_debtor_with_full_contact():
     """Full contact fields (name+phone+email) → DEBTOR (was LEAD)."""
-    state = DebtorState(initial_data=_contact_data())
+    state = Record(spec=COBRANZA_SPEC, initial_data=_contact_data())
     assert state.level == "DEBTOR", (
         f"Expected DEBTOR, got {state.level!r} — "
-        "debtor_state.py must return DEBTOR not LEAD"
+        "record.py must return DEBTOR not LEAD"
     )
     assert state.level != "LEAD"
 
@@ -89,7 +90,7 @@ def test_level_debtor_with_full_contact():
 def test_debtor_level_in_contact_levels_set():
     """DEBTOR must be in _CONTACT_LEVELS — this locks the capture webhook chain."""
     _CONTACT_LEVELS = {"DEBTOR", "DEBTOR_VERIFIED"}
-    state = DebtorState(initial_data=_contact_data())
+    state = Record(spec=COBRANZA_SPEC, initial_data=_contact_data())
     assert state.level in _CONTACT_LEVELS, (
         f"state.level={state.level!r} not in _CONTACT_LEVELS={_CONTACT_LEVELS} — "
         "on_lead_captured webhook would never fire"
@@ -103,10 +104,10 @@ def test_debtor_level_in_contact_levels_set():
 def test_level_debtor_verified_with_contact_and_enrichment():
     """Full contact + two enrichment fields → DEBTOR_VERIFIED (was LEAD_ENRICHED)."""
     data = {**_contact_data(), **_enrichment_data()}
-    state = DebtorState(initial_data=data)
+    state = Record(spec=COBRANZA_SPEC, initial_data=data)
     assert state.level == "DEBTOR_VERIFIED", (
         f"Expected DEBTOR_VERIFIED, got {state.level!r} — "
-        "debtor_state.py must return DEBTOR_VERIFIED not LEAD_ENRICHED"
+        "record.py must return DEBTOR_VERIFIED not LEAD_ENRICHED"
     )
     assert state.level != "LEAD_ENRICHED"
 
@@ -115,7 +116,7 @@ def test_debtor_verified_in_contact_levels_set():
     """DEBTOR_VERIFIED must be in _CONTACT_LEVELS."""
     _CONTACT_LEVELS = {"DEBTOR", "DEBTOR_VERIFIED"}
     data = {**_contact_data(), **_enrichment_data()}
-    state = DebtorState(initial_data=data)
+    state = Record(spec=COBRANZA_SPEC, initial_data=data)
     assert state.level in _CONTACT_LEVELS
 
 
@@ -130,7 +131,7 @@ def test_transition_callback_receives_new_vocabulary():
     def _capture(prev: str, new: str, _data: dict) -> None:
         transitions.append((prev, new))
 
-    state = DebtorState(on_transition=_capture)
+    state = Record(spec=COBRANZA_SPEC, on_transition=_capture)
 
     # VISITOR → PRE_DEBTOR
     state.update(_interest_data())
@@ -154,7 +155,7 @@ def test_transition_callback_receives_new_vocabulary():
 
 def test_get_status_level_uses_new_vocabulary():
     """get_status()['level'] must use the new vocabulary."""
-    state = DebtorState(initial_data=_contact_data())
+    state = Record(spec=COBRANZA_SPEC, initial_data=_contact_data())
     status = state.get_status()
     assert status["level"] == "DEBTOR"
     assert status["level"] != "LEAD"
@@ -163,7 +164,7 @@ def test_get_status_level_uses_new_vocabulary():
 def test_to_dict_level_uses_new_vocabulary():
     """to_dict()['level'] must use the new vocabulary."""
     data = {**_contact_data(), **_enrichment_data()}
-    state = DebtorState(initial_data=data)
+    state = Record(spec=COBRANZA_SPEC, initial_data=data)
     d = state.to_dict()
     assert d["level"] == "DEBTOR_VERIFIED"
     assert d["level"] != "LEAD_ENRICHED"

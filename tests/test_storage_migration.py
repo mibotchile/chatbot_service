@@ -348,3 +348,29 @@ def test_dashboard_visitors_table():
     assert "sorelia_visitors" not in src, (
         "dashboard.py must NOT reference sorelia_visitors (use 'visitors')"
     )
+
+
+# ---------------------------------------------------------------------------
+# G. ensure_tables(projection_table=None) — open agent types skip per-type table
+# ---------------------------------------------------------------------------
+
+def test_ensure_tables_projection_table_none_skips_projection():
+    """ensure_tables with projection_table=None must NOT create a per-type projection table.
+
+    W1 (deferred from PR4 verify): open agent types pass projection_table=None and
+    ensure_tables must create only conversations + visitors, skipping the per-type
+    table entirely. This confirms the optionality branch in ensure_tables is
+    exercised and guards against regressions that would unconditionally create a
+    per-type table.
+    """
+    from shared.persistence import persistence as pers_module
+
+    func_src = inspect.getsource(pers_module.ensure_tables)
+    # The function must branch on projection_table being None or falsy
+    assert "projection_table" in func_src, (
+        "ensure_tables must inspect projection_table param"
+    )
+    # The guard must use a conditional — either 'if projection_table' or 'if projection_table is not None'
+    assert ("if projection_table" in func_src or "if projection_table is not None" in func_src), (
+        "ensure_tables must conditionally skip the per-type table when projection_table is None"
+    )

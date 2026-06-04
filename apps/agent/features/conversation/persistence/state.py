@@ -21,12 +21,6 @@ if TYPE_CHECKING:
     import asyncpg
 
 
-def _default_spec() -> CaptureSpec:
-    """Return COBRANZA_SPEC as the default — keeps zero behavior change."""
-    from features.cobranza.debtor import COBRANZA_SPEC
-    return COBRANZA_SPEC
-
-
 class ConversationState:
     """State for a single conversation."""
 
@@ -46,8 +40,11 @@ class ConversationState:
         self.db_schema = db_schema
         self.visitor_id = visitor_id
         self.history: list[dict] = list(history) if history else []
-        _spec = capture_spec if capture_spec is not None else _default_spec()
-        self.debtor = Record(spec=_spec, initial_data=record_data)
+        if capture_spec is None:
+            raise ValueError(
+                "capture_spec is required — pass a CaptureSpec from the composition root"
+            )
+        self.debtor = Record(spec=capture_spec, initial_data=record_data)
         self.page_context: dict = {}
         self.brochures_sent: set[str] = set()  # project slugs already emailed
         self.debtor_notified: bool = False  # sales team already notified
@@ -115,7 +112,7 @@ class StateStore:
         self._conversations: dict[str, ConversationState] = {}
         self.db_pool = db_pool
         self.db_schema = db_schema
-        self._capture_spec = capture_spec  # None → each ConversationState uses default
+        self._capture_spec = capture_spec  # always required — composition root provides it
 
     # -- Sync API (in-memory, backwards-compatible) --
 

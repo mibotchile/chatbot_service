@@ -29,7 +29,23 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from shared.config.settings import settings
-from features.conversation.persistence.state import get_store
+from features.conversation.persistence.state import get_store as _get_store_impl
+from features.cobranza.debtor import COBRANZA_SPEC as _COBRANZA_SPEC
+
+
+def get_store(
+    redis_url: str | None = None,
+    db_pool=None,
+    db_schema: str = "dev",
+    capture_spec=None,
+):
+    """Composition-root wrapper: defaults capture_spec to COBRANZA_SPEC."""
+    return _get_store_impl(
+        redis_url=redis_url,
+        db_pool=db_pool,
+        db_schema=db_schema,
+        capture_spec=capture_spec if capture_spec is not None else _COBRANZA_SPEC,
+    )
 from features.conversation.persistence.visitor_memory import VisitorMemory
 from shared.ports.agent_type_registry import AgentTypeRegistry, AgentTypeSpec  # noqa: F401
 from tenancy.agent_types.registry import InCodeAgentTypeRegistry

@@ -12,12 +12,6 @@ from shared.ports.capture_spec import CaptureSpec
 TTL_SECONDS = 86400  # 24 hours
 
 
-def _default_spec() -> CaptureSpec:
-    """Return COBRANZA_SPEC as the default — keeps zero behavior change."""
-    from features.cobranza.debtor import COBRANZA_SPEC
-    return COBRANZA_SPEC
-
-
 def _key(conversation_id: str, suffix: str) -> str:
     return f"olimpo:conv:{conversation_id}:{suffix}"
 
@@ -33,9 +27,12 @@ class RedisConversationState:
     ):
         self.conversation_id = conversation_id
         self._redis = redis
-        _spec = capture_spec if capture_spec is not None else _default_spec()
-        self._capture_spec = _spec
-        self.debtor = Record(spec=_spec)
+        if capture_spec is None:
+            raise ValueError(
+                "capture_spec is required — pass a CaptureSpec from the composition root"
+            )
+        self._capture_spec = capture_spec
+        self.debtor = Record(spec=capture_spec)
         self.page_context: dict = {}
         self.history: list[dict] = []
         self._dirty_history = False

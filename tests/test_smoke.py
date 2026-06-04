@@ -52,7 +52,7 @@ def test_tool_registry_has_cobranza_tools():
 
 def test_lead_machine_uses_cobranza_fields():
     """The lead machine tracks cobranza interest fields, not real-estate ones."""
-    from features.conversation.debtor_state import INTEREST_FIELDS
+    from features.cobranza.debtor import INTEREST_FIELDS
 
     assert "debt_amount" in INTEREST_FIELDS
     assert "account_id" in INTEREST_FIELDS
