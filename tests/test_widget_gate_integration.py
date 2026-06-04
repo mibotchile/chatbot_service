@@ -221,6 +221,60 @@ class TestGatedRoutesBadOrigin:
         assert r.status_code == 403
 
 
+# ── Auth-composition invariant: gate passes → CSRF/session still enforced ────
+
+class TestAuthCompositionInvariant:
+    """WARNING-1 (verify-report): prove that CSRF/session enforcement survives
+    the gate composition.  With a VALID pk + allowlisted origin the gate passes,
+    but a request missing a session token must still be rejected by the
+    CSRF/session layer — NOT allowed through, and NOT rejected by the gate."""
+
+    def test_comprobante_gate_passes_but_session_required(self, patched_app):
+        """Gate passes (valid pk + origin); no session token → 401 from
+        CSRF/session layer, NOT 403 from the gate.
+
+        Distinguishes the two layers:
+          - Gate 403: body contains "publishable"
+          - Session 401: body contains "session"
+        """
+        import io
+
+        csrf = _make_csrf_token()
+        # Deliberately omit X-Session-Token — gate headers are present and valid
+        r = patched_app.post(
+            "/api/v1/comprobante",
+            headers={
+                "X-Publishable-Key": VALID_PK,
+                "Origin": VALID_ORIGIN,
+                "X-CSRF-Token": csrf,
+                # NO X-Session-Token
+            },
+            data={
+                "tenant_id": "prestaunion",
+                "dni": "12345678",
+                "monto": "100.00",
+                "nro_operacion": "OP-INVARIANT",
+                "account_type": "cci",
+                "cuenta_destino": "12345678901234567890",
+            },
+            files={"file": ("test.pdf", io.BytesIO(b"%PDF fake"), "application/pdf")},
+        )
+        # Must be rejected — something must be 4xx
+        assert r.status_code in (401, 403), (
+            f"Expected 401 or 403 but got {r.status_code}"
+        )
+        # Must NOT be a gate rejection (gate detail contains "publishable")
+        assert "publishable" not in r.text.lower(), (
+            "Gate rejected the request — session/CSRF layer was never reached. "
+            f"Response: {r.status_code} {r.text}"
+        )
+        # Must be a session/CSRF rejection specifically
+        assert "session" in r.text.lower() or "csrf" in r.text.lower(), (
+            "Expected session or CSRF error detail but got: "
+            f"{r.status_code} {r.text}"
+        )
+
+
 # ── allow_no_key bootstrap routes: no key required ───────────────────────────
 
 class TestAllowNoKeyRoutes:
