@@ -242,6 +242,9 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
         "inversionista": "INVERSIONISTA DEMO UNO",
         "cuota_esperada": 462.14,
         "saldo_por_cancelar": 23800.0,
+        # Slice E: overdue aggregates always present (0 for al-día borrowers).
+        "monto_vencido": 0.0,
+        "cuotas_vencidas": 0,
     }
     for key, value in expected.items():
         assert prof[key] == value, f"{key}: {prof.get(key)!r} != {value!r}"

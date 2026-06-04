@@ -118,7 +118,7 @@
     "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
     "patterns": ["cu[aá]nt[oa].*(debo|pago|deuda|cuota)", "(saldo|deuda).*(pendiente|actual|tengo)"],
     "chips": ["Subir comprobante", "Datos de pago", "Hablar con un asesor"],
-    "template": "Tu crédito {loan} tiene un saldo pendiente de {saldo}. La próxima cuota es de {cuota} y vence el {fecha_venc}. Banco: {banco} | Inversionista: {inversionista}. Estado: {estado}.",
+    "template": "Tienes {monto_vencido} vencido ({cuotas_vencidas} cuotas) para ponerte al día. Saldo total del préstamo: {saldo}. Próxima cuota {cuota} vence el {fecha_venc} ({dias_mora} días de mora). Inversionista: {inversionista}.",
     "list": {
       "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
       "item": "• Crédito {loan}: saldo {saldo}, cuota {cuota} (vence {fecha_venc}) — {estado}.",

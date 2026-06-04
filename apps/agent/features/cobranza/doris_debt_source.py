@@ -34,6 +34,8 @@ from shared.debt_math import classify_tipo
 from features.cobranza import mock_debt_source
 
 # Profile fields that must be coerced to float when mapped from Doris.
+# Note: monto_vencido and cuotas_vencidas are handled explicitly in _row_to_profile
+# (always defaulted to 0 even when absent from the row) and are NOT in this set.
 _NUMERIC_FIELDS = frozenset(
     {
         "principal_original",
@@ -225,6 +227,12 @@ def _build_sql_window(
     select_parts.append(
         "GREATEST(DATEDIFF(CURDATE(), p.fecha_de_pago_esperada_original), 0) AS days_overdue"
     )
+    # Overdue aggregates: monto_vencido = sum of overdue unpaid installments;
+    # cuotas_vencidas = count of same. These drive the PRIMARY "cuánto debo" display
+    # for the cobranza bot (what the borrower owes to GET CURRENT), while balance
+    # (total remaining) is secondary context. Joined from the pagos_agg CTE below.
+    select_parts.append("COALESCE(agg.monto_vencido, 0) AS monto_vencido")
+    select_parts.append("COALESCE(agg.cuotas_vencidas, 0) AS cuotas_vencidas")
 
     select_clause = ",\n    ".join(select_parts)
 
@@ -236,6 +244,18 @@ def _build_sql_window(
         f"      ORDER BY {pagos_order}\n"
         f"    ) AS rn\n"
         f"  FROM {db}.{pagos}\n"
+        f"),\n"
+        f"pagos_agg AS (\n"
+        f"  -- Overdue aggregate: unpaid installments whose expected date has passed.\n"
+        f"  -- monto_vencido = what the borrower owes to get current (PRIMARY display).\n"
+        f"  SELECT\n"
+        f"    {pagos_key} AS {pagos_key},\n"
+        f"    SUM(cuota_esperada_mensual) AS monto_vencido,\n"
+        f"    COUNT(*) AS cuotas_vencidas\n"
+        f"  FROM {db}.{pagos}\n"
+        f"  WHERE fecha_de_pago_del_cliente IS NULL\n"
+        f"    AND fecha_de_pago_esperada_original <= CURDATE()\n"
+        f"  GROUP BY {pagos_key}\n"
         f"),\n"
         f"asig_sel AS (\n"
         f"  SELECT *,\n"
@@ -252,6 +272,8 @@ def _build_sql_window(
         f"JOIN pagos_sel p\n"
         f"  ON p.{pagos_key} = a.{debt_key}\n"
         f"  AND p.rn = 1\n"
+        f"LEFT JOIN pagos_agg agg\n"
+        f"  ON agg.{pagos_key} = a.{debt_key}\n"
         f"WHERE a.rn = 1"
     )
     return sql, db
@@ -353,6 +375,11 @@ def _row_to_profile(row: dict) -> dict:
     profile["email"] = row.get("email") or ""
     profile["status"] = "al_dia" if dias_mora == 0 else "en_mora"
     profile["status_label"] = "Al día" if dias_mora == 0 else "En mora"
+    # Overdue aggregates: always present in profile, defaulting to 0 when the
+    # row does not include them (e.g. legacy schemas without the pagos_agg CTE).
+    # monto_vencido is a float (currency amount); cuotas_vencidas is a count (int).
+    profile["monto_vencido"] = _to_float(row.get("monto_vencido", 0))
+    profile["cuotas_vencidas"] = int(_to_float(row.get("cuotas_vencidas", 0)))
     return profile
 
 

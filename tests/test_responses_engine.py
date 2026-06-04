@@ -94,10 +94,12 @@ def test_render_single_consulta_deuda_with_real_data():
     prof = _profile(LUIS)
     res = R.render_intent(spec, "consulta_deuda", prof, source=R.SOURCE_KEYWORD)
     assert res is not None
-    assert "P02137" in res.text
-    assert "S/ 18,420.00" in res.text       # saldo real
+    # Slice E: template now leads with monto_vencido (vencido/al-día), total saldo,
+    # cuota and fecha_venc. Loan number is no longer in the single template.
+    assert "S/ 18,420.00" in res.text       # saldo total real
     assert "S/ 462.14" in res.text          # cuota real
     assert "2026-06-18" in res.text         # fecha de vencimiento real
+    assert "INVERSIONISTA DEMO UNO" in res.text  # inversionista (P2P model)
 
 
 # ── list template render (multi-deuda: Lucía → 2 créditos) ───────────────────
@@ -597,7 +599,7 @@ def test_typed_dni_capture_extracts_value_via_named_group():
 @pytest.mark.parametrize(
     "dni,first_name,must_contain",
     [
-        (LUIS, "Carlos", ["P02137"]),                       # single credit
+        (LUIS, "Carlos", ["18,420.00"]),                    # single credit — Slice E: template leads with vencido, no loan# in single tpl
         (LUCIA, "Lucia", ["P05012", "P05119", "2 créditos"]),  # multi-credit list
         (ROSA, "Rosa", ["grupal"]),                         # grupal w/ codeudores
     ],
@@ -653,7 +655,8 @@ async def test_token_identity_flow_still_works_with_verified_profile():
     )
     assert provider.calls == 0
     assert res["metadata"]["intent"] == "consulta_deuda"
-    assert "P02137" in res["content"]
+    # Slice E: single template no longer includes loan# — verify real saldo is present.
+    assert "18,420.00" in res["content"]
 
 
 def test_tenant_without_identificar_intent_unchanged():

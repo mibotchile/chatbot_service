@@ -125,6 +125,13 @@ async def consultar_deuda(profile: dict) -> dict:
         "cci_masked": _mask_cci(profile.get("cci")),
         "cuenta_bancaria": profile.get("cuenta_bancaria") or None,
         "inversionista": profile.get("inversionista") or None,
+        # Overdue aggregates (Slice E): PRIMARY display for cobranza bot.
+        # monto_vencido = what the borrower owes to GET CURRENT (overdue installments).
+        # balance above is the total remaining loan balance (secondary context).
+        # cuotas_vencidas == 0 means al-día — no scary "vencido" shown.
+        "monto_vencido": profile.get("monto_vencido", 0.0) or 0.0,
+        "monto_vencido_formatted": _fmt(profile.get("monto_vencido", 0.0) or 0.0, sym),
+        "cuotas_vencidas": profile.get("cuotas_vencidas", 0) or 0,
     }
 
     # PrestamYpe casuística: un mismo DNI puede tener VARIOS créditos vigentes.

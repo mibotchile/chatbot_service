@@ -975,6 +975,8 @@
     const badgeCls = _BADGE_CLS[badge.kind] || "aldia";
     const bank = c.banco ? `<div class="pu-card-bank">${escapeHtml(c.banco)}</div>` : "";
     const rows = [];
+
+    // Próxima cuota + vencimiento rows (always shown when present).
     if (c.next_installment_formatted) {
       rows.push(`<div class="pu-card-row"><span class="k">Próxima cuota</span><span class="v">${escapeHtml(c.next_installment_formatted)}</span></div>`);
     }
@@ -1005,6 +1007,27 @@
       ).join("");
       grupal = `<div class="pu-card-grupal"><div class="gtitle">Crédito grupal · codeudores</div>${cos}</div>`;
     }
+
+    // PRIMARY balance section: lead with what the borrower owes to GET CURRENT
+    // (monto_vencido / cuotas_vencidas). Al-día case (cuotas_vencidas == 0): show
+    // "Estás al día" instead of a scary "vencido" label. Total balance is secondary.
+    const cuotasVencidas = c.cuotas_vencidas || 0;
+    let primarySection;
+    if (cuotasVencidas > 0) {
+      const cuotaLabel = cuotasVencidas === 1 ? "1 cuota" : `${cuotasVencidas} cuotas`;
+      primarySection = `
+        <div class="pu-card-balance-lbl pu-card-overdue-lbl">Vencido / a regularizar</div>
+        <div class="pu-card-balance pu-card-overdue">${escapeHtml(c.monto_vencido_formatted || "")}</div>
+        <div class="pu-card-overdue-detail">${escapeHtml(cuotaLabel)} vencidas</div>
+        <div class="pu-card-balance-lbl pu-card-total-lbl">Saldo total del préstamo</div>
+        <div class="pu-card-balance pu-card-total">${escapeHtml(c.balance_formatted || "")}</div>`;
+    } else {
+      primarySection = `
+        <div class="pu-card-balance-lbl pu-card-aldia-lbl">Estás al día</div>
+        <div class="pu-card-balance-lbl pu-card-total-lbl">Saldo total del préstamo</div>
+        <div class="pu-card-balance pu-card-total">${escapeHtml(c.balance_formatted || "")}</div>`;
+    }
+
     return `
       <div class="pu-card">
         <div class="pu-card-top">
@@ -1014,8 +1037,7 @@
           </div>
           <span class="pu-card-badge ${badgeCls}">${escapeHtml(badge.label || "")}</span>
         </div>
-        <div class="pu-card-balance-lbl">Saldo pendiente</div>
-        <div class="pu-card-balance">${escapeHtml(c.balance_formatted || "")}</div>
+        ${primarySection}
         ${rows.length ? `<div class="pu-card-rows">${rows.join("")}</div>` : ""}
         ${grupal}
       </div>`;

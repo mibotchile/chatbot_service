@@ -43,7 +43,9 @@
       "banco": "INTERBANK",
       "inversionista": "INVERSIONISTA DEMO UNO",
       "cuota_esperada": 462.14,
-      "saldo_por_cancelar": 18420.0
+      "saldo_por_cancelar": 18420.0,
+      "monto_vencido": 0.0,
+      "cuotas_vencidas": 0
     },
     "P04239": {
       "account_id": "P04239",
@@ -65,7 +67,9 @@
       "banco": "BCP",
       "inversionista": "INVERSIONISTA DEMO TRES",
       "cuota_esperada": 3210.55,
-      "saldo_por_cancelar": 138720.84
+      "saldo_por_cancelar": 138720.84,
+      "monto_vencido": 9631.65,
+      "cuotas_vencidas": 3
     },
     "P03650": {
       "account_id": "P03650",
@@ -87,7 +91,9 @@
       "banco": "INTERBANK",
       "inversionista": "INVERSIONISTA DEMO CUATRO",
       "cuota_esperada": 1397.71,
-      "saldo_por_cancelar": 31840.0
+      "saldo_por_cancelar": 31840.0,
+      "monto_vencido": 1397.71,
+      "cuotas_vencidas": 1
     },
     "P05012": {
       "account_id": "P05012",
@@ -110,6 +116,8 @@
       "inversionista": "INVERSIONISTA DEMO DOS",
       "cuota_esperada": 612.3,
       "saldo_por_cancelar": 9120.5,
+      "monto_vencido": 0.0,
+      "cuotas_vencidas": 0,
       "additional_credits": [
         {
           "account_id": "P05119",
@@ -149,6 +157,8 @@
       "inversionista": "INVERSIONISTA DEMO CINCO",
       "cuota_esperada": 845.6,
       "saldo_por_cancelar": 845.6,
+      "monto_vencido": 0.0,
+      "cuotas_vencidas": 0,
       "is_grupal": true,
       "codeudores": [
         { "borrower_name": "MIGUEL ANGEL PAREDES QUISPE", "dni": "40517265", "rol": "codeudor" },

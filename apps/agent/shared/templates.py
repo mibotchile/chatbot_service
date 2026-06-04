@@ -54,6 +54,8 @@ def build_variables(profile: dict) -> dict[str, str]:
     """
     sym = profile.get("currency_symbol", "S/")
     first_name = str(profile.get("borrower_name", "")).split(" ")[0].title()
+    monto_vencido = float(profile.get("monto_vencido") or 0.0)
+    cuotas_vencidas = int(profile.get("cuotas_vencidas") or 0)
     return {
         "nombre": first_name,
         "nombre_completo": _title(profile.get("borrower_name", "")),
@@ -66,6 +68,11 @@ def build_variables(profile: dict) -> dict[str, str]:
         "estado": profile.get("status_label") or profile.get("status") or "",
         "cci": profile.get("cci") or "",
         "banco": profile.get("banco") or "",
+        "inversionista": profile.get("inversionista") or "",
+        "cuenta_bancaria": profile.get("cuenta_bancaria") or "",
+        # Overdue aggregates (Slice E) — filled from profile; 0 when al día.
+        "monto_vencido": _money(monto_vencido, sym),
+        "cuotas_vencidas": str(cuotas_vencidas),
     }
 
 
