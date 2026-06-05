@@ -48,15 +48,7 @@ _NUMERIC_FIELDS = frozenset(
 )
 
 # Profile fields that are bank/payment strings — passed through as-is.
-_STRING_FIELDS = frozenset({"inversionista", "cci", "banco"})
-
-# Profile fields that must be presented as clean integer-string identifiers.
-# These originate from DOUBLE columns in Doris (e.g. numero_de_cuenta) that are
-# CAST AS DECIMAL(38,0) at the SQL source to recover the full integer before the
-# window CTE promotes them to scientific notation. At the Python layer we format
-# them as str(int(value)) — no decimal point, no scientific notation, no leading
-# zeros (which were already lost at ETL since the Doris column type is DOUBLE).
-_ID_NUMBER_FIELDS = frozenset({"cuenta_bancaria"})
+_STRING_FIELDS = frozenset({"cuenta_bancaria", "inversionista", "cci", "banco"})
 _IDENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
@@ -228,19 +220,7 @@ def _build_sql_window(
             select_parts.append(f"COALESCE({coalesce_refs}) AS {field}")
         else:
             col = _safe_ident(spec["column"], what=f"column_map[{field}].column")
-            cast = spec.get("cast")
-            if cast == "id_number" and alias == "a":
-                # DOUBLE columns (e.g. numero_de_cuenta) must be cast at the SOURCE —
-                # i.e. inside the asig_sel CTE before the ROW_NUMBER window promotes
-                # the value to scientific notation (8.98348E+12). Casting after the
-                # window CTE returns NULL (verified live on Doris). DECIMAL(38,0)
-                # recovers the full integer (also BIGINT works, but DECIMAL is safer
-                # for very large account numbers). Note: any leading zeros were lost
-                # at ETL since the upstream column type is DOUBLE — acceptable for now;
-                # numero_de_cuenta should ideally be a STRING column upstream.
-                select_parts.append(f"CAST({alias}.{col} AS DECIMAL(38,0)) AS {field}")
-            else:
-                select_parts.append(f"{alias}.{col} AS {field}")
+            select_parts.append(f"{alias}.{col} AS {field}")
 
     # days_overdue is derived from date arithmetic (always correct, never stale).
     # Injected here regardless of column_map entry — it overwrites any mapped value.
@@ -384,17 +364,6 @@ def _row_to_profile(row: dict) -> dict:
     for key, value in row.items():
         if key in _NUMERIC_FIELDS:
             profile[key] = _to_float(value)
-        elif key in _ID_NUMBER_FIELDS:
-            # Format as a clean digit string: no scientific notation, no trailing .0.
-            # Value arrives as int or Decimal from the DECIMAL(38,0) cast applied at
-            # the SQL source. None/empty → None (field absent or NULL in Doris).
-            if value is None or value == "":
-                profile[key] = None
-            else:
-                try:
-                    profile[key] = str(int(value))
-                except (TypeError, ValueError):
-                    profile[key] = None
         else:
             profile[key] = value
 
