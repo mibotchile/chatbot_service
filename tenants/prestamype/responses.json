@@ -107,6 +107,7 @@
     "patterns": ["\\b(?P<dni>\\d{8})\\b"],
     "chips": ["Ver mi deuda", "Subir comprobante", "Datos de pago"],
     "template": "Listo, {nombre}. Verifiqué tu identidad. ¿Quieres ver tu deuda o validar un comprobante de pago?",
+    "confirm": "Listo, {nombre}. Verifiqué tu identidad.",
     "not_found": "No encontré una cuenta con ese DNI. Verifica el número (son 8 dígitos) o, si prefieres, te derivo con un asesor."
   },
 

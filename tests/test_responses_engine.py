@@ -198,6 +198,28 @@ def test_requires_identity_gate_blocks_unverified():
     assert "dni" in out.text.lower()
 
 
+def test_classified_identificar_without_dni_does_not_claim_verified():
+    """Regression: an LLM-classified 'identificar' with no captured DNI (e.g. a
+    9-digit number that fails the \\d{8} pattern) must NOT render the success
+    template ('Verifiqué tu identidad') nor attach the tool with an empty arg —
+    that falsely told a WhatsApp user that '123456789' was verified."""
+    spec = _spec()
+    out = R.resolve_classified_intent("identificar", spec, {}, session_state={}, identity_verified=False)
+    assert out.handled is True
+    assert "Verifiqué" not in out.text          # never claim success without a DNI
+    assert not out.run_tool                       # tool NOT attached with empty args
+
+
+def test_gate_remembers_pending_intent():
+    """A gated intent blocked for an unverified user is stashed so it can be
+    answered directly after identification (no re-ask of '¿qué quieres hacer?')."""
+    spec = _spec()
+    ss: dict = {}
+    out = R.route_layer1("cuánto debo", spec, {}, session_state=ss, identity_verified=False)
+    assert out.intent == "identidad_requerida"
+    assert ss.get("pending_intent") == "consulta_deuda"
+
+
 def test_requires_identity_gate_passes_when_verified():
     spec = _spec()
     out = R.route_layer1("cuánto debo", spec, _profile(LUIS),

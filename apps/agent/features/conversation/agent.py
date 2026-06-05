@@ -286,7 +286,7 @@ class SoreliaAgent:
             text, spec, prof, session_state=session_state, identity_verified=verified,
         )
         if outcome.handled:
-            return await self._canned_result(outcome, spec)
+            return await self._canned_result(outcome, spec, session_state=session_state)
 
         if outcome.needs_llm_classification:
             intent = await self._classify_intent(text, spec)
@@ -295,7 +295,7 @@ class SoreliaAgent:
                     intent, spec, prof, session_state=session_state, identity_verified=verified,
                 )
                 if resolved.handled:
-                    return await self._canned_result(resolved, spec)
+                    return await self._canned_result(resolved, spec, session_state=session_state)
                 # Not handled → this intent hands the turn to the LLM. If it's a
                 # ``flow`` intent, ARM the sticky flag so subsequent turns bypass
                 # the router until the tool resolves (or the cap fires).
@@ -336,7 +336,7 @@ class SoreliaAgent:
             logger.opt(exception=True).debug("intent classification failed (non-blocking)")
         return None
 
-    async def _canned_result(self, outcome, spec=None) -> dict[str, Any]:
+    async def _canned_result(self, outcome, spec=None, session_state=None) -> dict[str, Any]:
         """Build the standard process_message result dict for a canned reply.
 
         When the matched intent declares a ``tool`` (data-driven, in responses.json)
@@ -363,7 +363,7 @@ class SoreliaAgent:
                 tool_pairs = [(outcome.run_tool, tool_result)]
                 ui_actions = build_ui_actions(tool_pairs)
                 content = self._content_after_tool(
-                    outcome, tool_result, spec, fallback=content
+                    outcome, tool_result, spec, fallback=content, session_state=session_state
                 )
             except Exception:
                 logger.opt(exception=True).warning(
@@ -388,7 +388,7 @@ class SoreliaAgent:
             "response_source": outcome.source,
         }
 
-    def _content_after_tool(self, outcome, tool_result: dict, spec, fallback: str) -> str:
+    def _content_after_tool(self, outcome, tool_result: dict, spec, fallback: str, session_state=None) -> str:
         """Resolve the customer-facing text once a canned intent's tool has run.
 
         Generic for identification-style intents (those whose tool opens the
@@ -417,9 +417,19 @@ class SoreliaAgent:
         # their copy from the tool outcome — everything else is unchanged.
         if not (cfg.get("capture") and cfg.get("tool")):
             return fallback
-        succeeded = tool_result.get("identified", tool_result.get("found", True))
+        # Fail-closed: only treat as success when the tool EXPLICITLY says so.
+        succeeded = tool_result.get("identified", tool_result.get("found", False))
         if succeeded:
             profile = self._verified_profile() or {}
+            # If the user already stated a (gated) intent BEFORE identifying, answer
+            # it now directly instead of re-asking "¿qué quieres hacer?" — they told us.
+            pending = session_state.pop("pending_intent", None) if session_state is not None else None
+            if pending and pending != intent:
+                ans = responses_engine.render_intent(spec, pending, profile, source=outcome.source)
+                if ans and ans.text:
+                    confirm_tpl = cfg.get("confirm")
+                    ack = responses_engine.render_template(confirm_tpl, profile) if confirm_tpl else ""
+                    return f"{ack}\n\n{ans.text}".strip()
             res = responses_engine.render_intent(
                 spec, intent, profile, source=outcome.source,
             )

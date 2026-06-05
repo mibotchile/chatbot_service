@@ -409,6 +409,10 @@ def _emit_intent(
     """
     # Data-driven identity gate: a gated intent for an unverified user → ask DNI.
     if intent_requires_identity(spec, intent) and not identity_verified:
+        # Remember WHAT the user wanted so that, once they identify, we answer it
+        # directly instead of re-asking "¿qué quieres hacer?" (they already told us).
+        if session_state is not None and intent and intent != "identidad_requerida":
+            session_state["pending_intent"] = intent
         gate = render_intent(spec, "identidad_requerida", profile, source=source)
         gate_text = gate.text if gate else (
             "Para ver los datos de tu cuenta necesito identificarte. "
@@ -426,10 +430,23 @@ def _emit_intent(
         return None
     _remember_variant(session_state, intent, result.variant_index)
 
+    # Fail-closed: an intent that needs a captured value (e.g. ``identificar`` needs
+    # a valid 8-digit DNI) but got NONE — typically the LLM-classified path, where
+    # the capture pattern (\d{8}) didn't match (a 9-digit or malformed number) —
+    # must NOT render its success template (that would falsely say "Verifiqué tu
+    # identidad") nor run the tool with an empty argument. Ask for the value again.
+    capture_name = cfg.get("capture")
+    if capture_name and not captured:
+        nf = cfg.get("not_found")
+        if nf:
+            return RouterOutcome(
+                handled=True, text=render_template(nf, {}), intent=intent, source=source
+            )
+        return None
+
     # Build the tool args: if the intent captures a value, pass it as the named
     # argument (the ``capture`` name == the tool's parameter name, data-driven).
     tool_args: dict = {}
-    capture_name = cfg.get("capture")
     if capture_name and captured:
         tool_args[str(capture_name)] = captured
 
