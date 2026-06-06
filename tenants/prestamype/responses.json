@@ -166,8 +166,10 @@
   "comprobante_reportar": {
     "mode": "verbatim",
     "flow": true,
-    "doc": "El usuario REPORTA un pago que ya hizo (da/dará monto, número de operación y/o cuenta de destino). SIN template a propósito: clasifica pero renderiza vacío → el turno cae al agente LLM, que pide los datos faltantes y ejecuta la tool validar_comprobante. flow:true activa el sticky-flow: una vez clasificado, el router (layer-1/2) se bypassa en los turnos siguientes para que una palabra suelta ('es un cci') no secuestre el flujo a donde_pagar; el flag se libera al ejecutar la tool o tras 6 turnos. Camino A (tipeado) del flujo 'subir pago'.",
-    "description": "El usuario avisa o reporta que YA hizo/realizó un pago, transferencia o depósito de su crédito (menciona monto, número de operación o a qué cuenta pagó). NO es preguntar dónde pagar; es informar un pago ya hecho.",
+    "doc": "El usuario quiere SUBIR/CARGAR/ENVIAR/REGISTRAR su comprobante, o REPORTA un pago ya hecho. SIN template a propósito: renderiza vacío → el turno cae al agente LLM, que pide los datos faltantes (foto, monto, inversionista) y ejecuta validar_comprobante. flow:true activa el sticky-flow para que una palabra suelta ('es un cci') no secuestre el flujo; el flag se libera al ejecutar la tool o tras 6 turnos. keywords/patterns hacen que 'subir comprobante' caiga aquí por Layer-1 (determinístico) y arme el flow, en vez de jugárselo a la clasificación LLM (que a veces lo mandaba a derivar_asesor).",
+    "description": "El usuario quiere SUBIR, CARGAR, ENVIAR o REGISTRAR su comprobante/voucher de pago, o avisa que YA hizo/realizó un pago, transferencia o depósito de su crédito. NO es preguntar dónde pagar ni hablar con un asesor; es subir/reportar un pago.",
+    "keywords": ["subir comprobante", "subir mi comprobante", "cargar comprobante", "cargar mi comprobante", "enviar comprobante", "enviar mi comprobante", "mandar comprobante", "registrar comprobante", "registrar mi pago", "registrar pago", "validar comprobante", "subir voucher", "enviar voucher", "mi voucher", "ya pagué", "ya pague", "hice el pago", "hice mi pago", "ya transferí", "ya transferi", "ya deposité", "ya deposite", "acabo de pagar"],
+    "patterns": ["(sub[ií]r|carg|registr|valid).*(comprobante|voucher|pago)", "(env[ií]a|mand).*(comprobante|voucher)", "ya.*(pagu[eé]|deposit|transfer)"],
     "requires_identity": true
   },
 

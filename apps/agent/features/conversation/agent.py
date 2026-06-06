@@ -285,6 +285,12 @@ class SoreliaAgent:
         outcome = responses_engine.route_layer1(
             text, spec, prof, session_state=session_state, identity_verified=verified,
         )
+        if outcome.arm_flow_intent:
+            # Keyword hit on a flow intent (e.g. comprobante_reportar): arm the
+            # sticky flow and hand the turn to the LLM directly — never re-classify
+            # (which can misfire to derivar_asesor for "subir comprobante").
+            _arm_llm_flow(session_state, outcome.arm_flow_intent)
+            return None
         if outcome.handled:
             return await self._canned_result(outcome, spec, session_state=session_state)
 

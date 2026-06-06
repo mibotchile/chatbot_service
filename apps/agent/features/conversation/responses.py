@@ -284,6 +284,7 @@ class RouterOutcome:
     source: str = SOURCE_LLM            # canned_keyword | canned_intent | llm
     variant_index: int = -1
     needs_llm_classification: bool = False  # hybrid miss → let the agent classify
+    arm_flow_intent: str | None = None  # keyword-matched flow intent → agent arms the sticky flow + free-generates (no re-classification)
     run_tool: str | None = None         # tool the agent must execute before replying
     tool_args: dict = field(default_factory=dict)  # args parsed from the message (e.g. {"dni": "..."})
     # Re-render the intent's template AFTER its tool ran, with the tool result
@@ -347,6 +348,15 @@ def route_layer1(
         if out is not None:
             logger.info("responses: layer1 hit intent={} (no LLM)", intent)
             return out
+        # A flow intent (e.g. comprobante_reportar) renders empty ON PURPOSE — its
+        # turn is handled by the LLM. A keyword hit must ARM that flow and hand to
+        # the LLM directly, never fall through to re-classification (which can
+        # misfire to derivar_asesor for a clear "subir comprobante").
+        if (spec.intents.get(intent) or {}).get("flow"):
+            logger.info("responses: layer1 flow intent={} → arm flow + LLM", intent)
+            return RouterOutcome(
+                handled=False, source=SOURCE_LLM, arm_flow_intent=intent
+            )
 
     # Layer 1 missed.
     if spec.response_mode == "scripted":

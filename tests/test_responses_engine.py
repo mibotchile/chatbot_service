@@ -220,6 +220,22 @@ def test_gate_remembers_pending_intent():
     assert ss.get("pending_intent") == "consulta_deuda"
 
 
+@pytest.mark.parametrize("text", [
+    "subir comprobante",
+    "quiero subir mi comprobante de pago",
+    "cargar comprobante",
+    "registrar mi pago",
+    "ya transferí",
+])
+def test_comprobante_keywords_arm_flow_not_derive(text):
+    """'subir comprobante' & co. must Layer-1 ARM the comprobante flow deterministically
+    (no LLM re-classification → no false derive to an advisor)."""
+    spec = _spec()
+    out = R.route_layer1(text, spec, _profile(LUIS), session_state={}, identity_verified=True)
+    assert out.arm_flow_intent == "comprobante_reportar"
+    assert out.intent != "derivar_asesor"
+
+
 def test_requires_identity_gate_passes_when_verified():
     spec = _spec()
     out = R.route_layer1("cuánto debo", spec, _profile(LUIS),
