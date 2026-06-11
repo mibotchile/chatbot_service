@@ -20,6 +20,7 @@ COBRANZA_TOOLS: tuple[str, ...] = (
     "collect_contact_info",
     "identificar_cliente",
     "consultar_deuda",
+    "consultar_cronograma",
     "registrar_reclamo",
     "emitir_certificado_no_adeudo",
     "enviar_documento",
@@ -34,6 +35,7 @@ COBRANZA_TOOLS: tuple[str, ...] = (
 # the module-global and sources this set from here instead.
 COBRANZA_GATED_TOOLS: frozenset[str] = frozenset({
     "consultar_deuda",
+    "consultar_cronograma",
     "registrar_reclamo",
     "emitir_certificado_no_adeudo",
     "enviar_documento",

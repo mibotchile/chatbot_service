@@ -176,7 +176,7 @@
       "Datos de pago",
       "Hablar con un asesor"
     ],
-    "template": "Tienes {monto_vencido} vencido ({cuotas_vencidas} cuotas) para ponerte al día. Saldo total del préstamo: {saldo}. Próxima cuota {cuota} vence el {fecha_venc} ({dias_mora} días de mora). Inversionista: {inversionista}.",
+    "template": "Tienes {monto_vencido} vencido ({cuotas_vencidas} cuotas) para ponerte al día. Saldo total del préstamo: {saldo}. Próxima cuota {cuota} vence el {fecha_venc} ({dias_mora} días de mora). Cargos por mora: penalidad {penalidad} + interés compensatorio {interes_compensatorio}. Inversionista: {inversionista}.",
     "list": {
       "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
       "item": "• Crédito {loan}: saldo {saldo}, cuota {cuota} (vence {fecha_venc}) — {estado}.",
@@ -557,7 +557,8 @@
       "cuotas pendientes",
       "plan de cuotas"
     ],
-    "template": "Aquí está tu cronograma de pagos para el crédito {loan}."
+    "template": "Aquí está tu cronograma de pagos para el crédito {loan}.",
+    "rerender_with_result": true
   },
   "cuentas_bancarias": {
     "mode": "verbatim",

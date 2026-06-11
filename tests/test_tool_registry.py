@@ -28,6 +28,7 @@ from api.tool_registry import ToolRegistry
 
 EXPECTED_GATED = frozenset({
     "consultar_deuda",
+    "consultar_cronograma",
     "registrar_reclamo",
     "emitir_certificado_no_adeudo",
     "enviar_documento",
