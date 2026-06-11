@@ -56,6 +56,8 @@ def build_variables(profile: dict) -> dict[str, str]:
     first_name = str(profile.get("borrower_name", "")).split(" ")[0].title()
     monto_vencido = float(profile.get("monto_vencido") or 0.0)
     cuotas_vencidas = int(profile.get("cuotas_vencidas") or 0)
+    _cp = profile.get("cuotas_pagadas")
+    _cpe = profile.get("cuotas_pendientes")
     return {
         "nombre": first_name,
         "nombre_completo": _title(profile.get("borrower_name", "")),
@@ -73,6 +75,10 @@ def build_variables(profile: dict) -> dict[str, str]:
         # Overdue aggregates (Slice E) — filled from profile; 0 when al día.
         "monto_vencido": _money(monto_vencido, sym),
         "cuotas_vencidas": str(cuotas_vencidas),
+        # Schedule aggregates (INF-02/INF-03) — from the Doris profile (Fase 3).
+        "cuotas_pagadas": "" if _cp is None else str(_cp),
+        "cuotas_pendientes": "" if _cpe is None else str(_cpe),
+        "fecha_venc_contrato": profile.get("fecha_venc_contrato") or "",
     }
 
 
