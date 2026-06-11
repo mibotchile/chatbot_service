@@ -334,6 +334,15 @@ class SoreliaAgent:
                         _schema = getattr(_wiring_store, "db_schema", "dev")
                     except Exception:
                         pass
+                # Canonical fallback: the lifespan-pooled store lives in api.main
+                # (wiring/tool_registry stores are poolless module singletons).
+                if _pool is None:
+                    try:
+                        from api.main import store as _main_store  # noqa: PLC0415
+                        _pool = getattr(_main_store, "db_pool", None)
+                        _schema = getattr(_main_store, "db_schema", "dev")
+                    except Exception:
+                        pass
                 _conv_id = getattr(self.tool_registry, "_conversation_id", "") or ""
                 commitment_outcome = await responses_engine.handle_compromiso_date_reply(
                     text, spec, prof,
@@ -445,6 +454,17 @@ class SoreliaAgent:
         the now-verified profile; when it reports the value wasn't found the
         intent's ``not_found`` canned text is returned instead — never a 500.
         """
+        # Arm pending-step flows when their trigger intent is emitted, regardless of
+        # which path resolved it (keyword router OR LLM classification). Without this
+        # the follow-up turn (the date / the contract number) falls through to the LLM
+        # instead of being intercepted by the gate. See _try_canned top-of-loop gates.
+        if session_state is not None and outcome is not None:
+            _intent = getattr(outcome, "intent", None)
+            if _intent == "compromiso_pago":
+                session_state["compromiso_pago_pending_date"] = True
+            elif _intent == "id_contrato_prompt":
+                session_state["id_contrato_expecting_contrato"] = True
+
         tool_pairs: list[tuple[str, dict]] = []
         ui_actions: dict = {}
         content = outcome.text

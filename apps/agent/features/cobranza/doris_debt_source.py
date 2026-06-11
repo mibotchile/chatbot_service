@@ -787,19 +787,21 @@ def _query_contrato_rows(contrato_id: str, tenant_id: str) -> list[dict]:
     _cfg_path = _tenants_root() / tenant_id / "tenant.config.json"
     try:
         _tcfg = _json.loads(_cfg_path.read_text(encoding="utf-8"))
-        _contrato_col_raw = (_tcfg.get("cobranza") or {}).get("contrato_column", "id_contrato")
+        _contrato_col_raw = (_tcfg.get("cobranza") or {}).get("contrato_column", "id_credito")
     except (OSError, _json.JSONDecodeError):
-        _contrato_col_raw = "id_contrato"
+        _contrato_col_raw = "id_credito"
     contrato_col = _safe_ident(_contrato_col_raw, what="contrato_column")
 
-    # Dedup: keep the most-recent row per (id_credito, posicion_contractual).
-    # batch_asignacion_review_bronze has ~3-6x raw duplicates (confirmed 2026-06-11).
+    # Dedup the raw 3-6x duplicates of the SAME person, but keep EVERY distinct
+    # involved party (grupal credits have multiple SOLICITANTES and/or GARANTES —
+    # all of them are authorized). Partition by dni_ruc too so co-borrowers and
+    # co-guarantors are NOT collapsed (that bug fail-closed valid garantes).
     sql = (
         f"SELECT t.*\n"
         f"FROM (\n"
         f"  SELECT *,\n"
         f"    ROW_NUMBER() OVER (\n"
-        f"      PARTITION BY id_credito, posicion_contractual\n"
+        f"      PARTITION BY id_credito, posicion_contractual, dni_ruc\n"
         f"      ORDER BY creado_el DESC\n"
         f"    ) AS _rn\n"
         f"  FROM {db}.{debt}\n"

@@ -61,7 +61,7 @@
       },
       "feriados_source": "feriados_peru_2026.json"
     },
-    "contrato_column": "id_contrato",
+    "contrato_column": "id_credito",
     "project_uid": "QUIdI0iwQY0l3pJwRKLB"
   },
   "branding": {
