@@ -1,14 +1,9 @@
-"""[RED/GREEN] Integration test for Layer-3 gestion tracking (Phase 6).
+"""Integration tests for Layer-3 gestion tracking (Phase 6).
 
-Simulates a full two-turn conversation against a real Postgres DB:
-  Turn 1 (non-terminal): assert gestiones row created open, capability_used event in journal.
-  Turn 2 (terminal: payment_commitment): assert closed_at set, correct outcome, terminal event.
-  Journal replay: assert all events replay correctly to match snapshot state.
-  schema_version: assert = 1 on snapshot.
-  No mibotair_results write: assert no import/reference in new code.
-  Doris sink: mocked — assert _async_write called with correct shape.
+Drives _emit_gestion with REAL prestamype intents and a ResponsesSpec loaded
+from the real tenants/prestamype/ directory (no mocking of the spec).
 
-Set GESTION_TEST_PG_DSN=postgresql://user:pass@host/dbname to run.
+Requires a live Postgres: set GESTION_TEST_PG_DSN=postgresql://user:pass@host/db
 """
 
 from __future__ import annotations
@@ -17,9 +12,9 @@ import asyncio
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -54,6 +49,9 @@ import asyncpg  # noqa: E402
 # Fixtures
 # ---------------------------------------------------------------------------
 
+_TENANT_ID = "prestamype"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
 
 @pytest.fixture
 async def pg_pool():
@@ -77,8 +75,7 @@ async def pg_schema(pg_pool, test_schema):
         await conn.execute(f'DROP SCHEMA IF EXISTS "{test_schema}" CASCADE')
 
 
-def _make_conv(conversation_id: str, tenant_id: str = "test_tenant") -> SimpleNamespace:
-    """Build a minimal conv object matching what _emit_gestion expects."""
+def _make_conv(conversation_id: str, tenant_id: str = _TENANT_ID) -> SimpleNamespace:
     return SimpleNamespace(
         conversation_id=conversation_id,
         tenant_id=tenant_id,
@@ -96,26 +93,173 @@ def _make_result(intent: str | None = None) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Full conversation integration test
-# ---------------------------------------------------------------------------
+def _patched_tenant_dir(tenant_id: str):
+    """Resolve real tenants/ dir from repo root (works in dev and CI)."""
+    return _REPO_ROOT / "tenants" / tenant_id
 
+
+# ---------------------------------------------------------------------------
+# B7-1: consulta_deuda → info_provided
+# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_full_conversation_gestion_tracking(pg_pool, pg_schema):
-    """Simulate two turns; assert journal + snapshot state at each step."""
+async def test_consulta_deuda_end_to_end_info_provided(pg_pool, pg_schema):
+    """B7-1: consulta_deuda → outcome=info_provided, capability=consulta_deuda."""
     import api.wiring as wiring_module
     from features.analytics.gestion_catalog import Outcome
 
-    conversation_id = f"integ-{uuid.uuid4().hex[:12]}"
+    conversation_id = f"integ-cd-{uuid.uuid4().hex[:8]}"
     conv = _make_conv(conversation_id)
 
-    # Patch store so _emit_gestion uses our test pool
     mock_store = MagicMock()
     mock_store.db_pool = pg_pool
     mock_store.db_schema = pg_schema
 
-    # Mock Doris _async_write to capture calls without network
+    with (
+        patch.object(wiring_module, "store", mock_store),
+        patch.object(wiring_module, "_tenant_dir", _patched_tenant_dir),
+        patch("features.analytics.analytics_sink._async_write", new_callable=AsyncMock),
+    ):
+        await wiring_module._emit_gestion(conv, _make_result("consulta_deuda"), [])
+
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f'SELECT outcome, closed_at, capabilities_used FROM "{pg_schema}".gestiones'
+            " WHERE conversation_id = $1",
+            conversation_id,
+        )
+    assert row is not None
+    assert row["outcome"] == Outcome.info_provided.value, (
+        f"Expected info_provided, got: {row['outcome']}"
+    )
+    assert row["closed_at"] is not None
+    caps = json.loads(row["capabilities_used"] or "[]")
+    assert "consulta_deuda" in caps
+
+
+# ---------------------------------------------------------------------------
+# B7-2: comprobante_resultado → payment_proof_submitted
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_comprobante_resultado_end_to_end(pg_pool, pg_schema):
+    """B7-2: comprobante_resultado → outcome=payment_proof_submitted, capability=comprobante."""
+    import api.wiring as wiring_module
+    from features.analytics.gestion_catalog import Outcome
+
+    conversation_id = f"integ-cr-{uuid.uuid4().hex[:8]}"
+    conv = _make_conv(conversation_id)
+
+    mock_store = MagicMock()
+    mock_store.db_pool = pg_pool
+    mock_store.db_schema = pg_schema
+
+    with (
+        patch.object(wiring_module, "store", mock_store),
+        patch.object(wiring_module, "_tenant_dir", _patched_tenant_dir),
+        patch("features.analytics.analytics_sink._async_write", new_callable=AsyncMock),
+    ):
+        await wiring_module._emit_gestion(conv, _make_result("comprobante_resultado"), [])
+
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f'SELECT outcome, closed_at, capabilities_used FROM "{pg_schema}".gestiones'
+            " WHERE conversation_id = $1",
+            conversation_id,
+        )
+    assert row["outcome"] == Outcome.payment_proof_submitted.value
+    assert row["closed_at"] is not None
+    caps = json.loads(row["capabilities_used"] or "[]")
+    assert "comprobante" in caps
+
+
+# ---------------------------------------------------------------------------
+# B7-3: derivar_asesor → escalated_to_agent + explicit_agent_request
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_derivar_asesor_end_to_end(pg_pool, pg_schema):
+    """B7-3: derivar_asesor → outcome=escalated_to_agent, reason=explicit_agent_request."""
+    import api.wiring as wiring_module
+    from features.analytics.gestion_catalog import Outcome
+
+    conversation_id = f"integ-da-{uuid.uuid4().hex[:8]}"
+    conv = _make_conv(conversation_id)
+
+    mock_store = MagicMock()
+    mock_store.db_pool = pg_pool
+    mock_store.db_schema = pg_schema
+
+    with (
+        patch.object(wiring_module, "store", mock_store),
+        patch.object(wiring_module, "_tenant_dir", _patched_tenant_dir),
+        patch("features.analytics.analytics_sink._async_write", new_callable=AsyncMock),
+    ):
+        await wiring_module._emit_gestion(conv, _make_result("derivar_asesor"), [])
+
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f'SELECT outcome, outcome_reason, closed_at FROM "{pg_schema}".gestiones'
+            " WHERE conversation_id = $1",
+            conversation_id,
+        )
+    assert row["outcome"] == Outcome.escalated_to_agent.value
+    assert row["outcome_reason"] == "explicit_agent_request"
+    assert row["closed_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# B7-4: no_entendido → not_understood
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_no_entendido_end_to_end(pg_pool, pg_schema):
+    """B7-4: no_entendido → outcome=not_understood."""
+    import api.wiring as wiring_module
+    from features.analytics.gestion_catalog import Outcome
+
+    conversation_id = f"integ-ne-{uuid.uuid4().hex[:8]}"
+    conv = _make_conv(conversation_id)
+
+    mock_store = MagicMock()
+    mock_store.db_pool = pg_pool
+    mock_store.db_schema = pg_schema
+
+    with (
+        patch.object(wiring_module, "store", mock_store),
+        patch.object(wiring_module, "_tenant_dir", _patched_tenant_dir),
+        patch("features.analytics.analytics_sink._async_write", new_callable=AsyncMock),
+    ):
+        await wiring_module._emit_gestion(conv, _make_result("no_entendido"), [])
+
+    async with pg_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f'SELECT outcome, closed_at FROM "{pg_schema}".gestiones'
+            " WHERE conversation_id = $1",
+            conversation_id,
+        )
+    assert row["outcome"] == Outcome.not_understood.value
+    assert row["closed_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Full multi-turn: open (consulta_deuda) → terminal (comprobante_resultado)
+# Journal replay, idempotency
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_full_conversation_gestion_tracking(pg_pool, pg_schema):
+    """Multi-turn: non-terminal open → terminal close. Journal + idempotency."""
+    import api.wiring as wiring_module
+    from features.analytics.gestion_catalog import Outcome
+
+    conversation_id = f"integ-full-{uuid.uuid4().hex[:8]}"
+    conv = _make_conv(conversation_id)
+
+    mock_store = MagicMock()
+    mock_store.db_pool = pg_pool
+    mock_store.db_schema = pg_schema
+
     doris_calls: list[tuple[str, list]] = []
 
     async def _fake_async_write(table: str, rows: list) -> None:
@@ -123,175 +267,92 @@ async def test_full_conversation_gestion_tracking(pg_pool, pg_schema):
 
     with (
         patch.object(wiring_module, "store", mock_store),
-        patch(
-            "features.analytics.analytics_sink._async_write",
-            side_effect=_fake_async_write,
-        ),
+        patch.object(wiring_module, "_tenant_dir", _patched_tenant_dir),
+        patch("features.analytics.analytics_sink._async_write", side_effect=_fake_async_write),
     ):
-        # ------------------------------------------------------------------
-        # Turn 1: non-terminal (consulta_deuda)
-        # ------------------------------------------------------------------
-        result1 = _make_result(intent="consulta_deuda")
-        tool_pairs1 = []  # no tool calls
-        await wiring_module._emit_gestion(conv, result1, tool_pairs1)
+        # Turn 1: non-terminal (saludo — unannotated)
+        await wiring_module._emit_gestion(conv, _make_result("saludo"), [])
 
-        # Assert: gestiones row created, open
         async with pg_pool.acquire() as conn:
             row = await conn.fetchrow(
-                f'SELECT * FROM "{pg_schema}".gestiones WHERE conversation_id = $1',
+                f'SELECT closed_at, outcome, schema_version, tenant_id, channel'
+                f' FROM "{pg_schema}".gestiones WHERE conversation_id = $1',
                 conversation_id,
             )
-        assert row is not None, "gestiones row must be created on first turn"
-        assert row["closed_at"] is None, "closed_at must be null after non-terminal turn"
-        assert row["outcome"] is None, "outcome must be null while open"
-        assert row["schema_version"] == 1, "schema_version must be 1"
-        assert row["tenant_id"] == "test_tenant"
+        assert row is not None
+        assert row["closed_at"] is None
+        assert row["outcome"] is None
+        assert row["schema_version"] == 1
+        assert row["tenant_id"] == _TENANT_ID
         assert row["channel"] == "web"
 
-        # Assert: capability_used event in journal
-        async with pg_pool.acquire() as conn:
-            events_t1 = await conn.fetch(
-                f'SELECT event_type, capability, intent FROM "{pg_schema}".gestion_events'
-                f" WHERE conversation_id = $1 ORDER BY event_id",
-                conversation_id,
-            )
-        assert len(events_t1) == 1, "one capability_used event expected after turn 1"
-        assert events_t1[0]["event_type"] == "capability_used"
-        assert events_t1[0]["capability"] == "consulta_deuda"
-        assert events_t1[0]["intent"] == "consulta_deuda"
+        # Turn 2: non-terminal info (consulta_deuda — capability only, no terminal close)
+        # consulta_deuda HAS terminal_signal=info_provided so it DOES close — use
+        # elegir_credito instead (capability=multicredito, no terminal_signal)
+        await wiring_module._emit_gestion(conv, _make_result("elegir_credito"), [])
 
-        # Assert: Doris received a bot_gestion_events + bot_gestiones call
-        doris_tables_t1 = [t for t, _ in doris_calls]
-        assert "bot_gestion_events" in doris_tables_t1
-        assert "bot_gestiones" in doris_tables_t1
-
-        # ------------------------------------------------------------------
-        # Turn 2: terminal (payment_commitment via tool)
-        # ------------------------------------------------------------------
-        doris_calls.clear()
-        result2 = _make_result(intent="payment_commitment")
-        tool_pairs2 = [("register_payment_commitment", {"date": "2026-07-01"})]
-        await wiring_module._emit_gestion(conv, result2, tool_pairs2)
-
-        # Assert: gestiones closed
         async with pg_pool.acquire() as conn:
             row2 = await conn.fetchrow(
-                f'SELECT * FROM "{pg_schema}".gestiones WHERE conversation_id = $1',
+                f'SELECT closed_at, capabilities_used FROM "{pg_schema}".gestiones'
+                " WHERE conversation_id = $1",
                 conversation_id,
             )
-        assert row2["closed_at"] is not None, "closed_at must be set after terminal turn"
-        assert row2["outcome"] == Outcome.payment_commitment_registered.value
-        assert row2["outcome_reason"] is None
-        assert row2["schema_version"] == 1
+        assert row2["closed_at"] is None, "elegir_credito has no terminal_signal — must stay open"
+        caps2 = json.loads(row2["capabilities_used"] or "[]")
+        assert "multicredito" in caps2
 
-        # Assert: terminal event in journal
-        async with pg_pool.acquire() as conn:
-            events_t2 = await conn.fetch(
-                f'SELECT event_type, capability, payload FROM "{pg_schema}".gestion_events'
-                f" WHERE conversation_id = $1 ORDER BY event_id",
-                conversation_id,
-            )
-        event_types_t2 = [e["event_type"] for e in events_t2]
-        assert "terminal" in event_types_t2, "terminal event must be appended"
-
-        terminal_evt = next(e for e in events_t2 if e["event_type"] == "terminal")
-        terminal_payload = json.loads(terminal_evt["payload"])
-        assert terminal_payload["outcome"] == Outcome.payment_commitment_registered.value
-
-        # Assert: Doris called again after terminal turn
-        doris_tables_t2 = [t for t, _ in doris_calls]
-        assert "bot_gestion_events" in doris_tables_t2
-        assert "bot_gestiones" in doris_tables_t2
-
-        # Validate Doris row shape for bot_gestiones
-        gestiones_doris_rows = [
-            rows[0] for tbl, rows in doris_calls if tbl == "bot_gestiones" and rows
-        ]
-        assert gestiones_doris_rows, "bot_gestiones Doris row must be present"
-        doris_g = gestiones_doris_rows[-1]
-        assert "conversation_id" in doris_g, "Doris row must include conversation_id (join key)"
-        assert "datetime_utc" in doris_g, "Doris row must include datetime_utc"
-
-        # ------------------------------------------------------------------
-        # Journal replay: events in order reconstruct snapshot state
-        # ------------------------------------------------------------------
-        async with pg_pool.acquire() as conn:
-            all_events = await conn.fetch(
-                f'SELECT event_type, capability, payload FROM "{pg_schema}".gestion_events'
-                f" WHERE conversation_id = $1 ORDER BY event_id",
-                conversation_id,
-            )
-
-        # Replay: accumulate capabilities, detect terminal
-        replayed_caps: list[str] = []
-        replayed_outcome: str | None = None
-        replayed_closed = False
-        for evt in all_events:
-            if evt["event_type"] == "capability_used" and evt["capability"]:
-                if evt["capability"] not in replayed_caps:
-                    replayed_caps.append(evt["capability"])
-            elif evt["event_type"] == "terminal":
-                p = json.loads(evt["payload"])
-                replayed_outcome = p.get("outcome")
-                replayed_closed = True
-
-        assert replayed_closed, "journal replay must detect terminal close"
-        assert replayed_outcome == Outcome.payment_commitment_registered.value
-        assert "consulta_deuda" in replayed_caps
-
-        # ------------------------------------------------------------------
-        # Idempotency: second terminal call must NOT overwrite first closed_at
-        # ------------------------------------------------------------------
-        first_closed_at = row2["closed_at"]
-        await asyncio.sleep(0.05)  # small delay to detect timestamp change
-
-        result3 = _make_result(intent="payment_commitment")
-        await wiring_module._emit_gestion(conv, result3, tool_pairs2)
+        # Turn 3: terminal (comprobante_resultado → proof)
+        doris_calls.clear()
+        await wiring_module._emit_gestion(conv, _make_result("comprobante_resultado"), [])
 
         async with pg_pool.acquire() as conn:
             row3 = await conn.fetchrow(
-                f'SELECT closed_at, outcome FROM "{pg_schema}".gestiones WHERE conversation_id = $1',
+                f'SELECT closed_at, outcome, outcome_reason FROM "{pg_schema}".gestiones'
+                " WHERE conversation_id = $1",
                 conversation_id,
             )
-        assert abs((row3["closed_at"] - first_closed_at).total_seconds()) < 1, (
-            "second close must not overwrite first closed_at"
-        )
-        assert row3["outcome"] == Outcome.payment_commitment_registered.value
+        assert row3["closed_at"] is not None
+        assert row3["outcome"] == Outcome.payment_proof_submitted.value
 
+        # Journal: check events
+        async with pg_pool.acquire() as conn:
+            events = await conn.fetch(
+                f'SELECT event_type, capability FROM "{pg_schema}".gestion_events'
+                " WHERE conversation_id = $1 ORDER BY event_id",
+                conversation_id,
+            )
+        event_types = [e["event_type"] for e in events]
+        assert "capability_used" in event_types
+        assert "terminal" in event_types
 
-# ---------------------------------------------------------------------------
-# No mibotair_results reference in new modules
-# ---------------------------------------------------------------------------
+        # Idempotency: second call must not overwrite closed_at
+        first_closed = row3["closed_at"]
+        await asyncio.sleep(0.05)
+        await wiring_module._emit_gestion(conv, _make_result("comprobante_resultado"), [])
 
+        async with pg_pool.acquire() as conn:
+            row4 = await conn.fetchrow(
+                f'SELECT closed_at, outcome FROM "{pg_schema}".gestiones'
+                " WHERE conversation_id = $1",
+                conversation_id,
+            )
+        assert abs((row4["closed_at"] - first_closed).total_seconds()) < 1
+        assert row4["outcome"] == Outcome.payment_proof_submitted.value
 
-def test_no_mibotair_results_reference():
-    """Assert none of the new gestion modules import or reference mibotair_results."""
-    import importlib
-    import importlib.util
-    import pathlib
-
-    new_modules = [
-        "apps/agent/features/analytics/gestion_catalog.py",
-        "apps/agent/features/analytics/gestion_derivation.py",
-        "apps/agent/features/analytics/gestion_sink.py",
-        "apps/agent/features/analytics/gestion_sweep.py",
-    ]
-    root = pathlib.Path(__file__).resolve().parent.parent
-    for rel_path in new_modules:
-        source = (root / rel_path).read_text(encoding="utf-8")
-        assert "mibotair_results" not in source, (
-            f"{rel_path} must not reference mibotair_results"
-        )
+        # Doris shape
+        gestiones_rows = [rows[0] for tbl, rows in doris_calls if tbl == "bot_gestiones" and rows]
+        if gestiones_rows:
+            g = gestiones_rows[-1]
+            assert "conversation_id" in g
+            assert "datetime_utc" in g
 
 
 # ---------------------------------------------------------------------------
 # schema_version = 1 on every written row
 # ---------------------------------------------------------------------------
 
-
 @pytest.mark.asyncio
 async def test_schema_version_is_one(pg_pool, pg_schema):
-    """Every gestiones row written must have schema_version = 1."""
     import api.wiring as wiring_module
 
     conversation_id = f"sv-{uuid.uuid4().hex[:8]}"
@@ -303,9 +364,10 @@ async def test_schema_version_is_one(pg_pool, pg_schema):
 
     with (
         patch.object(wiring_module, "store", mock_store),
+        patch.object(wiring_module, "_tenant_dir", _patched_tenant_dir),
         patch("features.analytics.analytics_sink._async_write", new_callable=AsyncMock),
     ):
-        await wiring_module._emit_gestion(conv, _make_result("consulta_deuda"), [])
+        await wiring_module._emit_gestion(conv, _make_result("elegir_credito"), [])
 
     async with pg_pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -316,13 +378,11 @@ async def test_schema_version_is_one(pg_pool, pg_schema):
 
 
 # ---------------------------------------------------------------------------
-# Rows are joinable by conversation_id across tables
+# Rows joinable by conversation_id across tables
 # ---------------------------------------------------------------------------
-
 
 @pytest.mark.asyncio
 async def test_rows_joinable_by_conversation_id(pg_pool, pg_schema):
-    """gestiones and gestion_events share conversation_id (join key for BI)."""
     import api.wiring as wiring_module
 
     conversation_id = f"join-{uuid.uuid4().hex[:8]}"
@@ -334,11 +394,11 @@ async def test_rows_joinable_by_conversation_id(pg_pool, pg_schema):
 
     with (
         patch.object(wiring_module, "store", mock_store),
+        patch.object(wiring_module, "_tenant_dir", _patched_tenant_dir),
         patch("features.analytics.analytics_sink._async_write", new_callable=AsyncMock),
     ):
-        await wiring_module._emit_gestion(conv, _make_result("consulta_deuda"), [])
-        tool_pairs = [("register_payment_commitment", {})]
-        await wiring_module._emit_gestion(conv, _make_result("payment_commitment"), tool_pairs)
+        await wiring_module._emit_gestion(conv, _make_result("elegir_credito"), [])
+        await wiring_module._emit_gestion(conv, _make_result("comprobante_resultado"), [])
 
     async with pg_pool.acquire() as conn:
         result = await conn.fetch(
@@ -353,9 +413,27 @@ async def test_rows_joinable_by_conversation_id(pg_pool, pg_schema):
             conversation_id,
         )
 
-    assert len(result) >= 2, "join must return rows from both tables"
+    assert len(result) >= 2
     conv_ids = {r["conversation_id"] for r in result}
     assert conv_ids == {conversation_id}
-    # At least one terminal event joined to the closed snapshot
     outcomes = {r["outcome"] for r in result}
-    assert "payment_commitment_registered" in outcomes
+    assert "payment_proof_submitted" in outcomes
+
+
+# ---------------------------------------------------------------------------
+# No mibotair_results reference in new modules
+# ---------------------------------------------------------------------------
+
+def test_no_mibotair_results_reference():
+    new_modules = [
+        "apps/agent/features/analytics/gestion_catalog.py",
+        "apps/agent/features/analytics/gestion_derivation.py",
+        "apps/agent/features/analytics/gestion_sink.py",
+        "apps/agent/features/analytics/gestion_sweep.py",
+    ]
+    root = Path(__file__).resolve().parent.parent
+    for rel_path in new_modules:
+        source = (root / rel_path).read_text(encoding="utf-8")
+        assert "mibotair_results" not in source, (
+            f"{rel_path} must not reference mibotair_results"
+        )

@@ -1,183 +1,184 @@
-"""[RED] Tests for gestion_derivation — pure outcome derivation logic.
+"""Tests for gestion_derivation — signal-driven outcome derivation (Phase 3).
 
-One test per priority branch (8 branches), precedence tests, and
-_reason_for_intent table-driven tests. No IO, no fixtures required.
+New signature: derive_outcome(*, session_state, resolved_intent, terminal_signal,
+                              was_escalated, identity_failed, escalation_reason)
+
+Parametrizes all 6 TerminalSignal values → expected Outcome.
+Asserts identity_failed takes priority over any terminal_signal (B5-5).
+Asserts None signal → Outcome.unresolved (B4-1).
+No reference to TERMINAL_SIGNALS / INTENT_TO_REASON allowed.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from features.analytics.gestion_derivation import _reason_for_intent, derive_outcome
-from features.analytics.gestion_catalog import INTENT_TO_REASON, Outcome
+from features.analytics.gestion_catalog import Outcome, TerminalSignal, OutcomeReason
+from features.analytics.gestion_derivation import derive_outcome
 
 
-# ── Helper: default no-flags call ────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Helper: call with sensible defaults
+# ---------------------------------------------------------------------------
 
 def _derive(**overrides):
-    """Call derive_outcome with all flags False by default."""
     defaults = dict(
         session_state={},
         resolved_intent=None,
+        terminal_signal=None,
         was_escalated=False,
         identity_failed=False,
-        commitment_registered=False,
-        proof_submitted=False,
-        fallback_exhausted=False,
-        identified=False,
-        info_provided=False,
+        escalation_reason=None,
     )
     defaults.update(overrides)
     return derive_outcome(**defaults)
 
 
-# ── Priority branch 1: identity_failed ───────────────────────────────────────
+# ---------------------------------------------------------------------------
+# B4-1: None signal → Outcome.unresolved
+# ---------------------------------------------------------------------------
 
-def test_priority_1_identity_failed():
-    outcome, reason = _derive(identity_failed=True)
-    assert outcome == Outcome.identification_failed
-    assert reason == "max_identification_retries"
-
-
-# ── Priority branch 2: commitment_registered ─────────────────────────────────
-
-def test_priority_2_commitment_registered():
-    outcome, reason = _derive(commitment_registered=True)
-    assert outcome == Outcome.payment_commitment_registered
-    assert reason is None
-
-
-# ── Priority branch 3: proof_submitted ───────────────────────────────────────
-
-def test_priority_3_proof_submitted():
-    outcome, reason = _derive(proof_submitted=True)
-    assert outcome == Outcome.payment_proof_submitted
-    assert reason is None
-
-
-# ── Priority branch 4: was_escalated ─────────────────────────────────────────
-
-def test_priority_4_escalated_with_known_intent():
-    outcome, reason = _derive(
-        was_escalated=True,
-        resolved_intent="commitment_beyond_window",
-    )
-    assert outcome == Outcome.escalated_to_agent
-    assert reason == "commitment_beyond_window"
-
-
-def test_priority_4_escalated_with_unknown_intent_returns_none_reason():
-    outcome, reason = _derive(
-        was_escalated=True,
-        resolved_intent="some_unknown_intent",
-    )
-    assert outcome == Outcome.escalated_to_agent
-    assert reason is None
-
-
-def test_priority_4_escalated_with_no_intent():
-    outcome, reason = _derive(was_escalated=True, resolved_intent=None)
-    assert outcome == Outcome.escalated_to_agent
-    assert reason is None
-
-
-# ── Priority branch 5: fallback_exhausted ────────────────────────────────────
-
-def test_priority_5_fallback_exhausted():
-    outcome, reason = _derive(fallback_exhausted=True)
-    assert outcome == Outcome.not_understood
-    assert reason == "fallback_exhausted"
-
-
-# ── Priority branch 6: info_provided ─────────────────────────────────────────
-
-def test_priority_6_info_provided():
-    outcome, reason = _derive(info_provided=True)
-    assert outcome == Outcome.info_provided
-    assert reason is None
-
-
-# ── Priority branch 7: identified ────────────────────────────────────────────
-
-def test_priority_7_identified():
-    outcome, reason = _derive(identified=True)
-    assert outcome == Outcome.identified
-    assert reason is None
-
-
-# ── Priority branch 8: default unresolved ────────────────────────────────────
-
-def test_priority_8_default_unresolved():
+def test_no_signal_yields_unresolved():
     outcome, reason = _derive()
     assert outcome == Outcome.unresolved
     assert reason is None
 
 
-# ── Return type is always tuple[str, str | None] ─────────────────────────────
+# ---------------------------------------------------------------------------
+# B5-1: info_provided signal → Outcome.info_provided
+# ---------------------------------------------------------------------------
 
-def test_derive_outcome_returns_str_values():
-    outcome, reason = _derive(commitment_registered=True)
-    assert isinstance(outcome, str)
-    # reason may be None for some outcomes — check the string case
-    outcome2, reason2 = _derive(identity_failed=True)
-    assert isinstance(reason2, str)
-
-
-# ── Precedence tests ─────────────────────────────────────────────────────────
-
-def test_precedence_identity_failed_beats_commitment():
-    """Priority 1 beats priority 2."""
-    outcome, _ = _derive(identity_failed=True, commitment_registered=True)
-    assert outcome == Outcome.identification_failed
+def test_signal_info_provided():
+    outcome, reason = _derive(terminal_signal=TerminalSignal.info_provided.value)
+    assert outcome == Outcome.info_provided
+    assert reason is None
 
 
-def test_precedence_identity_failed_beats_escalated():
-    """Priority 1 beats priority 4."""
-    outcome, _ = _derive(identity_failed=True, was_escalated=True)
-    assert outcome == Outcome.identification_failed
+# ---------------------------------------------------------------------------
+# B5-2: proof signal → Outcome.payment_proof_submitted
+# ---------------------------------------------------------------------------
+
+def test_signal_proof():
+    outcome, reason = _derive(terminal_signal=TerminalSignal.proof.value)
+    assert outcome == Outcome.payment_proof_submitted
+    assert reason is None
 
 
-def test_precedence_commitment_beats_info_provided():
-    """Priority 2 beats priority 6 (R1-a scenario)."""
-    outcome, reason = _derive(commitment_registered=True, info_provided=True)
+# ---------------------------------------------------------------------------
+# commitment signal → Outcome.payment_commitment_registered
+# ---------------------------------------------------------------------------
+
+def test_signal_commitment():
+    outcome, reason = _derive(terminal_signal=TerminalSignal.commitment.value)
     assert outcome == Outcome.payment_commitment_registered
     assert reason is None
 
 
-def test_precedence_proof_beats_escalated():
-    """Priority 3 beats priority 4."""
-    outcome, _ = _derive(proof_submitted=True, was_escalated=True)
-    assert outcome == Outcome.payment_proof_submitted
+# ---------------------------------------------------------------------------
+# B5-3: escalation signal → Outcome.escalated_to_agent + reason
+# ---------------------------------------------------------------------------
+
+def test_signal_escalation_with_reason():
+    outcome, reason = _derive(
+        terminal_signal=TerminalSignal.escalation.value,
+        escalation_reason=OutcomeReason.explicit_agent_request.value,
+    )
+    assert outcome == Outcome.escalated_to_agent
+    assert reason == OutcomeReason.explicit_agent_request.value
 
 
-def test_precedence_escalated_beats_fallback():
-    """Priority 4 beats priority 5."""
-    outcome, _ = _derive(was_escalated=True, fallback_exhausted=True)
+def test_signal_escalation_no_reason():
+    outcome, reason = _derive(terminal_signal=TerminalSignal.escalation.value)
+    assert outcome == Outcome.escalated_to_agent
+    assert reason is None
+
+
+# was_escalated=True also triggers escalation even without signal
+def test_was_escalated_flag_triggers_escalation():
+    outcome, reason = _derive(was_escalated=True)
     assert outcome == Outcome.escalated_to_agent
 
 
-def test_precedence_fallback_beats_info_provided():
-    """Priority 5 beats priority 6."""
-    outcome, _ = _derive(fallback_exhausted=True, info_provided=True)
+# ---------------------------------------------------------------------------
+# B5-4: fallback signal → Outcome.not_understood
+# ---------------------------------------------------------------------------
+
+def test_signal_fallback():
+    outcome, reason = _derive(terminal_signal=TerminalSignal.fallback.value)
     assert outcome == Outcome.not_understood
+    assert reason == OutcomeReason.fallback_exhausted.value
 
 
-def test_precedence_info_provided_beats_identified():
-    """Priority 6 beats priority 7."""
-    outcome, _ = _derive(info_provided=True, identified=True)
-    assert outcome == Outcome.info_provided
+# ---------------------------------------------------------------------------
+# identity_failed signal (TerminalSignal member) via terminal_signal param
+# ---------------------------------------------------------------------------
+
+def test_signal_identity_failed_via_terminal_signal():
+    outcome, reason = _derive(terminal_signal=TerminalSignal.identity_failed.value)
+    assert outcome == Outcome.identification_failed
 
 
-# ── _reason_for_intent table-driven ─────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# B5-5: identity_failed flag takes priority over any terminal_signal
+# ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("intent,expected_reason", list(INTENT_TO_REASON.items()))
-def test_reason_for_intent_known_intents(intent, expected_reason):
-    assert _reason_for_intent(intent) == expected_reason
+def test_identity_failed_flag_beats_info_provided_signal():
+    outcome, reason = _derive(
+        identity_failed=True,
+        terminal_signal=TerminalSignal.info_provided.value,
+    )
+    assert outcome == Outcome.identification_failed
 
 
-def test_reason_for_intent_unknown_returns_none():
-    assert _reason_for_intent("totally_unknown_intent") is None
+def test_identity_failed_flag_beats_proof_signal():
+    outcome, reason = _derive(
+        identity_failed=True,
+        terminal_signal=TerminalSignal.proof.value,
+    )
+    assert outcome == Outcome.identification_failed
 
 
-def test_reason_for_intent_none_input_returns_none():
-    assert _reason_for_intent(None) is None
+def test_identity_failed_flag_beats_escalation():
+    outcome, reason = _derive(
+        identity_failed=True,
+        was_escalated=True,
+        terminal_signal=TerminalSignal.escalation.value,
+    )
+    assert outcome == Outcome.identification_failed
+
+
+# ---------------------------------------------------------------------------
+# Return type is always tuple[str, str | None]
+# ---------------------------------------------------------------------------
+
+def test_derive_outcome_returns_str_values():
+    outcome, reason = _derive(terminal_signal=TerminalSignal.proof.value)
+    assert isinstance(outcome, str)
+    outcome2, reason2 = _derive(identity_failed=True)
+    assert isinstance(outcome2, str)
+
+
+# ---------------------------------------------------------------------------
+# No reference to old dicts in derivation module source
+# ---------------------------------------------------------------------------
+
+def test_derivation_has_no_old_dict_references():
+    import inspect
+    import features.analytics.gestion_derivation as mod
+    source = inspect.getsource(mod)
+    for name in ("TERMINAL_SIGNALS", "INTENT_TO_REASON", "INTENT_TO_CAPABILITY"):
+        assert name not in source, (
+            f"gestion_derivation must not reference old dict: {name!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Parametrize over all TerminalSignal values → confirm no crash + valid outcome
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("signal", [s.value for s in TerminalSignal])
+def test_all_terminal_signals_produce_valid_outcome(signal):
+    outcome, _ = _derive(terminal_signal=signal)
+    assert outcome in {o.value for o in Outcome}, (
+        f"signal {signal!r} produced unknown outcome: {outcome!r}"
+    )
