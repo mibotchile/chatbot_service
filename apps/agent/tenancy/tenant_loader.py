@@ -36,6 +36,10 @@ class TenantConfig:
     # none → mode degrades to "llm", current behavior, nothing breaks).
     response_mode: str = "llm"
     responses: ResponsesSpec = field(default_factory=ResponsesSpec)
+    # Cobranza scenario config (window, horario, feriados, contrato_column,
+    # project_uid). Empty for tenants that don't declare a ``cobranza`` block —
+    # downstream callers default the window to 5 days, so nothing breaks.
+    cobranza: dict = field(default_factory=dict)
 
     @classmethod
     def from_directory(cls, tenant_dir: str | Path) -> TenantConfig:
@@ -103,4 +107,5 @@ class TenantConfig:
             agent_type=agent_type,
             response_mode=response_mode,
             responses=responses,
+            cobranza=config.get("cobranza") or {},
         )

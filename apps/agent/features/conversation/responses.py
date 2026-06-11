@@ -50,6 +50,7 @@ import json
 import random
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -315,6 +316,30 @@ def route_layer1(
     """
     if not spec.enabled:
         return RouterOutcome(handled=False, source=SOURCE_LLM)
+
+    # ── IDC-01 (GAP-2): two-step id_contrato+DNI flow — runs before any other
+    # routing so a pending DNI input is never hijacked by a keyword match. ──
+    if is_id_contrato_flow_active(session_state):
+        _tenant_id = (getattr(spec, "_tenant_id", None) or "prestamype")
+        id_contrato_outcome = handle_id_contrato_step(
+            text, spec, profile,
+            session_state=session_state,
+            source=SOURCE_KEYWORD,
+            tenant_id=_tenant_id,
+        )
+        if id_contrato_outcome is not None:
+            return id_contrato_outcome
+        # None means resolved successfully → fall through to normal routing
+        # so the identity tool can re-render the confirmation copy.
+
+    # ── Comprobante pre-question gate (CPR-01): while the pre-question is pending,
+    # intercept Sí/No replies before normal routing. ──
+    if identity_verified:
+        prequestion_reply = _handle_prequestion_reply(
+            text, session_state, spec, profile, SOURCE_KEYWORD,
+        )
+        if prequestion_reply is not None:
+            return prequestion_reply
 
     # ── Identification priority (data-driven): while the user is UNVERIFIED, an
     # identification intent (requires_identity=false + a capture + a tool) must
@@ -609,3 +634,552 @@ def _get_session(session_state: dict | None, key: str):
     if not session_state:
         return None
     return (session_state.get(_SESSION_KEY) or {}).get(key)
+
+
+# ── PR2 net-new: prequestion gate / consulta_deuda / horario / credit-selector / id_contrato ──
+
+
+_COMPROBANTE_INTENTS = frozenset({"comprobante_reportar"})
+
+_PREQUESTION_ANSWERED_KEY = "comprobante_prequestion_answered"
+_PREQUESTION_INTENT = "comprobante_proxima_cuota_pregunta"
+
+_MISUNDERSTOOD_COUNT_KEY = "misunderstood_count"
+
+_VENCIDO_ONLY_INTENTS = frozenset({"compromiso_pago", "realizar_pago_vencido"})
+
+
+_PENDING_INTENT_KEY = "pending_intent"
+
+
+
+def _handle_prequestion_reply(
+    text: str,
+    session_state: dict | None,
+    spec: ResponsesSpec,
+    profile: dict,
+    source: str,
+) -> RouterOutcome | None:
+    """Handle 'Sí'/'No' replies to the comprobante pre-question gate.
+
+    Called from route_layer1 when a pending comprobante pre-question is active
+    (pending_intent == 'comprobante'). Returns a handled RouterOutcome or None
+    if the text is not a Sí/No reply (caller continues normal routing).
+    """
+    if session_state is None:
+        return None
+    if session_state.get(_PENDING_INTENT_KEY) != "comprobante":
+        return None
+    low = (text or "").lower().strip()
+    # "Sí" → clear pending, mark answered, continue to comprobante flow
+    if low in ("sí", "si", "s", "yes"):
+        session_state[_PREQUESTION_ANSWERED_KEY] = True
+        session_state.pop(_PENDING_INTENT_KEY, None)
+        # Emit comprobante_reportar so the LLM flow continues
+        out = _emit_intent(
+            "comprobante_reportar", spec, profile, source,
+            session_state=session_state, identity_verified=True,
+        )
+        return out
+    # "No" → escalate to asesor
+    if low in ("no", "n"):
+        session_state.pop(_PENDING_INTENT_KEY, None)
+        session_state.pop(_PREQUESTION_ANSWERED_KEY, None)
+        result = render_intent(spec, "derivar_asesor", profile, source=source)
+        text_out = result.text if result else "Te derivo con un asesor de PrestamYpe."
+        return RouterOutcome(
+            handled=True,
+            text=text_out,
+            intent="derivar_asesor",
+            source=source,
+            run_tool=intent_tool(spec, "derivar_asesor"),
+        )
+    return None
+
+
+
+def handle_consulta_deuda(
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome | None:
+    """SCR-02: Render ``consulta_deuda`` with internal branching on ``credit_state``.
+
+    Reads ``session_state["credit_state"]`` to choose the branch copy from the
+    spec's ``credit_state_branches`` map inside the ``consulta_deuda`` intent.
+    Returns None when the spec carries no ``consulta_deuda`` intent (tenant opt-out).
+    """
+    cfg = spec.intents.get("consulta_deuda")
+    if not cfg:
+        return None
+
+    credit_state = (session_state or {}).get("credit_state", "al_dia")
+    branches = cfg.get("credit_state_branches") or {}
+    branch_cfg = branches.get(credit_state) or {}
+
+    # Render the branch template
+    branch_template = branch_cfg.get("template") or cfg.get("template", "")
+    from shared.templates import render_template  # noqa: PLC0415
+    text = render_template(branch_template, profile).strip()
+
+    # Append options list from the branch (for display)
+    options = branch_cfg.get("options") or []
+    if options and text:
+        opts_text = "\n".join(f"• {o['label']}" for o in options if o.get("label"))
+        if opts_text:
+            text = f"{text}\n{opts_text}"
+
+    if not text:
+        return None
+
+    _reset_misunderstood(session_state)
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="consulta_deuda",
+        source=source,
+        run_tool=intent_tool(spec, "consulta_deuda"),
+    )
+
+
+
+def handle_vencido_only_intent(
+    intent: str,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome | None:
+    """Guard vencido-only intents (compromiso_pago, realizar_pago_vencido).
+
+    Returns a redirect to the credit-state menu when ``credit_state != 'vencido'``.
+    Returns None when the intent is not in the vencido-only set (caller continues).
+    """
+    if intent not in _VENCIDO_ONLY_INTENTS:
+        return None
+
+    credit_state = (session_state or {}).get("credit_state", "al_dia")
+    if credit_state != "vencido":
+        # Redirect to the state-appropriate menu by re-triggering consulta_deuda
+        return handle_consulta_deuda(spec, profile, session_state=session_state, source=source)
+
+    return None  # allowed — caller proceeds
+
+
+def record_misunderstood(
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome:
+    """INF-10: 2-strike fallback for unrecognized input.
+
+    Strike 1: emit ``no_comprendida_1`` and increment ``misunderstood_count``.
+    Strike 2+: escalate to asesor via ``no_comprendida_2_asesor``.
+    ``misunderstood_count`` is reset on any successfully handled intent.
+    """
+    if session_state is None:
+        session_state = {}
+
+    count = session_state.get(_MISUNDERSTOOD_COUNT_KEY, 0) + 1
+    session_state[_MISUNDERSTOOD_COUNT_KEY] = count
+
+    if count >= 2:
+        result = render_intent(spec, "no_comprendida_2_asesor", profile, source=source)
+        text = result.text if result else "Te derivo con un asesor."
+        return RouterOutcome(
+            handled=True,
+            text=text,
+            intent="no_comprendida_2_asesor",
+            source=source,
+            run_tool=intent_tool(spec, "no_comprendida_2_asesor"),
+        )
+
+    result = render_intent(spec, "no_comprendida_1", profile, source=source)
+    text = result.text if result else "No entendí bien. ¿Puedes reformular tu consulta?"
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="no_comprendida_1",
+        source=source,
+    )
+
+
+def _reset_misunderstood(session_state: dict | None) -> None:
+    """Reset the 2-strike counter after a successfully handled intent."""
+    if session_state is not None:
+        session_state.pop(_MISUNDERSTOOD_COUNT_KEY, None)
+
+
+def check_out_of_hours(
+    dt: datetime,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    source: str,
+    tenant_id: str = "prestamype",
+) -> RouterOutcome | None:
+    """INF-09: Return a ``fuera_de_horario`` outcome when outside business hours.
+
+    Uses ``is_business_hours`` from ``features.cobranza.horario`` — reads the
+    feriados_peru_2026.json + tenant cobranza.horario config. No hardcoded dates.
+
+    Args:
+        dt: current datetime (Lima local, naive or aware).
+        spec: tenant responses spec.
+        profile: verified borrower profile.
+        source: SOURCE_KEYWORD | SOURCE_INTENT.
+        tenant_id: tenant whose config/feriados to use.
+
+    Returns:
+        A handled RouterOutcome with the ``fuera_de_horario`` template when the
+        session falls outside business hours (including refrigerio 13:00–14:00).
+        Returns None when the session IS within business hours (caller continues).
+    """
+    from features.cobranza.horario import is_business_hours  # avoid circular at module level
+
+    if is_business_hours(dt, tenant_id=tenant_id):
+        return None  # within hours — no gate
+
+    result = render_intent(spec, "fuera_de_horario", profile, source=source)
+    text = result.text if result else (
+        "Nuestro horario de atención es lunes a viernes de 9:00 a 18:30. "
+        "Te invitamos a contactarnos en ese horario."
+    )
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="fuera_de_horario",
+        source=source,
+    )
+
+
+# ── INF-08: Due-date holiday / domingo check (al_dia / por_vencer only) ───────
+
+
+
+def check_due_date_holiday(
+    intent: str,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+    tenant_id: str = "prestamype",
+) -> RouterOutcome | None:
+    """INF-08: Route the domingo/feriado intent based on credit_state + date check.
+
+    When the resolved intent is the domingo/feriado query AND the profile's
+    ``next_due_date`` is a feriado or sunday:
+      - credit_state al_dia / por_vencer → emit ``domingo_feriado_al_dia_por_vencer``
+        (business rule: next business day).
+      - credit_state vencido → emit ``domingo_feriado_vencido_redirect`` (overdue
+        context makes this irrelevant — redirect to vencido menu).
+
+    Returns None for all other intents (caller continues normally).
+
+    Uses ``is_feriado`` from ``features.cobranza.horario`` — reads
+    ``feriados_peru_2026.json`` exclusively. No hardcoded date lists.
+    """
+    _DOMINGO_FERIADO_INTENTS = frozenset({
+        "domingo_feriado_al_dia_por_vencer",
+        "domingo_feriado_vencido_redirect",
+    })
+    if intent not in _DOMINGO_FERIADO_INTENTS:
+        return None
+
+    from datetime import date as _date
+    from features.cobranza.horario import is_feriado  # avoid circular at module level
+
+    credit_state = (session_state or {}).get("credit_state", "al_dia")
+
+    if credit_state == "vencido":
+        # Vencido users: redirect regardless of calendar — overdue context dominates
+        result = render_intent(
+            spec, "domingo_feriado_vencido_redirect", profile, source=source
+        )
+        text = result.text if result else (
+            "Tienes cuotas vencidas. Te invitamos a regularizar tu situación."
+        )
+        return RouterOutcome(
+            handled=True,
+            text=text,
+            intent="domingo_feriado_vencido_redirect",
+            source=source,
+        )
+
+    # al_dia / por_vencer: check if next_due_date is a holiday or sunday
+    next_due_raw = profile.get("next_due_date")
+    is_holiday_or_sunday = False
+    if next_due_raw:
+        try:
+            due = _date.fromisoformat(str(next_due_raw))
+            is_holiday_or_sunday = is_feriado(due, tenant_id=tenant_id) or due.weekday() == 6
+        except ValueError:
+            pass
+
+    # Emit the informational holiday template (spec wording: next business day)
+    result = render_intent(
+        spec, "domingo_feriado_al_dia_por_vencer", profile, source=source
+    )
+    text = result.text if result else (
+        "Si tu fecha de pago cae en domingo o feriado, se traslada al siguiente "
+        "día hábil."
+    )
+    out = RouterOutcome(
+        handled=True,
+        text=text,
+        intent="domingo_feriado_al_dia_por_vencer",
+        source=source,
+    )
+    # Stash whether the due date actually falls on a holiday/sunday (for callers
+    # that want to surface this context proactively).
+    if session_state is not None:
+        session_state["due_date_is_holiday_or_sunday"] = is_holiday_or_sunday
+    return out
+
+
+# ── MCD-01: Multi-credit selector (Phase 8) ──────────────────────────────────
+
+
+
+def emit_credit_selector(
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome | None:
+    """MCD-01: Emit the credit selector when the borrower has exactly 2 credits.
+
+    Returns a handled RouterOutcome with ``intent="credit_selector"`` when
+    ``len(profile["credits"]) == 2``. The selector text includes both credit IDs
+    and inversionistas so the borrower can choose.
+
+    Returns None when:
+    - profile has no "credits" key, OR
+    - len(credits) != 2 (single credit → skip selector; 0 or >2 → not handled here)
+
+    ``handle_credit_selection`` must be called once the user responds with their
+    choice to store ``session_state["selected_credit_id"]``.
+    """
+    credits: list[dict] = profile.get("credits") or []
+    if len(credits) != 2:
+        return None
+
+    c1, c2 = credits[0], credits[1]
+    label1 = (
+        f"{c1.get('account_id') or c1.get('loan_number', '?')} — "
+        f"{c1.get('inversionista', '')}"
+    )
+    label2 = (
+        f"{c2.get('account_id') or c2.get('loan_number', '?')} — "
+        f"{c2.get('inversionista', '')}"
+    )
+
+    cfg = spec.intents.get("credit_selector") or {}
+    raw_tpl = cfg.get("template") or (
+        "Tienes 2 créditos activos. ¿Sobre cuál deseas consultar?\n"
+        "• {credit_label_1}\n• {credit_label_2}\n"
+        "Responde con el número o código del crédito."
+    )
+    text = raw_tpl.replace("{credit_label_1}", label1).replace("{credit_label_2}", label2)
+
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="credit_selector",
+        source=source,
+    )
+
+
+
+def handle_credit_selection(
+    credit_id: str,
+    profile: dict,  # noqa: ARG001 — reserved for future validation
+    *,
+    session_state: dict,
+) -> None:
+    """MCD-01: Store the borrower's selected credit ID in session_state.
+
+    Called when the user replies to the credit selector with a credit ID.
+    Downstream intent handlers (cuentas_bancarias, consulta_deuda, cronograma)
+    read ``session_state["selected_credit_id"]`` to filter to the selected credit.
+
+    For single-credit users ``selected_credit_id`` is set automatically to the
+    only credit's account_id (no selector shown, no explicit call needed).
+    """
+    session_state["selected_credit_id"] = credit_id
+
+
+
+def apply_comprobante_prequestion_gate(
+    outcome: RouterOutcome,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+) -> RouterOutcome:
+    """CPR-01: intercept a comprobante intent and gate it behind a pre-question.
+
+    If the matched intent is a comprobante flow intent AND the pre-question has
+    not been answered yet in this session, replace the outcome with the
+    pre-question emit and store 'pending_intent=comprobante' in session_state.
+
+    Called by the agent AFTER the canned router resolves an outcome, so the
+    generic responses engine remains untouched (no behavior change for tenants
+    that don't ship the comprobante_proxima_cuota_pregunta intent).
+
+    Returns the (possibly replaced) outcome.
+    """
+    if session_state is None:
+        return outcome
+    if outcome.intent not in _COMPROBANTE_INTENTS:
+        return outcome
+    if session_state.get(_PREQUESTION_ANSWERED_KEY):
+        return outcome
+    prequestion = render_intent(spec, _PREQUESTION_INTENT, profile, source=outcome.source)
+    if not prequestion:
+        return outcome  # tenant has no pre-question intent — skip gate
+    session_state[_PENDING_INTENT_KEY] = "comprobante"
+    return RouterOutcome(
+        handled=True,
+        text=prequestion.text,
+        intent=_PREQUESTION_INTENT,
+        source=outcome.source,
+    )
+
+
+# ── IDC-01: ID-Contrato + DNI dual-factor identity path ──────────────────────
+
+
+
+_ID_CONTRATO_RETRY_KEY = "id_contrato_retry_count"
+
+
+
+_ID_CONTRATO_PENDING_KEY = "id_contrato_pending_contrato_id"
+
+
+
+_ID_CONTRATO_RETRY_MAX = 3  # max failed attempts before asesor escalation
+
+
+
+def handle_id_contrato_not_found(
+    spec: "ResponsesSpec",
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome:
+    """IDC-01: Handle a failed contrato+DNI identification attempt.
+
+    Increments the retry counter. At _ID_CONTRATO_RETRY_MAX escalates to asesor
+    via ``id_contrato_max_retries``. Below the limit emits ``id_contrato_not_found``
+    (neutral, no-reveal — same message for both 'not found' and 'DNI mismatch').
+
+    The caller must NOT reveal whether the contract exists or whether the DNI
+    matched — always use this function so the response is identical either way.
+    """
+    if session_state is None:
+        session_state = {}
+
+    count = session_state.get(_ID_CONTRATO_RETRY_KEY, 0) + 1
+    session_state[_ID_CONTRATO_RETRY_KEY] = count
+
+    if count >= _ID_CONTRATO_RETRY_MAX:
+        # Clear pending state on max retries
+        session_state.pop(_ID_CONTRATO_PENDING_KEY, None)
+        result = render_intent(spec, "id_contrato_max_retries", profile, source=source)
+        text = result.text if result else (
+            "No pude verificar tu identidad. Te derivo con un asesor."
+        )
+        return RouterOutcome(
+            handled=True,
+            text=text,
+            intent="id_contrato_max_retries",
+            source=source,
+            run_tool=intent_tool(spec, "id_contrato_max_retries"),
+        )
+
+    result = render_intent(spec, "id_contrato_not_found", profile, source=source)
+    text = result.text if result else (
+        "No pude verificar tu identidad con esos datos. "
+        "Por favor, revísalos e inténtalo de nuevo, o indícame tu DNI directamente."
+    )
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="id_contrato_not_found",
+        source=source,
+    )
+
+
+
+def handle_id_contrato_step(
+    text: str,
+    spec: "ResponsesSpec",
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+    tenant_id: str = "prestamype",
+) -> RouterOutcome | None:
+    """IDC-01: Two-step contrato+DNI identification flow.
+
+    Step 1: user is in the id_contrato_prompt state (no pending contrato yet).
+            The text IS the contrato_id — store it, emit the DNI prompt.
+    Step 2: pending contrato_id is set — the text IS the DNI.
+            Call resolve_contrato(contrato_id, dni). On profile → verify + classify.
+            On None → handle_id_contrato_not_found (no-reveal, retry or asesor).
+
+    Returns None when no id_contrato flow is active in session_state (caller
+    continues normal routing).
+    """
+    if session_state is None:
+        return None
+
+    pending_contrato = session_state.get(_ID_CONTRATO_PENDING_KEY)
+
+    if pending_contrato:
+        # Step 2: user just typed their DNI — verify
+        from features.cobranza.doris_debt_source import resolve_contrato  # noqa: PLC0415
+        dni = text.strip()
+        profile_result = resolve_contrato(pending_contrato, dni, tenant_id)
+
+        # Clear pending regardless of outcome (avoid stale state)
+        session_state.pop(_ID_CONTRATO_PENDING_KEY, None)
+
+        if profile_result is not None:
+            # Verified — reset retry counter, mark identity as pending-tool-verify
+            # The profile is stashed in session for the tool registry to pick up.
+            session_state.pop(_ID_CONTRATO_RETRY_KEY, None)
+            session_state["id_contrato_verified_profile"] = profile_result
+            # Emit the id_contrato prompt confirmation using the resolved profile
+            # (same approach as DNI identification — re-render after tool success).
+            return None  # let the caller proceed to identification tool
+
+        return handle_id_contrato_not_found(
+            spec, profile, session_state=session_state, source=source,
+        )
+
+    return None
+
+
+
+def is_id_contrato_flow_active(session_state: dict | None) -> bool:
+    """Return True when a two-step id_contrato flow is awaiting the DNI."""
+    return bool(
+        session_state and session_state.get(_ID_CONTRATO_PENDING_KEY)
+    )
+
+
+def arm_id_contrato_flow(session_state: dict | None, contrato_id: str) -> None:
+    """Store the contrato_id and await the DNI step (arms the two-step flow)."""
+    if session_state is not None:
+        session_state[_ID_CONTRATO_PENDING_KEY] = contrato_id

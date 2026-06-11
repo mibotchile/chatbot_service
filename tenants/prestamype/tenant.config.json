@@ -45,8 +45,24 @@
       "saldo_por_cancelar": { "source": "pagos", "column": "saldo_por_cancelar", "from_selected_row": true },
       "balance": { "source": "pagos", "column": "saldo_por_cancelar", "from_selected_row": true },
       "cuota_esperada": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true },
-      "next_installment_amount": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true }
+      "next_installment_amount": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true },
+      "valor_cuota": { "source": "pagos", "column": "cuota_esperada_mensual", "from_selected_row": true }
     }
+  },
+  "cobranza": {
+    "proxima_vencer_window_days": 5,
+    "horario": {
+      "dias": ["lunes", "martes", "miércoles", "jueves", "viernes"],
+      "hora_inicio": "09:00",
+      "hora_fin": "18:30",
+      "refrigerio": {
+        "inicio": "13:00",
+        "fin": "14:00"
+      },
+      "feriados_source": "feriados_peru_2026.json"
+    },
+    "contrato_column": "id_contrato",
+    "project_uid": "QUIdI0iwQY0l3pJwRKLB"
   },
   "branding": {
     "primary_color": "#00b369",
