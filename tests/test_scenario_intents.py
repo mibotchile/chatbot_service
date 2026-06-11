@@ -390,6 +390,33 @@ def test_new_intents_have_required_fields():
     assert "consulta_deuda_vencido" not in data
 
 
+# ── Layer 1 routing: cuotas_pendientes vs consulta_deuda ──────────────────────
+
+def test_cuantas_me_faltan_routes_to_cuotas_pendientes():
+    """Accented "cuántas me faltan" (without the word "cuotas") must match
+    cuotas_pendientes at Layer 1, not fall through to consulta_deuda."""
+    spec = _spec()
+    for text in (
+        "cuántas me faltan",
+        "cuantas me faltan",
+        "¿cuántas cuotas me faltan?",
+        "cuántas cuotas faltan",
+        "cuánto me falta pagar",
+    ):
+        match = R.match_keyword_intent(text, spec)
+        assert match is not None, f"no Layer-1 match for: {text}"
+        assert match[0] == "cuotas_pendientes", f"{text!r} routed to {match[0]}"
+
+
+def test_money_questions_still_route_to_consulta_deuda():
+    """The new faltan pattern must not steal money/saldo questions."""
+    spec = _spec()
+    for text in ("cuánto debo", "cuánto saldo me falta", "mi deuda pendiente"):
+        match = R.match_keyword_intent(text, spec)
+        assert match is not None, f"no Layer-1 match for: {text}"
+        assert match[0] == "consulta_deuda", f"{text!r} routed to {match[0]}"
+
+
 def test_no_nivel_n1_n2_n3_in_responses_json():
     """Terminology guard: no nivel/n1/n2/n3 in responses.json values."""
     raw = (_tenant_dir() / "responses.json").read_text(encoding="utf-8")
