@@ -1,6 +1,6 @@
 """WhatsApp messaging via Evolution API.
 
-Sends brochures, visit confirmations, and lead notifications to sales agents.
+Sends messages, media, and lead notifications to sales agents.
 Gracefully degrades to logging when WHATSAPP_API_URL is not configured.
 """
 
@@ -74,7 +74,9 @@ class WhatsAppService:
             return
         try:
             url = f"{self.api_url}/chat/markMessageAsRead/{self.instance_name}"
-            payload = {"readMessages": [{"remoteJid": f"{phone}@s.whatsapp.net", "id": message_id or ""}]}
+            payload = {
+                "readMessages": [{"remoteJid": f"{phone}@s.whatsapp.net", "id": message_id or ""}]
+            }
             async with httpx.AsyncClient(verify=False) as client:
                 await client.put(url, json=payload, headers={"apikey": self.api_key}, timeout=5.0)
         except Exception:
@@ -115,28 +117,35 @@ class WhatsAppService:
                 if 400 <= resp.status_code < 500:
                     logger.error(
                         "WhatsApp API client error status={} body={} (no retry)",
-                        resp.status_code, resp.text[:300],
+                        resp.status_code,
+                        resp.text[:300],
                     )
                     return False
                 logger.warning(
                     "WhatsApp API server error status={} attempt={}/{}",
-                    resp.status_code, attempt + 1, 1 + max_retries,
+                    resp.status_code,
+                    attempt + 1,
+                    1 + max_retries,
                 )
             except (httpx.TimeoutException, httpx.ConnectError) as exc:
                 logger.warning(
                     "WhatsApp request error={} attempt={}/{}",
-                    exc, attempt + 1, 1 + max_retries,
+                    exc,
+                    attempt + 1,
+                    1 + max_retries,
                 )
 
             if attempt < max_retries:
-                delay = base_delay * (2 ** attempt)
+                delay = base_delay * (2**attempt)
                 logger.info("Retrying in {}s...", delay)
                 await asyncio.sleep(delay)
 
         logger.error("WhatsApp send failed after {} attempts", 1 + max_retries)
         return False
 
-    async def _simulate_human(self, phone: str, message: str, incoming_id: str | None = None) -> None:
+    async def _simulate_human(
+        self, phone: str, message: str, incoming_id: str | None = None
+    ) -> None:
         """Simulate human behavior: read → pause → typing → send."""
         # Mark as read
         await self._mark_as_read(phone, incoming_id)
@@ -171,7 +180,9 @@ class WhatsAppService:
             if resp.status_code in (200, 201):
                 contacts = resp.json()
                 if isinstance(contacts, list) and len(contacts) > 0:
-                    logger.debug("Phone {} is a saved contact (found {} records)", phone, len(contacts))
+                    logger.debug(
+                        "Phone {} is a saved contact (found {} records)", phone, len(contacts)
+                    )
                     return True
             return False
         except Exception as exc:
@@ -208,7 +219,8 @@ class WhatsAppService:
                 return True
             logger.error(
                 "WhatsApp API error status={} body={}",
-                resp.status_code, resp.text[:300],
+                resp.status_code,
+                resp.text[:300],
             )
             return False
         except httpx.RequestError as exc:
@@ -222,7 +234,7 @@ class WhatsAppService:
         caption: str = "",
         media_type: str = "document",
     ) -> bool:
-        """Send media (PDF brochure, image) via WhatsApp."""
+        """Send media (PDF, image) via WhatsApp."""
         phone = normalize_phone(phone)
 
         if not self._enabled:
@@ -250,7 +262,8 @@ class WhatsAppService:
                 return True
             logger.error(
                 "WhatsApp media API error status={} body={}",
-                resp.status_code, resp.text[:300],
+                resp.status_code,
+                resp.text[:300],
             )
             return False
         except httpx.RequestError as exc:
@@ -276,7 +289,8 @@ class WhatsAppService:
             # No URL to attach yet — log honestly and report not-sent.
             logger.info(
                 "[WA-DRY-RUN] document to={} doc={} (sin media_url, no se adjunta)",
-                normalize_phone(phone), doc_label,
+                normalize_phone(phone),
+                doc_label,
             )
             return False
         return await self.send_media(phone, media_url, caption=cap, media_type="document")
@@ -307,7 +321,9 @@ class WhatsAppService:
             if resp.status_code in (200, 201):
                 logger.info("WhatsApp buttons sent to={}", phone)
                 return True
-            logger.error("WhatsApp buttons API error status={} body={}", resp.status_code, resp.text[:300])
+            logger.error(
+                "WhatsApp buttons API error status={} body={}", resp.status_code, resp.text[:300]
+            )
             return False
         except httpx.RequestError as exc:
             logger.error("WhatsApp buttons request failed to={} error={}", phone, exc)
@@ -339,7 +355,9 @@ class WhatsAppService:
             if resp.status_code in (200, 201):
                 logger.info("WhatsApp list sent to={}", phone)
                 return True
-            logger.error("WhatsApp list API error status={} body={}", resp.status_code, resp.text[:300])
+            logger.error(
+                "WhatsApp list API error status={} body={}", resp.status_code, resp.text[:300]
+            )
             return False
         except httpx.RequestError as exc:
             logger.error("WhatsApp list request failed to={} error={}", phone, exc)
@@ -358,7 +376,12 @@ class WhatsAppService:
                 media_url = payload.get("media", "")
                 if not media_url.startswith("http"):
                     media_url = f"https://demos.mibot.cl{media_url}"
-                await self.send_media(phone, media_url, caption=payload.get("caption", ""), media_type=payload.get("mediatype", "image"))
+                await self.send_media(
+                    phone,
+                    media_url,
+                    caption=payload.get("caption", ""),
+                    media_type=payload.get("mediatype", "image"),
+                )
             elif msg_type == "buttons":
                 await self.send_buttons(phone, payload)
             elif msg_type == "list":
@@ -366,81 +389,3 @@ class WhatsAppService:
 
             # Pace between messages to avoid rate limits
             await asyncio.sleep(1.0)
-
-    async def send_brochure(
-        self,
-        phone: str,
-        customer_name: str,
-        project_name: str,
-        brochure_url: str,
-        sales_agent: dict,
-    ) -> bool:
-        """Send brochure PDF + greeting message to customer via WhatsApp."""
-        agent_name = sales_agent.get("name", "nuestro asesor")
-        agent_phone = sales_agent.get("phone", "908887233")
-
-        greeting = (
-            f"Hola {customer_name}! Te escribo de Nova Inmobiliaria "
-            f"por lo de {project_name} que estuvimos conversando. "
-            f"Te paso el brochure con toda la info para que lo veas con calma"
-        )
-        await self.send_text(phone, greeting)
-
-        # Make brochure URL absolute for WhatsApp
-        full_url = brochure_url if brochure_url.startswith("http") else f"https://demos.mibot.cl{brochure_url}"
-        await self.send_media(phone, full_url, caption=f"{project_name} - Nova Inmobiliaria", media_type="document")
-
-        followup = (
-            f"Cualquier duda me escribes por aca nomas. "
-            f"Tambien te puedes comunicar con {agent_name} al {agent_phone} "
-            f"que es el asesor del proyecto"
-        )
-        await self.send_text(phone, followup)
-        return True
-
-    async def notify_visit(
-        self,
-        phone: str,
-        customer_name: str,
-        project_name: str,
-        visit_date: str,
-        visit_time: str,
-    ) -> bool:
-        """Send visit confirmation to customer."""
-        msg = (
-            f"Hola {customer_name}! Te confirmo tu visita a {project_name} "
-            f"para el {visit_date} por la {visit_time}. "
-            f"Te esperamos en la sala de ventas! Si necesitas cambiar el horario avisame por aca nomas"
-        )
-        return await self.send_text(phone, msg)
-
-    async def handoff_to_sales(
-        self,
-        sales_phone: str,
-        lead: dict,
-        project_name: str,
-        *,
-        max_retries: int = 3,
-    ) -> bool:
-        """Notify sales agent about a hot lead via WhatsApp with retry."""
-        sales_phone = normalize_phone(sales_phone)
-
-        if not self._enabled:
-            logger.info("[WA-DRY-RUN] handoff to={}", sales_phone)
-            return True
-
-        name = lead.get("name", "Prospecto")
-        phone = lead.get("phone", "No disponible")
-        email = lead.get("email", "No disponible")
-        msg = (
-            f"Nuevo prospecto desde la web\n\n"
-            f"Nombre: {name}\n"
-            f"Telefono: {phone}\n"
-            f"Email: {email}\n"
-            f"Proyecto: {project_name}\n\n"
-            f"El prospecto mostro interes activo. Contactar lo antes posible."
-        )
-
-        url = f"{self.api_url}/message/sendText/{self.instance_name}"
-        payload = {"number": sales_phone, "text": msg}
-        return await self._send_with_retry(url, payload, max_retries=max_retries)

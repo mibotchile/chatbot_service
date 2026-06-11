@@ -17,6 +17,7 @@ dashboard_router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 # Auth dependency
 # ---------------------------------------------------------------------------
 
+
 async def verify_dashboard_key(request: Request) -> None:
     """Validate X-Dashboard-Key header against configured secret."""
     if not settings.dashboard_key:
@@ -29,6 +30,7 @@ async def verify_dashboard_key(request: Request) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _row_to_dict(row) -> dict[str, Any]:
     """Convert asyncpg Record to JSON-safe dict."""
@@ -93,6 +95,7 @@ def _schema() -> str:
 # GET /api/v1/dashboard/leads
 # ---------------------------------------------------------------------------
 
+
 @dashboard_router.get("/leads", dependencies=[Depends(verify_dashboard_key)])
 async def list_leads(
     request: Request,
@@ -139,8 +142,12 @@ async def list_leads(
 
     # Total count for pagination
     count_query = f"SELECT COUNT(*) FROM {schema}.debtors {where}"
-    count_args = [a for a in args[:len(conditions)]]  # only filter args
-    total = await _safe_fetchval(pool, count_query, *count_args) if conditions else await _safe_fetchval(pool, count_query)
+    count_args = [a for a in args[: len(conditions)]]  # only filter args
+    total = (
+        await _safe_fetchval(pool, count_query, *count_args)
+        if conditions
+        else await _safe_fetchval(pool, count_query)
+    )
 
     return {"leads": rows, "total": total, "limit": limit, "offset": offset}
 
@@ -148,6 +155,7 @@ async def list_leads(
 # ---------------------------------------------------------------------------
 # GET /api/v1/dashboard/leads/{conversation_id}
 # ---------------------------------------------------------------------------
+
 
 @dashboard_router.get("/leads/{conversation_id}", dependencies=[Depends(verify_dashboard_key)])
 async def get_lead_detail(request: Request, conversation_id: str):
@@ -183,6 +191,7 @@ async def get_lead_detail(request: Request, conversation_id: str):
 # ---------------------------------------------------------------------------
 # GET /api/v1/dashboard/stats
 # ---------------------------------------------------------------------------
+
 
 @dashboard_router.get("/stats", dependencies=[Depends(verify_dashboard_key)])
 async def get_stats(request: Request):
@@ -247,6 +256,7 @@ async def get_stats(request: Request):
 # GET /api/v1/dashboard/conversations
 # ---------------------------------------------------------------------------
 
+
 @dashboard_router.get("/conversations", dependencies=[Depends(verify_dashboard_key)])
 async def list_conversations(
     request: Request,
@@ -292,56 +302,3 @@ async def list_conversations(
 # ---------------------------------------------------------------------------
 # GET /api/v1/dashboard/visits
 # ---------------------------------------------------------------------------
-
-@dashboard_router.get("/visits", dependencies=[Depends(verify_dashboard_key)])
-async def list_visits(
-    request: Request,
-    status: str | None = Query(None, description="Filter by visit status (pending, confirmed, cancelled, completed)"),
-    from_date: date | None = Query(None, alias="from", description="Created after (YYYY-MM-DD)"),
-    project_slug: str | None = Query(None, description="Filter by project slug"),
-    limit: int = Query(50, ge=1, le=200),
-):
-    pool = _get_pool(request)
-    schema = _schema()
-
-    conditions: list[str] = []
-    args: list[Any] = []
-    idx = 1
-
-    if status:
-        conditions.append(f"status = ${idx}")
-        args.append(status)
-        idx += 1
-
-    if from_date:
-        conditions.append(f"created_at >= ${idx}")
-        args.append(datetime(from_date.year, from_date.month, from_date.day, tzinfo=timezone.utc))
-        idx += 1
-
-    if project_slug:
-        conditions.append(f"project_slug = ${idx}")
-        args.append(project_slug)
-        idx += 1
-
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    args.append(limit)
-    limit_idx = idx
-
-    query = f"""
-        SELECT id, conversation_id, visitor_name, visitor_phone, visitor_email,
-               project_slug, project_name, visit_date, visit_time,
-               sales_agent_name, sales_agent_phone, status, notes,
-               google_event_id, created_at
-        FROM {schema}.sorelia_visits
-        {where}
-        ORDER BY created_at DESC
-        LIMIT ${limit_idx}
-    """
-
-    rows = await _safe_fetch(pool, query, *args)
-
-    count_query = f"SELECT COUNT(*) FROM {schema}.sorelia_visits {where}"
-    count_args = [a for a in args[:len(conditions)]]
-    total = await _safe_fetchval(pool, count_query, *count_args) if conditions else await _safe_fetchval(pool, count_query)
-
-    return {"visits": rows, "total": total, "limit": limit}
