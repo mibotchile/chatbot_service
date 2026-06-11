@@ -47,6 +47,18 @@
       "cuota_esperada": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true },
       "next_installment_amount": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true },
       "valor_cuota": { "source": "pagos", "column": "cuota_esperada_mensual", "from_selected_row": true }
+    },
+    "role_column": "posicion_contractual",
+    "authorized_roles": ["SOLICITANTE", "GARANTE", "FIADOR SOLIDARIO"],
+    "cronograma_columns": {
+      "n_cuota": "nro_cuotas",
+      "fecha_venc": "fecha_de_pago_esperada_original",
+      "monto": "cuota_esperada_mensual",
+      "fecha_pago": "fecha_de_pago_del_cliente"
+    },
+    "moratoria_columns": {
+      "amortizacion_cuota": "amortizacion_esperada_original",
+      "tasa_interes": "tasa_de_interes"
     }
   },
   "cobranza": {

@@ -140,9 +140,7 @@ async def consultar_deuda(profile: dict) -> dict:
     credit_state = profile.get("credit_state", "")
     if credit_state == "vencido":
         dias_overdue = int(profile.get("days_overdue") or 0)
-        saldo_capital_inicial = profile.get("saldo_capital_inicial") or profile.get(
-            "saldo_por_cancelar"
-        )
+        saldo_capital_inicial = profile.get("saldo_capital_inicial") or profile.get("balance")
         amortizacion_cuota = profile.get("amortizacion_cuota")
         tasa_interes_mensual = profile.get("tasa_interes_mensual")
 

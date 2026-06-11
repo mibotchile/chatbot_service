@@ -61,7 +61,7 @@ def build_variables(profile: dict) -> dict[str, str]:
     # Moratoria (INF-12): compute penalidad + interés when vencido and the
     # profile carries the fields (enriched on vencido). Empty string otherwise.
     _pen_fmt, _int_fmt = "", ""
-    _saldo_ci = profile.get("saldo_capital_inicial") or profile.get("saldo_por_cancelar")
+    _saldo_ci = profile.get("saldo_capital_inicial") or profile.get("balance")
     _dov = int(profile.get("days_overdue") or 0)
     if _saldo_ci is not None and _dov > 0:
         try:
