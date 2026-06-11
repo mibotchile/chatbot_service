@@ -24,6 +24,11 @@ def _today_plus(n: int) -> str:
             {"cuotas_vencidas": 2, "days_overdue": 8, "next_due_date": _today_plus(-8)},
             "vencido",
         ),
+        # vencido: days_overdue alone triggers it (cuotas_vencidas == 0) — OR branch
+        (
+            {"cuotas_vencidas": 0, "days_overdue": 1, "next_due_date": _today_plus(-1)},
+            "vencido",
+        ),
         # por_vencer: boundary — exactly 5 days until due
         (
             {"cuotas_vencidas": 0, "days_overdue": 0, "next_due_date": _today_plus(5)},
@@ -52,6 +57,7 @@ def _today_plus(n: int) -> str:
     ],
     ids=[
         "vencido_cuotas_vencidas_2",
+        "vencido_days_overdue_alone",
         "por_vencer_boundary_5d",
         "por_vencer_inside_3d",
         "al_dia_current_10d",
