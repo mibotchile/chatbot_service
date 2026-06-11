@@ -4,8 +4,6 @@ Instead of sending 20+ raw messages to the LLM each turn (~8000 tokens),
 compress the conversation into a ~200 token profile + last 3 messages.
 """
 
-from typing import Any
-
 # How many recent messages to keep as raw context alongside the profile
 RECENT_MESSAGES_LIMIT = 6  # 3 user + 3 assistant turns
 
@@ -97,13 +95,9 @@ def _extract_topics(history: list[dict]) -> list[str]:
     """
     topics = set()
     topic_signals = {
-        "brochure": ["brochure", "planos", "te envie"],
-        "visita agendada": ["agendo tu visita", "visita confirmada", "agendar visita"],
         "simulacion cuota": ["cuota mensual", "simulacion", "mensualidad"],
         "comparacion": ["comparar", "comparacion", "vs"],
-        "tipologias": ["tipologia", "plano", "flat", "loft"],
         "financiamiento": ["mivivienda", "bono", "credito", "hipotecario"],
-        "tour virtual": ["tour virtual", "praux3d", "recorrido"],
     }
 
     for msg in history:

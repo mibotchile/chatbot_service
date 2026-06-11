@@ -75,7 +75,7 @@ def _format_financial(data: dict) -> str:
         lines.append(f"Disclaimer: {disclaimer}\n")
 
     for section, content in data.items():
-        if section.startswith("_") or section == "sorelia_rules":
+        if section.startswith("_") or section == "financial_rules":
             continue
         title = section.replace("_", " ").title()
         if isinstance(content, dict):
@@ -95,9 +95,9 @@ def _format_financial(data: dict) -> str:
                 lines.append(f"- {item}")
             lines.append("")
 
-    rules = data.get("sorelia_rules", {})
+    rules = data.get("financial_rules", {})
     if rules:
-        lines.append("## Reglas de Sorelia sobre financiamiento")
+        lines.append("## Reglas sobre financiamiento")
         if "puede_decir" in rules:
             lines.append("Puede decir: " + " / ".join(rules["puede_decir"]))
         if "no_puede_decir" in rules:
@@ -119,7 +119,12 @@ def build_system_prompt(
     channel: str = "web",
     tenant: "object | None" = None,
 ) -> str:
-    from features.conversation.skills import load_skill, DEFAULT_SKILLS, WEB_ONLY_SKILLS, WHATSAPP_ONLY_SKILLS
+    from features.conversation.skills import (
+        load_skill,
+        DEFAULT_SKILLS,
+        WEB_ONLY_SKILLS,
+        WHATSAPP_ONLY_SKILLS,
+    )
 
     # ── Resolve tenant data ──
     if tenant is not None:
@@ -143,7 +148,9 @@ def build_system_prompt(
     # ── Core sections (always present) ──
     sections: list[str] = []
     sections.append(soul.to_prompt_section())
-    sections.append(f"# FECHA ACTUAL\nHoy es {date.today().strftime('%A %d de %B de %Y')} ({date.today().isoformat()})")
+    sections.append(
+        f"# FECHA ACTUAL\nHoy es {date.today().strftime('%A %d de %B de %Y')} ({date.today().isoformat()})"
+    )
 
     # Channel-specific skills
     if channel == "whatsapp":
@@ -199,7 +206,9 @@ def build_system_prompt(
     _ap = sales_arsenal.get("projects", {})
     _first_slug = next(iter(_ap), "")
     _first_name = _first_slug.replace("-", " ").title() if _first_slug else "tu proyecto"
-    _first_words = _ap.get(_first_slug, {}).get("palabras_que_definen", [])[:3] if _first_slug else []
+    _first_words = (
+        _ap.get(_first_slug, {}).get("palabras_que_definen", [])[:3] if _first_slug else []
+    )
 
     priority_slug = page_context.get("project_slug", "") or (
         debtor_state.get("collected", {}).get("project_interest", "")
@@ -214,14 +223,10 @@ def build_system_prompt(
         "escalation_contact": soul.escalation_contact,
         "project_count": str(len(_ap)),
         "project_list": ", ".join(s.replace("-", " ").title() for s in _ap),
-        "enrichment_list": "".join(
-            f"{i}. {e}\n" for i, e in enumerate(soul.enrichment_excuses, 1)
-        ),
+        "enrichment_list": "".join(f"{i}. {e}\n" for i, e in enumerate(soul.enrichment_excuses, 1)),
         "first_project_name": _first_name,
         "first_project_words": (
-            ", ".join(f"'{w}'" for w in _first_words)
-            if _first_words
-            else "'palabras especificas'"
+            ", ".join(f"'{w}'" for w in _first_words) if _first_words else "'palabras especificas'"
         ),
         "formatted_arsenal": _format_sales_arsenal(sales_arsenal, priority_slug=priority_slug),
         "formatted_faq": _format_faq(faq),

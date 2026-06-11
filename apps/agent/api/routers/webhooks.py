@@ -12,7 +12,13 @@ from loguru import logger
 router = APIRouter()
 
 # Media message types that we acknowledge but don't process
-_WA_MEDIA_TYPES = {"imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"}
+_WA_MEDIA_TYPES = {
+    "imageMessage",
+    "videoMessage",
+    "audioMessage",
+    "documentMessage",
+    "stickerMessage",
+}
 
 
 @router.post("/api/v1/webhooks/whatsapp")
@@ -35,7 +41,9 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
 
     # CRITICAL: filter out our own outgoing messages to prevent infinite loops
     from_me = key.get("fromMe", True)
-    logger.debug("WhatsApp webhook detail: fromMe={} remoteJid={}", from_me, key.get("remoteJid", ""))
+    logger.debug(
+        "WhatsApp webhook detail: fromMe={} remoteJid={}", from_me, key.get("remoteJid", "")
+    )
     if from_me:
         return {"status": "ignored", "reason": "fromMe"}
 
@@ -66,6 +74,7 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     instance_name = payload.get("instance")
     import api.main as m
     from shared.config.settings import resolve_whatsapp_tenant
+
     tenant_wa = resolve_whatsapp_tenant(instance_name)
     if not tenant_wa:
         return {"status": "ignored", "reason": f"unmapped instance: {instance_name}"}
@@ -78,6 +87,7 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     # 1. Manual exclusion list from tenant config (fast, no API call)
     import json as _json
     from pathlib import Path as _Path
+
     _tenant_dir = _Path("/app/tenants") / tenant_id
     if not _tenant_dir.exists():
         _tenant_dir = _Path(__file__).resolve().parent.parent.parent / "tenants" / tenant_id
@@ -87,14 +97,20 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
         _excluded_phones = _tc.get("agent", {}).get("whatsapp", {}).get("excluded_phones", [])
     _phone_normalized = phone.lstrip("+").replace(" ", "")
     if any(_phone_normalized == p.lstrip("+").replace(" ", "") for p in _excluded_phones):
-        logger.info("WhatsApp filtered: phone={} tenant={} — excluded phone (manual list)", phone, tenant_id)
+        logger.info(
+            "WhatsApp filtered: phone={} tenant={} — excluded phone (manual list)", phone, tenant_id
+        )
         return {"status": "filtered", "reason": "excluded phone"}
 
     # 2. Dynamic check: is this a saved contact in the phone's address book?
     if _wa_svc:
         is_contact = await _wa_svc.is_saved_contact(phone)
         if is_contact:
-            logger.info("WhatsApp filtered: phone={} tenant={} — saved contact (address book)", phone, tenant_id)
+            logger.info(
+                "WhatsApp filtered: phone={} tenant={} — saved contact (address book)",
+                phone,
+                tenant_id,
+            )
             return {"status": "filtered", "reason": "saved contact"}
 
     # Extract text from different message types
@@ -129,7 +145,9 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             conv.history.clear()
             conv.debtor = type(conv.debtor)()  # fresh debtor state machine
             if _wa_svc:
-                await _wa_svc.send_text(phone, "Listo, empezamos de cero! En que te puedo ayudar? 😊")
+                await _wa_svc.send_text(
+                    phone, "Listo, empezamos de cero! En que te puedo ayudar? 😊"
+                )
             return {"status": "reset", "tenant_id": tenant_id}
         if cmd in ("/menu", "/help", "/ayuda"):
             if _wa_svc:
@@ -155,6 +173,7 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             # Load trigger phrases from tenant config
             import json as _json
             from pathlib import Path as _Path
+
             _tenant_dir = _Path("/app/tenants") / tenant_id
             if not _tenant_dir.exists():
                 _tenant_dir = _Path(__file__).resolve().parent.parent.parent / "tenants" / tenant_id
@@ -170,23 +189,38 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             has_trigger = any(t.lower() in text_lower for t in _trigger_phrases)
 
             if not has_trigger:
-                logger.info("WhatsApp filtered: phone={} instance={} — no trigger phrase (mode=website_leads_only)", phone, instance_name)
+                logger.info(
+                    "WhatsApp filtered: phone={} instance={} — no trigger phrase (mode=website_leads_only)",
+                    phone,
+                    instance_name,
+                )
                 if _fallback_reply and _wa_svc:
                     await _wa_svc.send_text(phone, _fallback_reply)
                 return {"status": "filtered", "reason": "no trigger phrase"}
 
-    logger.info("WhatsApp inbound: phone={} name={} tenant={} text='{}'", phone, sender_name, tenant_id, text[:80])
+    logger.info(
+        "WhatsApp inbound: phone={} name={} tenant={} text='{}'",
+        phone,
+        sender_name,
+        tenant_id,
+        text[:80],
+    )
 
     # Process in background so we don't block Evolution API
     message_id = data.get("key", {}).get("id")
-    background_tasks.add_task(_process_whatsapp_message, phone, sender_name, text, message_id, tenant_id)
+    background_tasks.add_task(
+        _process_whatsapp_message, phone, sender_name, text, message_id, tenant_id
+    )
 
     return {"status": "queued", "tenant_id": tenant_id}
 
 
 async def _process_whatsapp_message(
-    phone: str, sender_name: str, text: str,
-    message_id: str | None = None, tenant_id: str = "demo",
+    phone: str,
+    sender_name: str,
+    text: str,
+    message_id: str | None = None,
+    tenant_id: str = "demo",
 ) -> None:
     """Process an inbound WhatsApp message in the background."""
     import re as _re
@@ -211,7 +245,9 @@ async def _process_whatsapp_message(
     # Daily rate limit check using phone as visitor_id
     _daily_limit = m.settings.daily_message_limit
     if m.visitor_memory:
-        allowed, remaining = await m.visitor_memory.check_daily_limit(conversation_id, limit=_daily_limit)
+        allowed, remaining = await m.visitor_memory.check_daily_limit(
+            conversation_id, limit=_daily_limit
+        )
     else:
         allowed, remaining = m._check_ip_daily_limit(phone, _daily_limit)
 
@@ -235,8 +271,6 @@ async def _process_whatsapp_message(
     if _SUSPICIOUS_PATTERN.search(text):
         logger.warning("Suspicious WhatsApp input: phone={}", phone)
 
-    debtor_level_before = conv.debtor.level
-
     try:
         provider = build_llm_provider(m.settings)
         meili_client = None
@@ -246,7 +280,8 @@ async def _process_whatsapp_message(
             conv.debt_context = _profile
             logger.info(
                 "Identity resolved via DNI (WhatsApp): conversation={} account={}",
-                conv.conversation_id, _profile.get("account_id"),
+                conv.conversation_id,
+                _profile.get("account_id"),
             )
 
         _deliverables, _delivery_mode = m._delivery_for(tenant_id)
@@ -290,7 +325,9 @@ async def _process_whatsapp_message(
                     "projects_viewed": visitor_profile.get("projects_viewed", []),
                 }
             else:
-                await m.visitor_memory.upsert_visitor(conversation_id, {"name": sender_name, "entry_source": "whatsapp"})
+                await m.visitor_memory.upsert_visitor(
+                    conversation_id, {"name": sender_name, "entry_source": "whatsapp"}
+                )
 
         result = await agent.process_message(
             text=text,
@@ -305,8 +342,11 @@ async def _process_whatsapp_message(
         wa_ui_actions = result.get("ui_actions", {})
         wa_tool_pairs = result.get("tool_pairs", [])
         m._spawn_analytics(
-            tenant_id=tenant_id, session_id=conv.conversation_id,
-            channel="whatsapp", user_text=text, result=result,
+            tenant_id=tenant_id,
+            session_id=conv.conversation_id,
+            channel="whatsapp",
+            user_text=text,
+            result=result,
         )
     except Exception:
         logger.opt(exception=True).error("WhatsApp agent error for phone={}", phone)
@@ -328,28 +368,13 @@ async def _process_whatsapp_message(
     if _wa_svc:
         await _wa_svc.send_text(phone, content, incoming_id=message_id)
 
-        wa_quick_replies = build_quick_replies(conv.debtor.get_status(), wa_ui_actions, wa_tool_pairs, content)
+        wa_quick_replies = build_quick_replies(
+            conv.debtor.get_status(), wa_ui_actions, wa_tool_pairs, content
+        )
         wa_messages = format_for_whatsapp(wa_ui_actions, wa_quick_replies, phone)
         if wa_messages:
             await _wa_svc.send_formatted(wa_messages)
 
-        if m.visitor_memory:
-            for tool_name, result in wa_tool_pairs:
-                if tool_name == "search_properties" and result.get("properties"):
-                    for p in result["properties"]:
-                        slug = p.get("slug")
-                        if slug:
-                            await m.visitor_memory.add_project_viewed(conversation_id, slug)
-                    from datetime import datetime as _dt
-                    search_entry = {
-                        "ts": _dt.now().isoformat(),
-                        "district": result.get("filters_applied", {}).get("district"),
-                        "bedrooms": result.get("filters_applied", {}).get("bedrooms"),
-                        "total": result.get("total", 0),
-                    }
-                    await m.visitor_memory.add_search(conversation_id, search_entry)
-                elif tool_name == "get_property_detail" and result.get("slug"):
-                    await m.visitor_memory.add_project_viewed(conversation_id, result["slug"])
     else:
         logger.info("[WA-NO-SERVICE] Would send to {}: {}", phone, content[:100])
 
@@ -358,9 +383,12 @@ async def _process_whatsapp_message(
             from shared.persistence.persistence import upsert_debtor
 
             await upsert_debtor(
-                m.store.db_pool, m.store.db_schema,
-                conv.conversation_id, conversation_id,
-                conv.debtor.collected, conv.debtor.level,
+                m.store.db_pool,
+                m.store.db_schema,
+                conv.conversation_id,
+                conversation_id,
+                conv.debtor.collected,
+                conv.debtor.level,
             )
         except Exception:
             logger.opt(exception=True).warning("Failed to persist WhatsApp debtor")
@@ -368,32 +396,12 @@ async def _process_whatsapp_message(
     if m.visitor_memory:
         collected = conv.debtor.get_status().get("collected", {})
         if collected:
-            await m.visitor_memory.upsert_visitor(conversation_id, {
-                "name": collected.get("name") or sender_name,
-                "email": collected.get("email"),
-                "phone": collected.get("phone") or phone,
-                "lead_data": collected,
-            })
-
-    debtor_level_after = conv.debtor.level
-    _CONTACT_LEVELS = {"DEBTOR", "DEBTOR_VERIFIED"}
-    if (
-        debtor_level_after in _CONTACT_LEVELS
-        and debtor_level_before not in _CONTACT_LEVELS
-        and not conv.debtor_notified
-    ):
-        try:
-            from shared.webhooks import on_lead_captured
-
-            collected = conv.debtor.collected
-            case_context = {"name": "", "brochure_url": "", "sales_agent": {}}
-            actions = await on_lead_captured(
-                lead_data=collected, project=case_context,
-                conversation_id=conv.conversation_id,
-                email_service=m.email_service, whatsapp_service=_wa_svc,
-                notification_email=m.settings.notification_email,
+            await m.visitor_memory.upsert_visitor(
+                conversation_id,
+                {
+                    "name": collected.get("name") or sender_name,
+                    "email": collected.get("email"),
+                    "phone": collected.get("phone") or phone,
+                    "lead_data": collected,
+                },
             )
-            conv.debtor_notified = True
-            logger.info("WhatsApp lead captured: phone={} tenant={} actions={}", phone, tenant_id, actions)
-        except Exception:
-            logger.opt(exception=True).warning("WhatsApp lead capture hook failed")

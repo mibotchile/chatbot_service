@@ -63,16 +63,18 @@ class Settings(BaseSettings):
     dashboard_key: str = ""
 
     webhook_lead_url: str = ""
-    webhook_visit_url: str = ""
-    webhook_brochure_url: str = ""
 
-    mail_api_url: str = ""  # Internal SendGrid proxy: https://apiintranet.mibot.cl:8085/api/v2/mail_sengrid/send
+    mail_api_url: str = (
+        ""  # Internal SendGrid proxy: https://apiintranet.mibot.cl:8085/api/v2/mail_sengrid/send
+    )
     notification_email: str = ""  # set per deployment (collections team inbox)
 
     whatsapp_api_url: str = ""  # Evolution API: http://mila_evolution:8080
     whatsapp_api_key: str = ""  # Evolution API key
     whatsapp_instance: str = ""  # Evolution instance name — legacy single-tenant
-    whatsapp_webhook_url: str = "http://agent:8000/api/v1/webhooks/whatsapp"  # URL Evolution sends webhooks to
+    whatsapp_webhook_url: str = (
+        "http://agent:8000/api/v1/webhooks/whatsapp"  # URL Evolution sends webhooks to
+    )
 
     # Multi-tenant WhatsApp: JSON mapping instance_name → tenant config
     # Format: {"instance-a": {"tenant_id": "demo", "mode": "all"},
@@ -92,17 +94,17 @@ class Settings(BaseSettings):
     # Anti-enumeration of DNI (the identity gate is DNI-only → the top vector):
     #   · rate — max identification attempts per IP/hour;
     #   · diversity — > N DISTINCT DNIs/IP/hour ⇒ sweep ⇒ temporary block.
-    rl_ident_per_hour: int = 6          # COBRANZA_RL_IDENT_PER_HOUR
-    rl_distinct_dni_per_hour: int = 5   # COBRANZA_RL_DISTINCT_DNI_PER_HOUR
-    rl_block_minutes: int = 15          # COBRANZA_RL_BLOCK_MINUTES (sweep block)
+    rl_ident_per_hour: int = 6  # COBRANZA_RL_IDENT_PER_HOUR
+    rl_distinct_dni_per_hour: int = 5  # COBRANZA_RL_DISTINCT_DNI_PER_HOUR
+    rl_block_minutes: int = 15  # COBRANZA_RL_BLOCK_MINUTES (sweep block)
     # Short chat window (anti token-burn), on top of daily_message_limit.
-    rl_chat_per_min: int = 12           # COBRANZA_RL_CHAT_PER_MIN
+    rl_chat_per_min: int = 12  # COBRANZA_RL_CHAT_PER_MIN
     # Upload cap (comprobantes/hour per IP).
-    rl_upload_per_hour: int = 8         # COBRANZA_RL_UPLOAD_PER_HOUR
+    rl_upload_per_hour: int = 8  # COBRANZA_RL_UPLOAD_PER_HOUR
     # LLM spend cap per IP/day (USD). Accumulates the same cost_usd the analytics
     # sink records (config/pricing.compute_cost_usd). Over the cap ⇒ 429 until the
     # daily (UTC midnight) reset.
-    daily_cost_cap_usd: float = 0.50    # COBRANZA_DAILY_COST_CAP_USD
+    daily_cost_cap_usd: float = 0.50  # COBRANZA_DAILY_COST_CAP_USD
 
     # Reverse-proxy path prefix (Traefik strip-prefix). Empty in local dev;
     # set to e.g. "/pubot-gj5w2a0p" behind the proxy so FastAPI builds correct
@@ -133,8 +135,8 @@ class Settings(BaseSettings):
     # chathub_web_channel_id is set (the channel is registered in ChatHub apart).
     # Env prefix COBRANZA_ (e.g. COBRANZA_CHATHUB_WEB_CHANNEL_ID).
     chathub_webhook_url: str = "https://hook-whatsapp-prod.mibot.cl:5050/olimpo/incomingMessage"
-    chathub_web_channel_id: str = ""   # empty ⇒ publisher is a no-op
-    chathub_web_group: str = "1"       # destination queue/group identifier
+    chathub_web_channel_id: str = ""  # empty ⇒ publisher is a no-op
+    chathub_web_group: str = "1"  # destination queue/group identifier
     chathub_web_timeout: float = 10.0
     chathub_web_verify_ssl: bool = False
 
@@ -144,7 +146,7 @@ class Settings(BaseSettings):
     # (the current state: ChatHub needs the provisioned number + Firebase auth).
     # Env prefix COBRANZA_ (e.g. COBRANZA_CHATHUB_OUTBOUND_URL).
     chathub_outbound_url: str = ""
-    chathub_outbound_token: str = ""       # Firebase/bearer token (when required)
+    chathub_outbound_token: str = ""  # Firebase/bearer token (when required)
     chathub_outbound_channel_id: str = ""  # ChatHub channel for the tenant number
     chathub_outbound_timeout: float = 10.0
     chathub_outbound_verify_ssl: bool = False

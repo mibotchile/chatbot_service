@@ -12,7 +12,6 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 
@@ -115,7 +114,9 @@ async def chat(request: Request, body: ChatRequest):
     _daily_limit = m.settings.daily_message_limit
 
     if body.visitor_id and m.visitor_memory:
-        allowed, remaining = await m.visitor_memory.check_daily_limit(body.visitor_id, limit=_daily_limit)
+        allowed, remaining = await m.visitor_memory.check_daily_limit(
+            body.visitor_id, limit=_daily_limit
+        )
     else:
         allowed, remaining = m._check_ip_daily_limit(client_ip, _daily_limit)
 
@@ -133,11 +134,19 @@ async def chat(request: Request, body: ChatRequest):
                 "quick_replies": {
                     "type": "single_select",
                     "buttons": [
-                        {"id": "wa", "label": "Escribir por WhatsApp", "value": f"https://wa.me/{m.get_tenant_contact_phone(body.tenant_id)}?text=Hola%2C+quiero+regularizar+mi+situaci%C3%B3n"},
-                        {"id": "call", "label": "Llamar ahora", "value": f"tel:+{m.get_tenant_contact_phone(body.tenant_id)}"},
+                        {
+                            "id": "wa",
+                            "label": "Escribir por WhatsApp",
+                            "value": f"https://wa.me/{m.get_tenant_contact_phone(body.tenant_id)}?text=Hola%2C+quiero+regularizar+mi+situaci%C3%B3n",
+                        },
+                        {
+                            "id": "call",
+                            "label": "Llamar ahora",
+                            "value": f"tel:+{m.get_tenant_contact_phone(body.tenant_id)}",
+                        },
                     ],
                 },
-                "form_data": ui_actions.get("form_data"),
+                "form_data": None,
                 "ui_actions": {},
             },
             "context": {},
@@ -173,9 +182,6 @@ async def chat(request: Request, body: ChatRequest):
         if project_slug:
             await m.visitor_memory.add_project_viewed(body.visitor_id, project_slug)
 
-    # Snapshot lead level before processing to detect transitions
-    debtor_level_before = conv.debtor.level
-
     # Try to use real agent, fallback to simple response
     has_error = False
     error_message: str | None = None
@@ -184,6 +190,7 @@ async def chat(request: Request, body: ChatRequest):
     if body.tenant_id:
         from tenancy.tenant_loader import TenantConfig
         from pathlib import Path as _TPath
+
         # Check both /app/tenants (Docker) and relative path (dev)
         _tdir = _TPath("/app/tenants") / body.tenant_id
         if not _tdir.exists():
@@ -193,9 +200,12 @@ async def chat(request: Request, body: ChatRequest):
                 _tenant_config = TenantConfig.from_directory(_tdir)
                 logger.info("Loaded tenant config: {}", body.tenant_id)
             except Exception:
-                logger.opt(exception=True).warning("Failed to load tenant config: {}", body.tenant_id)
+                logger.opt(exception=True).warning(
+                    "Failed to load tenant config: {}", body.tenant_id
+                )
 
     from shared.config.settings import resolve_api_key
+
     _api_key = resolve_api_key(body.tenant_id)
 
     # ── Cobranza identity gate: resolve the campaign token (demo: mock source).
@@ -212,7 +222,8 @@ async def chat(request: Request, body: ChatRequest):
             conv.debt_context = _profile
             logger.info(
                 "Identity resolved: conversation={} account={}",
-                conv.conversation_id, _profile.get("account_id"),
+                conv.conversation_id,
+                _profile.get("account_id"),
             )
         else:
             logger.info("Campaign token did not resolve: conversation={}", conv.conversation_id)
@@ -240,7 +251,8 @@ async def chat(request: Request, body: ChatRequest):
             conv.debt_context = _profile
             logger.info(
                 "Identity resolved via DNI: conversation={} account={}",
-                conv.conversation_id, _profile.get("account_id"),
+                conv.conversation_id,
+                _profile.get("account_id"),
             )
 
         # Anti-enumeration: count + check each DNI identification attempt by IP
@@ -249,9 +261,7 @@ async def chat(request: Request, body: ChatRequest):
             return m.rate_limiter.check_identification(client_ip, dni)
 
         _deliverables, _delivery_mode = m._delivery_for(body.tenant_id)
-        _agent_type = (
-            _tenant_config.agent_type if _tenant_config is not None else "cobranza"
-        )
+        _agent_type = _tenant_config.agent_type if _tenant_config is not None else "cobranza"
         _agent_spec = m.agent_type_registry.get(_agent_type)
         registry = ToolRegistry(
             meilisearch_client=meili_client,
@@ -337,7 +347,7 @@ async def chat(request: Request, body: ChatRequest):
         conv.tenant_id = body.tenant_id
         conv.channel = body.channel
         m._spawn_gestion(conv, result, tool_pairs)  # m dispatches to wiring._spawn_gestion
-    except (KeyError, ValueError, TypeError, LLMError) as exc:
+    except (KeyError, ValueError, TypeError, LLMError):
         logger.exception("Agent processing error (recoverable)")
         content = m._fallback_response(body.text, conv)
         response_id = f"fallback_{conv.conversation_id[:8]}"
@@ -381,6 +391,7 @@ async def chat(request: Request, body: ChatRequest):
         for tool_name, result in tool_pairs:
             if tool_name == "search_properties" and result.get("properties"):
                 from datetime import datetime as _dt
+
                 search_entry = {
                     "ts": _dt.now().isoformat(),
                     "district": result.get("filters_applied", {}).get("district"),
@@ -394,46 +405,22 @@ async def chat(request: Request, body: ChatRequest):
         debtor_status = conv.debtor.get_status()
         collected = debtor_status.get("collected", {})
         if collected:
-            await m.visitor_memory.upsert_visitor(body.visitor_id, {
-                "name": collected.get("name"),
-                "email": collected.get("email"),
-                "phone": collected.get("phone"),
-                "lead_data": collected,
-            })
-
-    # --- Lead capture hook: send brochure + notify sales on DEBTOR transition ---
-    debtor_level_after = conv.debtor.level
-    _CONTACT_LEVELS = {"DEBTOR", "DEBTOR_VERIFIED"}
-    if (
-        debtor_level_after in _CONTACT_LEVELS
-        and debtor_level_before not in _CONTACT_LEVELS
-        and not conv.debtor_notified
-    ):
-        try:
-            from shared.webhooks import on_lead_captured
-
-            collected = conv.debtor.collected
-            # TODO Fase 1: build a cobranza "case" context (account/debt summary).
-            case_context = {"name": "", "brochure_url": "", "sales_agent": {}}
-
-            actions = await on_lead_captured(
-                lead_data=collected,
-                project=case_context,
-                conversation_id=conv.conversation_id,
-                email_service=m.email_service,
-                whatsapp_service=m.get_whatsapp_service(body.tenant_id),
-                notification_email=m.settings.notification_email,
+            await m.visitor_memory.upsert_visitor(
+                body.visitor_id,
+                {
+                    "name": collected.get("name"),
+                    "email": collected.get("email"),
+                    "phone": collected.get("phone"),
+                    "lead_data": collected,
+                },
             )
-            conv.debtor_notified = True
-            logger.info("Lead captured: conversation={} actions={}", conv.conversation_id, actions)
-        except Exception:
-            logger.opt(exception=True).warning("Lead capture hook failed (non-blocking)")
 
     # ── Camino C (Movistar): on WEB handoff, publish the visitor's last message
     # into ChatHub so an asesor picks it up in the panel. Web-only, handoff-only,
     # best-effort (the publisher swallows all errors and has its own timeout, so
     # it never blocks/breaks the web response). NO-OP if no channel_id configured.
     from features.messaging.chathub_adapter import was_escalated
+
     if body.channel == "web" and was_escalated(tool_pairs):
         from features.messaging.chathub_web_publisher import publish_to_chathub
 
@@ -478,28 +465,37 @@ async def chat(request: Request, body: ChatRequest):
         # Tenant OWNS chips: render the resolved JSON chips (or none for this
         # turn). NEVER fall back to LLM/heuristic chips → zero hallucination.
         if _tenant_chips:
-            buttons = [{"id": f"qr-{i}", "label": c, "value": c} for i, c in enumerate(_tenant_chips)]
+            buttons = [
+                {"id": f"qr-{i}", "label": c, "value": c} for i, c in enumerate(_tenant_chips)
+            ]
             quick_replies = {"type": "single_select", "buttons": buttons[:4]}
     else:
         # Legacy path: LLM-generated chips (validated by tool), else heuristic.
         if suggested_replies:
-            buttons = [{"id": f"qr-{i}", "label": opt, "value": opt} for i, opt in enumerate(suggested_replies)]
+            buttons = [
+                {"id": f"qr-{i}", "label": opt, "value": opt}
+                for i, opt in enumerate(suggested_replies)
+            ]
             quick_replies = {"type": "single_select", "buttons": buttons[:4]}
         if not quick_replies:
-            quick_replies = build_quick_replies(conv.debtor.get_status(), ui_actions, tool_pairs, content)
+            quick_replies = build_quick_replies(
+                conv.debtor.get_status(), ui_actions, tool_pairs, content
+            )
 
     # Current identity state (updated this turn if the user identified via DNI).
     # Lets the widget refresh its identity strip without a token.
     _identity_state = {"verified": bool(conv.identity_verified)}
     if conv.identity_verified and conv.debt_context:
-        _identity_state.update({
-            "display_name": conv.debt_context.get("borrower_name", ""),
-            "business_name": conv.debt_context.get("business_name", ""),
-            "status_label": conv.debt_context.get("status_label", ""),
-            # The user's own (already verified) DNI — lets the widget enable the
-            # comprobante upload after a mid-chat DNI identification.
-            "dni": conv.debt_context.get("dni", ""),
-        })
+        _identity_state.update(
+            {
+                "display_name": conv.debt_context.get("borrower_name", ""),
+                "business_name": conv.debt_context.get("business_name", ""),
+                "status_label": conv.debt_context.get("status_label", ""),
+                # The user's own (already verified) DNI — lets the widget enable the
+                # comprobante upload after a mid-chat DNI identification.
+                "dni": conv.debt_context.get("dni", ""),
+            }
+        )
 
     # Downloadable document produced this turn (certificate). Surfaced as a
     # structured field so the widget can render a download chip regardless of
@@ -529,14 +525,21 @@ async def chat(request: Request, body: ChatRequest):
     }
 
 
-@router.get("/api/v1/conversations/{conversation_id}/messages", dependencies=[Depends(require_publishable_key())])
+@router.get(
+    "/api/v1/conversations/{conversation_id}/messages",
+    dependencies=[Depends(require_publishable_key())],
+)
 async def get_conversation_messages(request: Request, conversation_id: str):
     """Return conversation history from backend state (source of truth)."""
     import re as _re
-    if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", conversation_id):
+
+    if not _re.match(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", conversation_id
+    ):
         return Response(status_code=400, content="Invalid conversation ID format")
 
     import api.main as m
+
     conv = await m.store.get_or_create_async(conversation_id)
 
     # Only return if the conversation actually has history

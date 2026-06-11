@@ -46,8 +46,6 @@ class ConversationState:
             )
         self.debtor = Record(spec=capture_spec, initial_data=record_data)
         self.page_context: dict = {}
-        self.brochures_sent: set[str] = set()  # project slugs already emailed
-        self.debtor_notified: bool = False  # sales team already notified
         # Identity gate (cobranza): resolved server-side from the campaign token.
         # debt_context holds the verified borrower profile (incl. account_id).
         self.identity_verified: bool = False
@@ -148,9 +146,7 @@ class StateStore:
                 try:
                     from shared.persistence.persistence import load_conversation
 
-                    row = await load_conversation(
-                        self.db_pool, self.db_schema, conversation_id
-                    )
+                    row = await load_conversation(self.db_pool, self.db_schema, conversation_id)
                     if row:
                         history = row.get("history") or []
                         record_data = row.get("record_data") or {}

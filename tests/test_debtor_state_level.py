@@ -88,12 +88,12 @@ def test_level_debtor_with_full_contact():
 
 
 def test_debtor_level_in_contact_levels_set():
-    """DEBTOR must be in _CONTACT_LEVELS — this locks the capture webhook chain."""
+    """A debtor with contact data must reach a contact-grade level (DEBTOR/DEBTOR_VERIFIED)."""
     _CONTACT_LEVELS = {"DEBTOR", "DEBTOR_VERIFIED"}
     state = Record(spec=COBRANZA_SPEC, initial_data=_contact_data())
     assert state.level in _CONTACT_LEVELS, (
         f"state.level={state.level!r} not in _CONTACT_LEVELS={_CONTACT_LEVELS} — "
-        "on_lead_captured webhook would never fire"
+        "contact data should promote the debtor level"
     )
 
 
