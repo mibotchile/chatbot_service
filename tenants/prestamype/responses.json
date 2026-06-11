@@ -424,5 +424,39 @@
     "requires_identity": true,
     "classifiable": false,
     "template": "Tienes 2 créditos activos. ¿Sobre cuál deseas consultar?\n• {credit_label_1}\n• {credit_label_2}\nResponde con el número o código del crédito."
+  },
+
+  "id_contrato_prompt": {
+    "mode": "verbatim",
+    "description": "Invitar al usuario a ingresar su número de contrato para identificarse (IDC-01).",
+    "requires_identity": false,
+    "classifiable": true,
+    "keywords": ["número de contrato", "nro contrato", "id contrato", "identificarme con contrato"],
+    "template": "Por favor, ingresa tu número de contrato (por ejemplo: P04069)."
+  },
+
+  "id_contrato_dni_prompt": {
+    "mode": "verbatim",
+    "description": "Solicitar el DNI al usuario después de que ingresó su número de contrato (segundo factor IDC-01).",
+    "requires_identity": false,
+    "classifiable": false,
+    "template": "Gracias. Ahora ingresa tu número de DNI para verificar tu identidad."
+  },
+
+  "id_contrato_not_found": {
+    "mode": "verbatim",
+    "description": "Respuesta neutral cuando el contrato no se encuentra o el DNI no coincide (IDC-01 fail-closed). NUNCA revela cuál de los dos falló.",
+    "requires_identity": false,
+    "classifiable": false,
+    "template": "No pude verificar tu identidad con esos datos. Por favor, revísalos e inténtalo de nuevo, o indícame tu DNI directamente para continuar."
+  },
+
+  "id_contrato_max_retries": {
+    "mode": "verbatim",
+    "description": "Derivar al asesor después de agotar los intentos de identificación por contrato (IDC-01).",
+    "requires_identity": false,
+    "classifiable": false,
+    "tool": "escalate_to_human",
+    "template": "No pude verificar tu identidad. Te derivo con un asesor de PrestamYpe para que te ayude directamente."
   }
 }

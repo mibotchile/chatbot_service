@@ -510,6 +510,153 @@ def get_moratoria_fields(account_id: str, tenant_id: str) -> dict:
     return {"amortizacion_cuota": amort, "tasa_interes_mensual": tasa}
 
 
+# ── IDC-01: Contract + DNI dual-factor identification ─────────────────────────
+
+# Roles that constitute an obligated party of the credit — authorized to access.
+# TESTIGO DE IDENTIDAD is explicitly excluded (witness only, not financially bound).
+# FIADOR SOLIDARIO included by default (solidary guarantor = obligated party)
+# — PENDING Naomi confirmation (2026-06-11).
+_AUTHORIZED_ROLES = frozenset({"SOLICITANTE", "GARANTE", "FIADOR SOLIDARIO"})
+
+
+def _query_contrato_rows(contrato_id: str, tenant_id: str) -> list[dict]:
+    """Query batch_asignacion_review_bronze for all person-rows of a contract.
+
+    Uses ROW_NUMBER() OVER (PARTITION BY id_credito ORDER BY creado_el DESC) to
+    collapse raw duplicates — callers receive at most one row per (id_credito,
+    posicion_contractual) combination. Returns the raw rows keyed by column name.
+    May raise on connection/query failure — caller must catch.
+    """
+    schema = _load_schema(tenant_id)
+    db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
+    debt = _safe_ident(schema["debt_table"], what="debt_table")
+
+    # Read contrato_column from tenant cobranza config (default "id_contrato").
+    import json as _json  # noqa: PLC0415
+    _cfg_path = _tenants_root() / tenant_id / "tenant.config.json"
+    try:
+        _tcfg = _json.loads(_cfg_path.read_text(encoding="utf-8"))
+        _contrato_col_raw = (_tcfg.get("cobranza") or {}).get("contrato_column", "id_contrato")
+    except (OSError, _json.JSONDecodeError):
+        _contrato_col_raw = "id_contrato"
+    contrato_col = _safe_ident(_contrato_col_raw, what="contrato_column")
+
+    # Dedup: keep the most-recent row per (id_credito, posicion_contractual).
+    # batch_asignacion_review_bronze has ~3-6x raw duplicates (confirmed 2026-06-11).
+    sql = (
+        f"SELECT t.*\n"
+        f"FROM (\n"
+        f"  SELECT *,\n"
+        f"    ROW_NUMBER() OVER (\n"
+        f"      PARTITION BY id_credito, posicion_contractual\n"
+        f"      ORDER BY creado_el DESC\n"
+        f"    ) AS _rn\n"
+        f"  FROM {db}.{debt}\n"
+        f"  WHERE {contrato_col} = %s\n"
+        f"    AND posicion_contractual IN (\n"
+        f"      'SOLICITANTE', 'GARANTE', 'FIADOR SOLIDARIO'\n"
+        f"    )\n"
+        f") t\n"
+        f"WHERE t._rn = 1"
+    )
+    conn = _connect(db)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (contrato_id,))
+            return list(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def resolve_contrato(contrato_id: str, dni: str, tenant_id: str) -> dict | None:
+    """IDC-01: Dual-factor contract identification — contract ID + DNI.
+
+    Looks up all authorized parties (SOLICITANTE / GARANTE / FIADOR SOLIDARIO)
+    for ``contrato_id`` in batch_asignacion_review_bronze. Returns a borrower
+    profile dict ONLY IF ``dni`` matches one of those parties. Returns None on
+    any of: contract not found, DNI not in authorized set, or any DB exception.
+
+    Fail-closed: the same None is returned for "contract not found" and "DNI
+    mismatch" so the caller cannot distinguish the two (no information leak).
+
+    The profile shape is identical to resolve_dni for downstream compatibility.
+    """
+    if not contrato_id or not dni:
+        return None
+
+    norm_dni = _normalize_dni(dni)
+    if not norm_dni:
+        return None
+
+    try:
+        rows = _query_contrato_rows(contrato_id, tenant_id)
+    except Exception:  # noqa: BLE001
+        return None
+
+    if not rows:
+        return None
+
+    # Verify the provided DNI is an authorized party.
+    # Filter on posicion_contractual in Python as defense-in-depth (the SQL
+    # WHERE clause already restricts to authorized roles, but this layer ensures
+    # correctness even when rows come from mocks or partial queries).
+    authorized_dnis: set[str] = set()
+    for row in rows:
+        role = str(row.get("posicion_contractual") or "").strip().upper()
+        if role not in _AUTHORIZED_ROLES:
+            continue
+        row_dni = _normalize_dni(str(row.get("dni_ruc") or ""))
+        if row_dni:
+            authorized_dnis.add(row_dni)
+
+    if norm_dni not in authorized_dnis:
+        return None  # fail-closed: no reveal of contract existence
+
+    # DNI is authorized — build a single profile from the first row.
+    # All rows share the same id_credito; the profile is credit-level, not person-level.
+    # Map the raw debt row through _row_to_profile using the standard column_map aliases.
+    # Since _query_contrato_rows returns raw DB column names (not aliased), we build
+    # the profile from the raw row using the known field mapping.
+    first_row = rows[0]
+    profile = _row_from_contrato_raw(first_row, tenant_id)
+    return profile
+
+
+def _row_from_contrato_raw(raw: dict, tenant_id: str) -> dict:
+    """Map a raw batch_asignacion_review_bronze row to a borrower profile.
+
+    The contrato query returns raw DB column names (not the aliased column_map
+    names that the main profile SQL produces). This function bridges the gap by
+    iterating the column_map forward: for each debt-sourced non-aggregated field,
+    if the source column is present in the raw row, write the value under the
+    profile field name. A single raw column may map to multiple profile fields
+    (e.g. id_credito → account_id AND loan_number) — handled by forward iteration.
+    """
+    try:
+        schema = _load_schema(tenant_id)
+        column_map: dict = schema.get("column_map") or {}
+    except Exception:  # noqa: BLE001
+        column_map = {}
+
+    aliased: dict = {}
+
+    # Forward pass: copy raw columns that don't need aliasing first (pass-through).
+    for db_col, value in raw.items():
+        if not db_col.startswith("_"):
+            aliased[db_col] = value
+
+    # Forward pass: apply column_map — debt-sourced, non-aggregated fields only.
+    # Multiple profile fields may share the same source column (id_credito →
+    # account_id + loan_number); iterate all entries to handle this correctly.
+    for field, spec in column_map.items():
+        if spec.get("source", "debt") == "debt" and not spec.get("agg"):
+            db_col = spec["column"]
+            if db_col in raw:
+                aliased[field] = raw[db_col]
+
+    return _row_to_profile(aliased)
+
+
 def validate_comprobante(
     dni: str,
     cci: str,

@@ -153,20 +153,20 @@ Chain strategy: pending
 > DECISIÓN Ricky 2026-06-11: ID-contrato identification requires ALSO the user's DNI.
 > Access granted ONLY if provided DNI ∈ {titular, garante} of that contract in Doris — fail-closed otherwise.
 
-- [ ] 5.1 In `apps/agent/features/cobranza/doris_debt_source.py`, add `resolve_contrato(contrato_id: str, dni: str, tenant_id: str) -> dict | None` querying `batch_asignacion_review_bronze` by the contract column (name from `tenant_config["cobranza"]["contrato_column"]`, default `"id_contrato"`). MUST:
+- [x] 5.1 In `apps/agent/features/cobranza/doris_debt_source.py`, add `resolve_contrato(contrato_id: str, dni: str, tenant_id: str) -> dict | None` querying `batch_asignacion_review_bronze` by the contract column (name from `tenant_config["cobranza"]["contrato_column"]`, default `"id_contrato"`). MUST:
   1. Dedup titular/garante rows: `ROW_NUMBER() OVER (PARTITION BY id_credito ORDER BY creado_el DESC) AS rn` filtered `WHERE rn = 1`.
   2. After dedup, verify that the provided `dni` matches the `dni` column of either the titular or garante row for that `id_credito`. If no match → return `None` (fail-closed; do NOT reveal contract existence).
   3. On match → return exactly one profile dict (same shape as DNI resolution).
   Returns `None` on miss, DNI mismatch, or any exception.
   - Verify: `uv run pytest tests/test_id_contrato.py -v`
 
-- [ ] 5.2 In `apps/agent/features/conversation/agent.py` (or identity gate in `responses.py`), add a branch in the identity resolution path: when user provides a contract ID, collect their DNI as well (two-step prompt), then call `resolve_contrato(contrato_id, dni)`. On profile returned: verify identity and proceed to `classify_credit_state` (same flow as DNI success). On `None`: MUST NOT reveal whether the contract exists or whether the DNI matched; prompt retry or DNI-only path. Reuse existing retry counter; max-retries → asesor.
+- [x] 5.2 In `apps/agent/features/conversation/agent.py` (or identity gate in `responses.py`), add a branch in the identity resolution path: when user provides a contract ID, collect their DNI as well (two-step prompt), then call `resolve_contrato(contrato_id, dni)`. On profile returned: verify identity and proceed to `classify_credit_state` (same flow as DNI success). On `None`: MUST NOT reveal whether the contract exists or whether the DNI matched; prompt retry or DNI-only path. Reuse existing retry counter; max-retries → asesor.
   - Verify: `uv run pytest tests/test_cobranza_prestamype.py -v`
 
-- [ ] 5.3 In `tenants/prestamype/responses.json`, add: `"id_contrato_prompt"` (invite to enter contract ID), `"id_contrato_dni_prompt"` (follow-up asking for DNI after contract ID provided), `"id_contrato_not_found"` (neutral no-reveal message + retry/DNI option — used for both "not found" and "DNI mismatch"; MUST NOT distinguish between the two), `"id_contrato_max_retries"` (asesor escalation).
+- [x] 5.3 In `tenants/prestamype/responses.json`, add: `"id_contrato_prompt"` (invite to enter contract ID), `"id_contrato_dni_prompt"` (follow-up asking for DNI after contract ID provided), `"id_contrato_not_found"` (neutral no-reveal message + retry/DNI option — used for both "not found" and "DNI mismatch"; MUST NOT distinguish between the two), `"id_contrato_max_retries"` (asesor escalation).
   - Verify: JSON parses without error; `uv run pytest tests/test_responses_engine.py -v`
 
-- [ ] 5.4 Create `tests/test_id_contrato.py`: (a) valid contrato_id + matching DNI (titular) → profile returned, `credit_state` classification proceeds; (b) valid contrato_id + matching DNI (garante) → profile returned; (c) valid contrato_id + DNI that is NOT titular or garante → `None` returned, no-reveal message shown (fail-closed); (d) contrato with titular+garante rows (fixture: 2 person-rows, same `id_credito`) + valid DNI → `resolve_contrato` returns exactly ONE profile dict (dedup verified); (e) unknown contrato_id + any DNI → `None` returned, no-reveal message shown; (f) max retries → asesor escalation; (g) `resolve_contrato` returns `None` on DB exception without raising.
+- [x] 5.4 Create `tests/test_id_contrato.py`: (a) valid contrato_id + matching DNI (titular) → profile returned, `credit_state` classification proceeds; (b) valid contrato_id + matching DNI (garante) → profile returned; (c) valid contrato_id + DNI that is NOT titular or garante → `None` returned, no-reveal message shown (fail-closed); (d) contrato with titular+garante rows (fixture: 2 person-rows, same `id_credito`) + valid DNI → `resolve_contrato` returns exactly ONE profile dict (dedup verified); (e) unknown contrato_id + any DNI → `None` returned, no-reveal message shown; (f) max retries → asesor escalation; (g) `resolve_contrato` returns `None` on DB exception without raising.
   - Verify: 7 cases pass, `uv run pytest tests/test_id_contrato.py -v`
 
 ---

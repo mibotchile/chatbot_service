@@ -929,6 +929,126 @@ def apply_comprobante_prequestion_gate(
     )
 
 
+# ── IDC-01: ID-Contrato + DNI dual-factor identity path ──────────────────────
+
+_ID_CONTRATO_RETRY_KEY = "id_contrato_retry_count"
+_ID_CONTRATO_PENDING_KEY = "id_contrato_pending_contrato_id"
+_ID_CONTRATO_RETRY_MAX = 3  # max failed attempts before asesor escalation
+
+
+def handle_id_contrato_not_found(
+    spec: "ResponsesSpec",
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome:
+    """IDC-01: Handle a failed contrato+DNI identification attempt.
+
+    Increments the retry counter. At _ID_CONTRATO_RETRY_MAX escalates to asesor
+    via ``id_contrato_max_retries``. Below the limit emits ``id_contrato_not_found``
+    (neutral, no-reveal — same message for both 'not found' and 'DNI mismatch').
+
+    The caller must NOT reveal whether the contract exists or whether the DNI
+    matched — always use this function so the response is identical either way.
+    """
+    if session_state is None:
+        session_state = {}
+
+    count = session_state.get(_ID_CONTRATO_RETRY_KEY, 0) + 1
+    session_state[_ID_CONTRATO_RETRY_KEY] = count
+
+    if count >= _ID_CONTRATO_RETRY_MAX:
+        # Clear pending state on max retries
+        session_state.pop(_ID_CONTRATO_PENDING_KEY, None)
+        result = render_intent(spec, "id_contrato_max_retries", profile, source=source)
+        text = result.text if result else (
+            "No pude verificar tu identidad. Te derivo con un asesor."
+        )
+        return RouterOutcome(
+            handled=True,
+            text=text,
+            intent="id_contrato_max_retries",
+            source=source,
+            run_tool=intent_tool(spec, "id_contrato_max_retries"),
+        )
+
+    result = render_intent(spec, "id_contrato_not_found", profile, source=source)
+    text = result.text if result else (
+        "No pude verificar tu identidad con esos datos. "
+        "Por favor, revísalos e inténtalo de nuevo, o indícame tu DNI directamente."
+    )
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="id_contrato_not_found",
+        source=source,
+    )
+
+
+def handle_id_contrato_step(
+    text: str,
+    spec: "ResponsesSpec",
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+    tenant_id: str = "prestamype",
+) -> RouterOutcome | None:
+    """IDC-01: Two-step contrato+DNI identification flow.
+
+    Step 1: user is in the id_contrato_prompt state (no pending contrato yet).
+            The text IS the contrato_id — store it, emit the DNI prompt.
+    Step 2: pending contrato_id is set — the text IS the DNI.
+            Call resolve_contrato(contrato_id, dni). On profile → verify + classify.
+            On None → handle_id_contrato_not_found (no-reveal, retry or asesor).
+
+    Returns None when no id_contrato flow is active in session_state (caller
+    continues normal routing).
+    """
+    if session_state is None:
+        return None
+
+    pending_contrato = session_state.get(_ID_CONTRATO_PENDING_KEY)
+
+    if pending_contrato:
+        # Step 2: user just typed their DNI — verify
+        from features.cobranza.doris_debt_source import resolve_contrato  # noqa: PLC0415
+        dni = text.strip()
+        profile_result = resolve_contrato(pending_contrato, dni, tenant_id)
+
+        # Clear pending regardless of outcome (avoid stale state)
+        session_state.pop(_ID_CONTRATO_PENDING_KEY, None)
+
+        if profile_result is not None:
+            # Verified — reset retry counter, mark identity as pending-tool-verify
+            # The profile is stashed in session for the tool registry to pick up.
+            session_state.pop(_ID_CONTRATO_RETRY_KEY, None)
+            session_state["id_contrato_verified_profile"] = profile_result
+            # Emit the id_contrato prompt confirmation using the resolved profile
+            # (same approach as DNI identification — re-render after tool success).
+            return None  # let the caller proceed to identification tool
+
+        return handle_id_contrato_not_found(
+            spec, profile, session_state=session_state, source=source,
+        )
+
+    return None
+
+
+def is_id_contrato_flow_active(session_state: dict | None) -> bool:
+    """Return True when a two-step id_contrato flow is awaiting the DNI."""
+    return bool(
+        session_state and session_state.get(_ID_CONTRATO_PENDING_KEY)
+    )
+
+
+def arm_id_contrato_flow(session_state: dict | None, contrato_id: str) -> None:
+    """Store the contrato_id and await the DNI step (arms the two-step flow)."""
+    if session_state is not None:
+        session_state[_ID_CONTRATO_PENDING_KEY] = contrato_id
+
+
 def known_intents(spec: ResponsesSpec) -> list[str]:
     """Intent names the spec defines — the menu the LLM classifier chooses from."""
     return list(spec.intents.keys())
