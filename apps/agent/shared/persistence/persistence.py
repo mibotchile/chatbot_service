@@ -67,6 +67,57 @@ async def ensure_tables(
             ON {conv_table}(updated_at)
         """)
 
+        # -- Layer 3: gestiones snapshot (1 row per conversation) --
+        gestiones_table = _q(schema, "gestiones")
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {gestiones_table} (
+                conversation_id    TEXT PRIMARY KEY,
+                tenant_id          TEXT,
+                project_uid        TEXT,
+                channel            TEXT,
+                document           TEXT,
+                account_id         TEXT,
+                credit_state       TEXT,
+                outcome            TEXT,
+                outcome_reason     TEXT,
+                capabilities_used  JSONB DEFAULT '[]'::jsonb,
+                escalated          BOOLEAN DEFAULT FALSE,
+                commitment_date    DATE,
+                commitment_amount  NUMERIC,
+                selected_credit_id TEXT,
+                schema_version     SMALLINT DEFAULT 1,
+                created_at         TIMESTAMPTZ DEFAULT NOW(),
+                updated_at         TIMESTAMPTZ DEFAULT NOW(),
+                closed_at          TIMESTAMPTZ
+            )
+        """)
+        await conn.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_gestiones_open
+            ON {gestiones_table}(updated_at) WHERE closed_at IS NULL
+        """)
+        await conn.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_gestiones_tenant
+            ON {gestiones_table}(tenant_id)
+        """)
+
+        # -- Layer 3: gestion_events append-only journal --
+        events_table = _q(schema, "gestion_events")
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {events_table} (
+                event_id        BIGSERIAL PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                ts              TIMESTAMPTZ DEFAULT NOW(),
+                event_type      TEXT NOT NULL,
+                intent          TEXT,
+                capability      TEXT,
+                payload         JSONB DEFAULT '{{}}'::jsonb
+            )
+        """)
+        await conn.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_gestion_events_conv
+            ON {events_table}(conversation_id, ts)
+        """)
+
         if projection_table is not None:
             if not _SAFE_IDENTIFIER.match(projection_table):
                 raise ValueError(f"Unsafe projection_table name: {projection_table!r}")
@@ -216,6 +267,138 @@ async def upsert_debtor(
             "web",
             now,
         )
+
+
+# -- Layer 3: Gestion journal + snapshot write functions --
+
+async def append_gestion_event(
+    pool: asyncpg.Pool,
+    schema: str,
+    conversation_id: str,
+    *,
+    event_type: str,
+    intent: str | None = None,
+    capability: str | None = None,
+    payload: dict | None = None,
+) -> dict:
+    """Append one row to the gestion_events journal.
+
+    Returns a dict with at least ``event_id`` (int) and ``ts`` (datetime),
+    ready to be forwarded to the Doris sink.
+    """
+    table = _q(schema, "gestion_events")
+    row = await pool.fetchrow(
+        f"""
+        INSERT INTO {table}
+            (conversation_id, event_type, intent, capability, payload)
+        VALUES ($1, $2, $3, $4, $5::jsonb)
+        RETURNING event_id, conversation_id, ts, event_type, intent, capability, payload
+        """,
+        conversation_id,
+        event_type,
+        intent,
+        capability,
+        json.dumps(payload or {}),
+    )
+    return dict(row)
+
+
+async def upsert_gestion(
+    pool: asyncpg.Pool,
+    schema: str,
+    conversation_id: str,
+    *,
+    fields: dict,
+) -> None:
+    """Upsert the gestiones snapshot for a conversation.
+
+    Merge rules:
+    - ``capabilities_used``: accumulated (union, no duplicates).  Pass the
+      full desired list; the function computes the union with the stored value.
+    - ``closed_at`` / ``outcome`` / ``outcome_reason``: only set when provided
+      and NOT already set (COALESCE keeps the first terminal value — first
+      close wins).
+    - All other fields: overwrite with the provided value when not None.
+    """
+    table = _q(schema, "gestiones")
+    now = datetime.now(timezone.utc)
+
+    # Capabilities: merge provided list with existing stored list (de-duplicate).
+    new_caps = fields.get("capabilities_used")
+    if new_caps is not None:
+        # Fetch existing and union
+        existing_row = await pool.fetchrow(
+            f"SELECT capabilities_used FROM {table} WHERE conversation_id = $1",
+            conversation_id,
+        )
+        if existing_row is not None:
+            stored = existing_row["capabilities_used"]
+            if isinstance(stored, str):
+                stored = json.loads(stored)
+            merged = list(dict.fromkeys(list(stored) + list(new_caps)))
+        else:
+            merged = list(dict.fromkeys(new_caps))
+        caps_json = json.dumps(merged)
+    else:
+        caps_json = None
+
+    await pool.execute(
+        f"""
+        INSERT INTO {table} (
+            conversation_id, tenant_id, project_uid, channel,
+            document, account_id, credit_state,
+            outcome, outcome_reason,
+            capabilities_used,
+            escalated, commitment_date, commitment_amount, selected_credit_id,
+            schema_version, created_at, updated_at, closed_at
+        )
+        VALUES (
+            $1,
+            $2, $3, $4,
+            $5, $6, $7,
+            $8, $9,
+            COALESCE($10::jsonb, '[]'::jsonb),
+            COALESCE($11, FALSE), $12, $13, $14,
+            COALESCE($15, 1), NOW(), NOW(), $16
+        )
+        ON CONFLICT (conversation_id) DO UPDATE SET
+            tenant_id          = COALESCE($2, {table}.tenant_id),
+            project_uid        = COALESCE($3, {table}.project_uid),
+            channel            = COALESCE($4, {table}.channel),
+            document           = COALESCE($5, {table}.document),
+            account_id         = COALESCE($6, {table}.account_id),
+            credit_state       = COALESCE($7, {table}.credit_state),
+            outcome            = COALESCE({table}.outcome, $8),
+            outcome_reason     = COALESCE({table}.outcome_reason, $9),
+            capabilities_used  = CASE
+                                     WHEN $10 IS NOT NULL THEN $10::jsonb
+                                     ELSE {table}.capabilities_used
+                                 END,
+            escalated          = COALESCE($11, {table}.escalated),
+            commitment_date    = COALESCE($12, {table}.commitment_date),
+            commitment_amount  = COALESCE($13, {table}.commitment_amount),
+            selected_credit_id = COALESCE($14, {table}.selected_credit_id),
+            schema_version     = COALESCE($15, {table}.schema_version),
+            updated_at         = NOW(),
+            closed_at          = COALESCE({table}.closed_at, $16)
+        """,
+        conversation_id,
+        fields.get("tenant_id"),
+        fields.get("project_uid"),
+        fields.get("channel"),
+        fields.get("document"),
+        fields.get("account_id"),
+        fields.get("credit_state"),
+        fields.get("outcome"),
+        fields.get("outcome_reason"),
+        caps_json,
+        fields.get("escalated"),
+        fields.get("commitment_date"),
+        fields.get("commitment_amount"),
+        fields.get("selected_credit_id"),
+        fields.get("schema_version"),
+        fields.get("closed_at"),
+    )
 
 
 # -- Legacy helpers (kept for backwards compatibility with existing async API) --
