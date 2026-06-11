@@ -46,11 +46,10 @@ See ``docs/responses-format.md`` for the full client-facing contract.
 
 from __future__ import annotations
 
-import json
 import random
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from datetime import datetime
 from typing import Any
 
 from loguru import logger
@@ -60,7 +59,6 @@ from shared.templates import (  # moved to shared/ (W1 cleanup — removes cobra
     normalize_credits,
     build_variables,
     render_template,
-    _money,
     _title,
     _fill,
 )
@@ -285,7 +283,8 @@ class RouterOutcome:
     variant_index: int = -1
     needs_llm_classification: bool = False  # hybrid miss → let the agent classify
     run_tool: str | None = None         # tool the agent must execute before replying
-    tool_args: dict = field(default_factory=dict)  # args parsed from the message (e.g. {"dni": "..."})
+    # args parsed from the message (e.g. {"dni": "..."})
+    tool_args: dict = field(default_factory=dict)
     # Re-render the intent's template AFTER its tool ran, with the tool result
     # merged into the variables (e.g. the masked destination from enviar_info).
     rerender_with_result: bool = False
@@ -670,6 +669,134 @@ def _reset_misunderstood(session_state: dict | None) -> None:
     """Reset the 2-strike counter after a successfully handled intent."""
     if session_state is not None:
         session_state.pop(_MISUNDERSTOOD_COUNT_KEY, None)
+
+
+# ── INF-09: Out-of-hours gate ─────────────────────────────────────────────────
+
+def check_out_of_hours(
+    dt: datetime,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    source: str,
+    tenant_id: str = "prestamype",
+) -> RouterOutcome | None:
+    """INF-09: Return a ``fuera_de_horario`` outcome when outside business hours.
+
+    Uses ``is_business_hours`` from ``features.cobranza.horario`` — reads the
+    feriados_peru_2026.json + tenant cobranza.horario config. No hardcoded dates.
+
+    Args:
+        dt: current datetime (Lima local, naive or aware).
+        spec: tenant responses spec.
+        profile: verified borrower profile.
+        source: SOURCE_KEYWORD | SOURCE_INTENT.
+        tenant_id: tenant whose config/feriados to use.
+
+    Returns:
+        A handled RouterOutcome with the ``fuera_de_horario`` template when the
+        session falls outside business hours (including refrigerio 13:00–14:00).
+        Returns None when the session IS within business hours (caller continues).
+    """
+    from features.cobranza.horario import is_business_hours  # avoid circular at module level
+
+    if is_business_hours(dt, tenant_id=tenant_id):
+        return None  # within hours — no gate
+
+    result = render_intent(spec, "fuera_de_horario", profile, source=source)
+    text = result.text if result else (
+        "Nuestro horario de atención es lunes a viernes de 9:00 a 18:30. "
+        "Te invitamos a contactarnos en ese horario."
+    )
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="fuera_de_horario",
+        source=source,
+    )
+
+
+# ── INF-08: Due-date holiday / domingo check (al_dia / por_vencer only) ───────
+
+def check_due_date_holiday(
+    intent: str,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+    tenant_id: str = "prestamype",
+) -> RouterOutcome | None:
+    """INF-08: Route the domingo/feriado intent based on credit_state + date check.
+
+    When the resolved intent is the domingo/feriado query AND the profile's
+    ``next_due_date`` is a feriado or sunday:
+      - credit_state al_dia / por_vencer → emit ``domingo_feriado_al_dia_por_vencer``
+        (business rule: next business day).
+      - credit_state vencido → emit ``domingo_feriado_vencido_redirect`` (overdue
+        context makes this irrelevant — redirect to vencido menu).
+
+    Returns None for all other intents (caller continues normally).
+
+    Uses ``is_feriado`` from ``features.cobranza.horario`` — reads
+    ``feriados_peru_2026.json`` exclusively. No hardcoded date lists.
+    """
+    _DOMINGO_FERIADO_INTENTS = frozenset({
+        "domingo_feriado_al_dia_por_vencer",
+        "domingo_feriado_vencido_redirect",
+    })
+    if intent not in _DOMINGO_FERIADO_INTENTS:
+        return None
+
+    from datetime import date as _date
+    from features.cobranza.horario import is_feriado  # avoid circular at module level
+
+    credit_state = (session_state or {}).get("credit_state", "al_dia")
+
+    if credit_state == "vencido":
+        # Vencido users: redirect regardless of calendar — overdue context dominates
+        result = render_intent(
+            spec, "domingo_feriado_vencido_redirect", profile, source=source
+        )
+        text = result.text if result else (
+            "Tienes cuotas vencidas. Te invitamos a regularizar tu situación."
+        )
+        return RouterOutcome(
+            handled=True,
+            text=text,
+            intent="domingo_feriado_vencido_redirect",
+            source=source,
+        )
+
+    # al_dia / por_vencer: check if next_due_date is a holiday or sunday
+    next_due_raw = profile.get("next_due_date")
+    is_holiday_or_sunday = False
+    if next_due_raw:
+        try:
+            due = _date.fromisoformat(str(next_due_raw))
+            is_holiday_or_sunday = is_feriado(due, tenant_id=tenant_id) or due.weekday() == 6
+        except ValueError:
+            pass
+
+    # Emit the informational holiday template (spec wording: next business day)
+    result = render_intent(
+        spec, "domingo_feriado_al_dia_por_vencer", profile, source=source
+    )
+    text = result.text if result else (
+        "Si tu fecha de pago cae en domingo o feriado, se traslada al siguiente "
+        "día hábil."
+    )
+    out = RouterOutcome(
+        handled=True,
+        text=text,
+        intent="domingo_feriado_al_dia_por_vencer",
+        source=source,
+    )
+    # Stash whether the due date actually falls on a holiday/sunday (for callers
+    # that want to surface this context proactively).
+    if session_state is not None:
+        session_state["due_date_is_holiday_or_sunday"] = is_holiday_or_sunday
+    return out
 
 
 def apply_comprobante_prequestion_gate(

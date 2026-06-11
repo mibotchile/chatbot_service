@@ -228,10 +228,10 @@ Chain strategy: pending
 > Satisfies: INF-08 (feriados_peru_2026.json), INF-09 (confirmed hours + refrigerio)
 > Source: definiciones-naomi-2026-06-10.md §5
 
-- [ ] 9.1 Copy `docs/specs-input/prestamype/feriados_peru_2026.json` to `tenants/prestamype/feriados_peru_2026.json`. Add a loader in `apps/agent/features/cobranza/` (e.g., `horario.py`) that reads this JSON and exposes `is_feriado(date: date) -> bool` and `is_business_hours(dt: datetime) -> bool`. `is_business_hours` MUST also return `False` during refrigerio (13:00–14:00).
+- [x] 9.1 Copy `docs/specs-input/prestamype/feriados_peru_2026.json` to `tenants/prestamype/feriados_peru_2026.json`. Add a loader in `apps/agent/features/cobranza/` (e.g., `horario.py`) that reads this JSON and exposes `is_feriado(date: date) -> bool` and `is_business_hours(dt: datetime) -> bool`. `is_business_hours` MUST also return `False` during refrigerio (13:00–14:00).
   - Verify: `uv run pytest tests/test_horario.py -v`
 
-- [ ] 9.2 Create `tests/test_horario.py` covering:
+- [x] 9.2 Create `tests/test_horario.py` covering:
   - (a) A confirmed date from `feriados_peru_2026.json` (e.g., 2026-07-28 Fiestas Patrias) → `is_feriado()` returns True.
   - (b) A normal weekday → `is_feriado()` returns False.
   - (c) 12:00 Lunes → `is_business_hours()` True.
@@ -240,7 +240,7 @@ Chain strategy: pending
   - (f) 09:00 Sábado → `is_business_hours()` False (weekend).
   - Verify: 6 cases pass, `uv run pytest tests/test_horario.py -v`
 
-- [ ] 9.3 Wire `is_feriado()` into INF-08 (due date holiday check) and `is_business_hours()` into INF-09 (out-of-hours gate). Both must use the loaded `feriados_peru_2026.json` — no hardcoded date lists.
+- [x] 9.3 Wire `is_feriado()` into INF-08 (due date holiday check) and `is_business_hours()` into INF-09 (out-of-hours gate). Both must use the loaded `feriados_peru_2026.json` — no hardcoded date lists.
   - Verify: `uv run pytest tests/test_horario.py tests/test_scenario_intents.py -v`
 
 ---
