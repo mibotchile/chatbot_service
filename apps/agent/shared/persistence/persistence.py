@@ -300,7 +300,7 @@ async def append_gestion_event(
         capability,
         json.dumps(payload or {}),
     )
-    return dict(row)
+    return dict(row) if row is not None else {}
 
 
 async def upsert_gestion(
