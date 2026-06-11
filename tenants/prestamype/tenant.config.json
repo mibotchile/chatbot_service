@@ -51,7 +51,16 @@
   },
   "cobranza": {
     "proxima_vencer_window_days": 5,
+    "penalidad_rate_per_week": 0.00008,
+    "penalidad_rounding": "ceil_decimo",
+    "commitment_window_days": 2,
+    "credit_state_labels": {
+      "al_dia": "Al día",
+      "por_vencer": "Próximo a vencer",
+      "vencido": "Vencido"
+    },
     "horario": {
+      "timezone": "America/Lima",
       "dias": ["lunes", "martes", "miércoles", "jueves", "viernes"],
       "hora_inicio": "09:00",
       "hora_fin": "18:30",

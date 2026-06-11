@@ -148,9 +148,20 @@ async def consultar_deuda(profile: dict) -> dict:
 
         if saldo_capital_inicial is not None and dias_overdue > 0:
             from features.cobranza.scenario import calcular_penalidad  # noqa: PLC0415
+            from loguru import logger as _log  # noqa: PLC0415
 
+            _rate = profile.get("penalidad_rate_per_week")
+            _rounding = profile.get("penalidad_rounding", "ceil_decimo")
+            if _rate is None:
+                _log.warning(
+                    "build_moratoria_summary: penalidad_rate_per_week not in profile; "
+                    "falling back to engine default 0.00008"
+                )
+                _rate = 0.00008
             summary["penalidad"] = calcular_penalidad(
-                float(saldo_capital_inicial), dias_overdue
+                float(saldo_capital_inicial), dias_overdue,
+                rate_per_week=float(_rate),
+                rounding=str(_rounding),
             )
             summary["penalidad_formatted"] = _fmt(summary["penalidad"], sym)
         else:

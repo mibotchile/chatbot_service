@@ -504,6 +504,7 @@
   "compromiso_pago": {
     "mode": "verbatim",
     "description": "El usuario vencido quiere registrar un compromiso de pago para una fecha próxima.",
+    "vencido_only": true,
     "capability": "compromiso",
     "requires_identity": true,
     "keywords": [
@@ -726,6 +727,7 @@
   "realizar_pago_vencido": {
     "mode": "verbatim",
     "description": "El usuario con crédito vencido quiere realizar el pago de la cuota vencida.",
+    "vencido_only": true,
     "requires_identity": true,
     "tool": "escalate_to_human",
     "keywords": [

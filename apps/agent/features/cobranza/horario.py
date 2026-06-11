@@ -43,14 +43,14 @@ def _tenants_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent.parent / "tenants"
 
 
-def _tenant_dir(tenant_id: str = "prestamype") -> Path:
+def _tenant_dir(tenant_id: str) -> Path:
     return _tenants_root() / tenant_id
 
 
 # ── Cached data loaders ───────────────────────────────────────────────────────
 
 @lru_cache(maxsize=8)
-def _load_feriados(tenant_id: str = "prestamype") -> frozenset[date]:
+def _load_feriados(tenant_id: str) -> frozenset[date]:
     """Load and cache the set of holiday dates from ``feriados_peru_2026.json``."""
     tenant_cfg_path = _tenant_dir(tenant_id) / "tenant.config.json"
     feriados_filename = "feriados_peru_2026.json"
@@ -80,7 +80,7 @@ def _load_feriados(tenant_id: str = "prestamype") -> frozenset[date]:
 
 
 @lru_cache(maxsize=8)
-def _load_horario_config(tenant_id: str = "prestamype") -> dict:
+def _load_horario_config(tenant_id: str) -> dict:
     """Load and cache the ``cobranza.horario`` block from ``tenant.config.json``.
 
     Returns a normalized dict with keys:
@@ -145,16 +145,27 @@ def _load_horario_config(tenant_id: str = "prestamype") -> dict:
     break_start = _parse_time(ref.get("inicio", ""), defaults["break_start"])
     break_end = _parse_time(ref.get("fin", ""), defaults["break_end"])
 
-    # Timezone: prefer feriados_peru_2026.json business_hours.timezone
-    tz_name = "America/Lima"
-    feriados_filename = horario.get("feriados_source", "feriados_peru_2026.json")
-    feriados_path = _tenant_dir(tenant_id) / feriados_filename
-    if feriados_path.exists():
-        try:
-            fraw = json.loads(feriados_path.read_text(encoding="utf-8"))
-            tz_name = fraw.get("business_hours", {}).get("timezone", tz_name)
-        except (json.JSONDecodeError, OSError):
-            pass
+    # Timezone: prefer cobranza.horario.timezone from tenant config, then
+    # feriados_peru_2026.json business_hours.timezone as secondary source.
+    # Falls back to "America/Lima" with a warning when neither key is present.
+    tz_name: str | None = horario.get("timezone")
+    if not tz_name:
+        feriados_filename = horario.get("feriados_source", "feriados_peru_2026.json")
+        feriados_path = _tenant_dir(tenant_id) / feriados_filename
+        if feriados_path.exists():
+            try:
+                fraw = json.loads(feriados_path.read_text(encoding="utf-8"))
+                tz_name = fraw.get("business_hours", {}).get("timezone")
+            except (json.JSONDecodeError, OSError):
+                pass
+    if not tz_name:
+        from loguru import logger as _log  # noqa: PLC0415
+        _log.warning(
+            "horario: cobranza.horario.timezone missing for tenant '{}'; "
+            "falling back to 'America/Lima'",
+            tenant_id,
+        )
+        tz_name = "America/Lima"
 
     return {
         "weekday_set": weekday_set,
@@ -168,19 +179,19 @@ def _load_horario_config(tenant_id: str = "prestamype") -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def is_feriado(d: date, *, tenant_id: str = "prestamype") -> bool:
-    """Return True when ``d`` is a Peruvian national holiday for 2026.
+def is_feriado(d: date, *, tenant_id: str) -> bool:
+    """Return True when ``d`` is a holiday for the given tenant.
 
-    Data sourced exclusively from ``feriados_peru_2026.json`` — no hardcoded dates.
+    Data sourced exclusively from the tenant's feriados JSON file — no hardcoded dates.
 
     Args:
         d: the date to check.
-        tenant_id: tenant whose config/feriados file to use (default "prestamype").
+        tenant_id: tenant whose config/feriados file to use (required).
     """
     return d in _load_feriados(tenant_id)
 
 
-def is_business_hours(dt: datetime, *, tenant_id: str = "prestamype") -> bool:
+def is_business_hours(dt: datetime, *, tenant_id: str) -> bool:
     """Return True when ``dt`` falls within configured business hours.
 
     Returns False when ANY of these conditions hold:
@@ -192,7 +203,7 @@ def is_business_hours(dt: datetime, *, tenant_id: str = "prestamype") -> bool:
     Args:
         dt: a datetime to check. If timezone-aware it is converted to Lima time
             first; if naive it is treated directly as Lima local time.
-        tenant_id: tenant whose config to use (default "prestamype").
+        tenant_id: tenant whose config to use (required).
     """
     horario = _load_horario_config(tenant_id)
     tz: ZoneInfo = horario["timezone"]

@@ -69,7 +69,24 @@ def build_variables(profile: dict) -> dict[str, str]:
                 calcular_interes_compensatorio,
                 calcular_penalidad,
             )
-            _pen_fmt = _money(calcular_penalidad(float(_saldo_ci), _dov), sym)
+            from loguru import logger as _log  # noqa: PLC0415
+
+            _rate = profile.get("penalidad_rate_per_week")
+            _rounding = profile.get("penalidad_rounding", "ceil_decimo")
+            if _rate is None:
+                _log.warning(
+                    "templates: penalidad_rate_per_week not in profile; "
+                    "falling back to engine default 0.00008"
+                )
+                _rate = 0.00008
+            _pen_fmt = _money(
+                calcular_penalidad(
+                    float(_saldo_ci), _dov,
+                    rate_per_week=float(_rate),
+                    rounding=str(_rounding),
+                ),
+                sym,
+            )
             _am = profile.get("amortizacion_cuota")
             _ta = profile.get("tasa_interes_mensual")
             if _am is not None and _ta is not None:

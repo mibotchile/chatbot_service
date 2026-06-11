@@ -16,7 +16,7 @@ Provides:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -60,13 +60,19 @@ def parse_commitment_date(text: str) -> date | None:
     return d
 
 
-def within_commitment_window(d: date) -> bool:
-    """Return True when d is within today..today+2 (the bot-owned window).
+def within_commitment_window(d: date, *, window_days: int = 2) -> bool:
+    """Return True when d is within today..today+window_days (the bot-owned window).
 
-    Dates more than 2 days in the future are out of window → escalate to asesor.
+    Dates beyond window_days in the future are out of window → escalate to asesor.
+
+    Args:
+        d: the proposed commitment date.
+        window_days: max days ahead (inclusive). Read from
+            ``tenant.config.json → cobranza.commitment_window_days``.
+            Default 2 preserves the original Prestamype behaviour.
     """
     today = date.today()
-    return today <= d <= today + __import__("datetime").timedelta(days=2)
+    return today <= d <= today + timedelta(days=window_days)
 
 
 async def register_commitment(
@@ -77,6 +83,7 @@ async def register_commitment(
     date_str: str,
     amount: float,
     profile: dict,
+    window_days: int = 2,
 ) -> CommitmentResult:
     """Validate the commitment window and persist to gestiones if in range.
 
@@ -89,6 +96,11 @@ async def register_commitment(
     On DB failure → CommitmentResult(registered=False, escalate=True).
     Exceptions are NEVER re-raised into the call path.
 
+    Args:
+        window_days: bot-owned commitment window in days. Read from
+            ``tenant.config.json → cobranza.commitment_window_days``.
+            Default 2 preserves the original Prestamype behaviour.
+
     Writes:
     - upsert_gestion: commitment_date, commitment_amount, outcome=payment_commitment_registered
     - append_gestion_event: event_type=commitment, intent=compromiso_pago
@@ -100,7 +112,7 @@ async def register_commitment(
             registered=False, escalate=True, reason="unparseable_or_past"
         )
 
-    if not within_commitment_window(d):
+    if not within_commitment_window(d, window_days=window_days):
         return CommitmentResult(
             registered=False,
             escalate=True,

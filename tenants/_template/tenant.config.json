@@ -20,6 +20,20 @@
     "excluded_tools": [],
     "skills": null
   },
+  "cobranza": {
+    "proxima_vencer_window_days": 5,
+    "penalidad_rate_per_week": 0.00008,
+    "penalidad_rounding": "ceil_decimo",
+    "commitment_window_days": 2,
+    "credit_state_labels": {
+      "al_dia": "Al día",
+      "por_vencer": "Próximo a vencer",
+      "vencido": "Vencido"
+    },
+    "horario": {
+      "timezone": "America/Lima"
+    }
+  },
   "publishable_keys": [
     {"key": "pk_live_PLACEHOLDER_TEMPLATE", "status": "current", "added": "2026-01-01"}
   ],
