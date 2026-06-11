@@ -35,6 +35,7 @@ from shared.config.settings import settings
 from shared.persistence.persistence import append_gestion_event, upsert_gestion
 from features.analytics.gestion_sink import record_gestion, record_gestion_event
 from features.messaging.chathub_adapter import was_escalated
+from tenancy.responses_spec import ResponsesSpec
 
 # ---------------------------------------------------------------------------
 # Application singletons
@@ -201,8 +202,9 @@ def _spawn_analytics(**kwargs) -> None:
 async def _emit_gestion(conv, result, tool_pairs) -> None:
     """Write one turn's gestion data to Postgres + Doris (fire-and-forget).
 
-    Detection logic is fully data-driven via TERMINAL_SIGNALS and
-    INTENT_TO_CAPABILITY from gestion_catalog — no strings hardcoded here.
+    Binding is fully DRY via intent_binding() — reads capability/terminal_signal
+    /escalation_reason from the tenant's responses.json for the resolved intent.
+    No hardcoded intent-name dicts here.
 
     Uses the module-level ``store`` singleton (same pattern as _emit_analytics).
 
@@ -217,9 +219,8 @@ async def _emit_gestion(conv, result, tool_pairs) -> None:
             return
 
         from features.analytics.gestion_catalog import (
-            TERMINAL_SIGNALS,
-            INTENT_TO_CAPABILITY,
             EventType,
+            intent_binding,
         )
         from features.analytics.gestion_derivation import derive_outcome
 
@@ -228,35 +229,28 @@ async def _emit_gestion(conv, result, tool_pairs) -> None:
         conversation_id = conv.conversation_id
         session_state = conv.session_state or {}
         resolved_intent = (result.get("metadata") or {}).get("intent")
+        tenant_id = getattr(conv, "tenant_id", None)
 
-        # -- Detect terminal signals (data-driven from TERMINAL_SIGNALS) --
-        tool_names = {name for name, _ in (tool_pairs or [])}
+        # -- Load tenant spec and resolve binding for this turn's intent --
+        spec = ResponsesSpec.from_dir(_tenant_dir(tenant_id)) if tenant_id else None
+        capability, terminal_signal, escalation_reason = intent_binding(
+            resolved_intent, spec
+        )
 
-        commitment_registered = bool(
-            tool_names & set(TERMINAL_SIGNALS.get("commitment_registered", []))
-        )
-        proof_submitted = bool(
-            tool_names & set(TERMINAL_SIGNALS.get("proof_submitted", []))
-        )
-        identity_failed = any(
-            session_state.get(k) for k in TERMINAL_SIGNALS.get("identity_failed", [])
-        )
-        fallback_exhausted = any(
-            session_state.get(k) for k in TERMINAL_SIGNALS.get("fallback_exhausted", [])
-        )
+        # -- Detect escalation via chathub tool pairs --
         escalated = was_escalated(list(tool_pairs or []))
 
-        # info_provided: intent matches known info intents
-        info_provided = resolved_intent in TERMINAL_SIGNALS.get("info_provided_intents", [])
-        # identified: intent matches identity intents
-        identified = resolved_intent in TERMINAL_SIGNALS.get("identified_intents", [])
+        # -- Check session-level identity gate (independent of intent signal) --
+        identity_failed = any(
+            session_state.get(k)
+            for k in ("identity_gate_exhausted", "max_dni_retries_reached")
+        )
 
+        # -- Determine if this turn is terminal --
         is_terminal = (
-            commitment_registered
-            or proof_submitted
-            or identity_failed
-            or fallback_exhausted
+            identity_failed
             or escalated
+            or terminal_signal is not None
         )
 
         # -- Check if already closed (first-close-wins guard) --
@@ -267,16 +261,22 @@ async def _emit_gestion(conv, result, tool_pairs) -> None:
         )
         already_closed = existing is not None and existing["closed_at"] is not None
 
-        # -- Determine capability for this turn --
-        capability = INTENT_TO_CAPABILITY.get(resolved_intent or "")
-        if not capability:
-            # Fall back to first matching tool name
-            for t in tool_names:
-                if t in INTENT_TO_CAPABILITY:
-                    capability = INTENT_TO_CAPABILITY[t]
-                    break
+        # -- Accumulate capabilities_used (deduped, order-preserving) --
+        existing_caps: list[str] = []
+        if existing is not None:
+            raw = existing.get("capabilities_used")
+            if raw:
+                import json as _json
+                try:
+                    existing_caps = _json.loads(raw) if isinstance(raw, str) else list(raw)
+                except Exception:
+                    existing_caps = []
 
-        # -- Append capability_used event (every non-empty turn) --
+        new_caps = list(existing_caps)
+        if capability and capability not in new_caps:
+            new_caps.append(capability)
+
+        # -- Append capability_used event (every turn with a known capability) --
         cap_event_row = None
         if capability:
             cap_event_row = await append_gestion_event(
@@ -290,30 +290,27 @@ async def _emit_gestion(conv, result, tool_pairs) -> None:
         # -- Upsert snapshot (open state or terminal close) --
         now = _dt.now(_tz.utc)
         upsert_fields: dict = {
-            "tenant_id": getattr(conv, "tenant_id", None),
+            "tenant_id": tenant_id,
             "channel": getattr(conv, "channel", None),
-            "project_uid": _tenant_project_uid(getattr(conv, "tenant_id", None)),
+            "project_uid": _tenant_project_uid(tenant_id),
             "schema_version": 1,
             "closed_at": None,
             "outcome": None,
             "outcome_reason": None,
             "escalated": escalated or None,
         }
-        if capability:
-            upsert_fields["capabilities_used"] = [capability]
+        if new_caps:
+            upsert_fields["capabilities_used"] = new_caps
 
         terminal_event_row = None
         if is_terminal and not already_closed:
             outcome, reason = derive_outcome(
                 session_state=session_state,
                 resolved_intent=resolved_intent,
+                terminal_signal=terminal_signal,
                 was_escalated=escalated,
                 identity_failed=identity_failed,
-                commitment_registered=commitment_registered,
-                proof_submitted=proof_submitted,
-                fallback_exhausted=fallback_exhausted,
-                identified=identified,
-                info_provided=info_provided,
+                escalation_reason=escalation_reason,
             )
             outcome_val = outcome.value if hasattr(outcome, "value") else str(outcome)
             upsert_fields["closed_at"] = now

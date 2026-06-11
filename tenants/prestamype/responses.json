@@ -82,6 +82,8 @@
   "no_entendido": {
     "mode": "variant",
     "description": "El mensaje no encaja en ninguna intención conocida (fallback).",
+    "terminal_signal": "fallback",
+    "escalation_reason": "fallback_exhausted",
     "requires_identity": false,
     "chips": ["Consultar mi deuda", "Subir comprobante", "Hablar con un asesor"],
     "variants": [
@@ -94,6 +96,7 @@
   "identidad_requerida": {
     "mode": "verbatim",
     "description": "Se pidió información de la cuenta sin haber verificado identidad (DNI).",
+    "capability": "identificacion",
     "requires_identity": false,
     "template": "Para mostrarte los datos de tu cuenta necesito identificarte primero. Por favor, indícame tu número de DNI (8 dígitos)."
   },
@@ -101,6 +104,7 @@
   "identificar": {
     "mode": "verbatim",
     "description": "El usuario escribe su número de DNI (8 dígitos) para identificarse.",
+    "capability": "identificacion",
     "requires_identity": false,
     "tool": "identificar_cliente",
     "capture": "dni",
@@ -114,6 +118,8 @@
   "consulta_deuda": {
     "mode": "verbatim",
     "description": "El usuario pregunta por su deuda, saldo, cuota, vencimiento o estado de su préstamo.",
+    "capability": "consulta_deuda",
+    "terminal_signal": "info_provided",
     "requires_identity": true,
     "tool": "consultar_deuda",
     "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
@@ -135,6 +141,7 @@
   "elegir_credito": {
     "mode": "verbatim",
     "description": "Hay más de un crédito y se necesita que el usuario elija sobre cuál operar.",
+    "capability": "multicredito",
     "requires_identity": true,
     "list": {
       "header": "Tienes más de un crédito. ¿Sobre cuál quieres hacer esta gestión?",
@@ -146,6 +153,8 @@
   "politica_pago": {
     "mode": "verbatim",
     "description": "El usuario pide un plan de pago, fraccionar, refinanciar, negociar, descuento o rebaja (fuera de alcance).",
+    "capability": "politica_pago",
+    "terminal_signal": "info_provided",
     "requires_identity": false,
     "keywords": ["plan de pago", "fraccionar", "pagar en cuotas", "refinanciar", "refinanciamiento", "negociar", "descuento", "rebaja"],
     "patterns": ["(plan|acuerdo).*(pago|cuotas)", "refinanci\\w*"],
@@ -156,6 +165,8 @@
   "donde_pagar": {
     "mode": "verbatim",
     "description": "El usuario pregunta dónde, cómo o a qué cuenta pagar su crédito.",
+    "capability": "cuentas_bancarias",
+    "terminal_signal": "info_provided",
     "requires_identity": true,
     "keywords": ["donde pago", "dónde pago", "como pago", "cómo pago", "a que cuenta", "a qué cuenta", "numero de cuenta", "cuenta para pagar", "cci"],
     "patterns": ["(d[oó]nde|c[oó]mo|qu[eé] cuenta).*(pag|abon|deposit)"],
@@ -165,6 +176,7 @@
 
   "comprobante_reportar": {
     "mode": "verbatim",
+    "capability": "comprobante",
     "flow": true,
     "doc": "El usuario quiere SUBIR/CARGAR/ENVIAR/REGISTRAR su comprobante, o REPORTA un pago ya hecho. SIN template a propósito: renderiza vacío → el turno cae al agente LLM, que pide los datos faltantes (foto, monto, inversionista) y ejecuta validar_comprobante. flow:true activa el sticky-flow para que una palabra suelta ('es un cci') no secuestre el flujo; el flag se libera al ejecutar la tool o tras 6 turnos. keywords/patterns hacen que 'subir comprobante' caiga aquí por Layer-1 (determinístico) y arme el flow, en vez de jugárselo a la clasificación LLM (que a veces lo mandaba a derivar_asesor).",
     "description": "El usuario quiere SUBIR, CARGAR, ENVIAR o REGISTRAR su comprobante/voucher de pago, o avisa que YA hizo/realizó un pago, transferencia o depósito de su crédito. NO es preguntar dónde pagar ni hablar con un asesor; es subir/reportar un pago.",
@@ -175,6 +187,8 @@
 
   "comprobante_resultado": {
     "mode": "verbatim",
+    "capability": "comprobante",
+    "terminal_signal": "proof",
     "requires_identity": true,
     "classifiable": false,
     "chips": ["Ver mi deuda", "Datos de pago", "Hablar con un asesor"],
@@ -184,6 +198,8 @@
   "derivar_asesor": {
     "mode": "verbatim",
     "description": "El usuario quiere hablar con una persona/asesor, o pide algo fuera de alcance (reclamo, queja).",
+    "terminal_signal": "escalation",
+    "escalation_reason": "explicit_agent_request",
     "requires_identity": false,
     "tool": "escalate_to_human",
     "keywords": ["asesor", "hablar con alguien", "agente", "persona", "humano", "reclamo", "queja"],
@@ -194,6 +210,8 @@
   "enviar_estado": {
     "mode": "verbatim",
     "description": "El usuario pide que le ENVÍEN su estado de cuenta / resumen de deuda (a su correo o WhatsApp).",
+    "capability": "estado_cuenta",
+    "terminal_signal": "info_provided",
     "requires_identity": true,
     "keywords": ["enviame mi estado", "envíame mi estado", "mandame mi estado", "mándame mi estado", "enviar estado de cuenta", "enviame el estado", "quiero mi estado de cuenta", "enviame mi deuda", "mandame mi deuda"],
     "patterns": ["(env[ií]a|m[aá]nda|p[aá]sa).*(estado|deuda|saldo)"],
@@ -204,6 +222,8 @@
   "enviar_datos_pago": {
     "mode": "verbatim",
     "description": "El usuario pide que le ENVÍEN los datos de pago (CCI, banco, monto, vencimiento) a su correo o WhatsApp.",
+    "capability": "cuentas_bancarias",
+    "terminal_signal": "info_provided",
     "requires_identity": true,
     "keywords": ["enviame los datos de pago", "envíame los datos de pago", "mandame el cci", "mándame el cci", "enviar datos de pago", "enviame donde pagar", "mandame la cuenta", "enviame la cuenta para pagar"],
     "patterns": ["(env[ií]a|m[aá]nda|p[aá]sa).*(datos de pago|cci|cuenta para pagar)"],
@@ -214,6 +234,8 @@
   "enviar_constancia": {
     "mode": "verbatim",
     "description": "El usuario pide una constancia/comprobante de que recibimos su pago o comprobante.",
+    "capability": "constancia",
+    "terminal_signal": "info_provided",
     "requires_identity": true,
     "keywords": ["enviame la constancia", "envíame la constancia", "constancia de recepcion", "constancia de recepción", "comprobante de recepcion", "mandame la constancia", "quiero una constancia"],
     "patterns": ["(env[ií]a|m[aá]nda|quiero).*(constancia|recepci[oó]n)"],

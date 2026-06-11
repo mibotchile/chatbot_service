@@ -1,0 +1,44 @@
+{
+  "_meta": {
+    "tenant": "_template",
+    "doc": "Template tenant — copy this directory to create a new tenant. Edit each intent's binding fields and response templates. See docs/responses-format.md for the full schema."
+  },
+
+  "_docs_binding_fields": {
+    "doc": "Per-intent tracking binding fields (all optional). These feed the Layer-3 gestion tracking pipeline.",
+    "capability": "string — one of the Capability enum values in gestion_catalog.py. Declares what capability this intent exercises. Omit if the intent has no trackable capability (e.g. saludo, despedida).",
+    "terminal_signal": "string — one of: info_provided | proof | commitment | escalation | fallback | identity_failed. Marks this intent as a terminal turn and drives the outcome. Omit if the intent is non-terminal.",
+    "escalation_reason": "string — one of the OutcomeReason enum values. Only meaningful when terminal_signal=escalation. Omit otherwise.",
+    "valid_capabilities": ["identificacion", "consulta_deuda", "cuentas_bancarias", "estado_cuenta", "constancia", "politica_pago", "comprobante", "multicredito", "cronograma", "cuotas", "fecha_vencimiento", "compromiso", "pago", "deuda_total", "horario_feriado"],
+    "valid_terminal_signals": ["info_provided", "proof", "commitment", "escalation", "fallback", "identity_failed"],
+    "valid_escalation_reasons": ["explicit_agent_request", "fallback_exhausted", "cannot_pay", "requested_alternatives", "commitment_beyond_window", "wants_full_payment", "pay_installment", "proof_other_installment", "out_of_hours", "max_identification_retries"]
+  },
+
+  "example_info_intent": {
+    "mode": "verbatim",
+    "description": "Example: intent that delivers information and closes the conversation.",
+    "capability": "consulta_deuda",
+    "terminal_signal": "info_provided",
+    "requires_identity": true,
+    "template": "Your account balance is {saldo}."
+  },
+
+  "example_escalation_intent": {
+    "mode": "verbatim",
+    "description": "Example: intent that escalates to a human agent.",
+    "terminal_signal": "escalation",
+    "escalation_reason": "explicit_agent_request",
+    "requires_identity": false,
+    "template": "Connecting you with an agent now."
+  },
+
+  "example_unannotated_intent": {
+    "mode": "variant",
+    "description": "Example: intent with no binding (saludo-style). No capability or signal — produces outcome=unresolved.",
+    "requires_identity": false,
+    "variants": [
+      "Hello! How can I help you today?",
+      "Hi there! What can I do for you?"
+    ]
+  }
+}
