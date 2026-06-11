@@ -18,9 +18,18 @@
     "hero_note": "Elige un cliente o identifícate por DNI.",
     "dni_hint": "Abre el chat sin entrar como un cliente y, cuando Ada te pida el DNI, escribe uno de estos:",
     "features": [
-      { "title": "Consulta de deuda", "body": "Saldo, cuotas pagadas y pendientes, próximo vencimiento y estado del préstamo." },
-      { "title": "Libro de Reclamaciones", "body": "Registra reclamos y quejas con folio y respuesta en 15 días hábiles (Indecopi)." },
-      { "title": "Certificado de no adeudo", "body": "Emite el certificado en PDF al instante cuando el préstamo está cancelado." }
+      {
+        "title": "Consulta de deuda",
+        "body": "Saldo, cuotas pagadas y pendientes, próximo vencimiento y estado del préstamo."
+      },
+      {
+        "title": "Libro de Reclamaciones",
+        "body": "Registra reclamos y quejas con folio y respuesta en 15 días hábiles (Indecopi)."
+      },
+      {
+        "title": "Certificado de no adeudo",
+        "body": "Emite el certificado en PDF al instante cuando el préstamo está cancelado."
+      }
     ]
   },
   "contact": {
@@ -53,7 +62,6 @@
   },
   "cobranza": {
     "proxima_vencer_window_days": 5,
-    "penalidad_rate_per_week": 0.00008,
     "penalidad_rounding": "ceil_decimo",
     "commitment_window_days": 2,
     "credit_state_labels": {
@@ -63,10 +71,16 @@
     },
     "horario": {
       "timezone": "America/Lima"
-    }
+    },
+    "penalidad_rate_week1": 8e-05,
+    "penalidad_rate_week2_plus": 0.00016
   },
   "publishable_keys": [
-    {"key": "pk_live_au4T89W4nJn1poZzag0AqmK48xDlqcfA", "status": "current", "added": "2026-06-04"}
+    {
+      "key": "pk_live_au4T89W4nJn1poZzag0AqmK48xDlqcfA",
+      "status": "current",
+      "added": "2026-06-04"
+    }
   ],
   "embed_origins": [
     "https://demos.mibot.cl",

@@ -17,7 +17,10 @@
     "db": null,
     "debt_table": "batch_asignacion_review_bronze",
     "pagos_table": "batch_pagos_v2_bronze",
-    "join": { "debt_key": "id_credito", "pagos_key": "codigo_contrato" },
+    "join": {
+      "debt_key": "id_credito",
+      "pagos_key": "codigo_contrato"
+    },
     "dni_column": "dni_ruc",
     "pagos_selection": {
       "_doc": "Window strategy for pagos: pick first UNPAID installment per codigo_contrato. Unpaid = fecha_de_pago_del_cliente IS NULL. Order: unpaid first (IS NULL DESC), then oldest expected date ASC.",
@@ -30,26 +33,97 @@
       "order_by": "creado_el DESC, archivo DESC"
     },
     "column_map": {
-      "account_id": { "source": "debt", "column": "id_credito" },
-      "loan_number": { "source": "debt", "column": "id_credito" },
-      "borrower_name": { "source": "debt", "column": "nombre_completo" },
-      "dni": { "source": "debt", "column": "dni_ruc" },
-      "email": { "source": "debt", "column": "correo_electronico" },
-      "phone": { "source": "debt", "column": "telefono" },
-      "currency": { "source": "debt", "column": "moneda" },
-      "banco": { "source": "debt", "column": "banco" },
-      "cci": { "source": "debt", "column": "codigo_de_cuenta_cci" },
-      "cuenta_bancaria": { "source": "debt", "column": "numero_de_cuenta" },
-      "inversionista": { "source": "debt", "column": "inversionista" },
-      "next_due_date": { "source": "pagos", "column": "fecha_de_pago_esperada_original", "from_selected_row": true },
-      "saldo_por_cancelar": { "source": "pagos", "column": "saldo_por_cancelar", "from_selected_row": true },
-      "balance": { "source": "pagos", "column": "saldo_por_cancelar", "from_selected_row": true },
-      "cuota_esperada": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true },
-      "next_installment_amount": { "source": "pagos", "coalesce": ["cuota_esperada_actualizada", "cuota_esperada_mensual"], "from_selected_row": true },
-      "valor_cuota": { "source": "pagos", "column": "cuota_esperada_mensual", "from_selected_row": true }
+      "account_id": {
+        "source": "debt",
+        "column": "id_credito"
+      },
+      "loan_number": {
+        "source": "debt",
+        "column": "id_credito"
+      },
+      "borrower_name": {
+        "source": "debt",
+        "column": "nombre_completo"
+      },
+      "dni": {
+        "source": "debt",
+        "column": "dni_ruc"
+      },
+      "email": {
+        "source": "debt",
+        "column": "correo_electronico"
+      },
+      "phone": {
+        "source": "debt",
+        "column": "telefono"
+      },
+      "currency": {
+        "source": "debt",
+        "column": "moneda"
+      },
+      "banco": {
+        "source": "debt",
+        "column": "banco"
+      },
+      "cci": {
+        "source": "debt",
+        "column": "codigo_de_cuenta_cci"
+      },
+      "cuenta_bancaria": {
+        "source": "debt",
+        "column": "numero_de_cuenta"
+      },
+      "inversionista": {
+        "source": "debt",
+        "column": "inversionista"
+      },
+      "next_due_date": {
+        "source": "pagos",
+        "column": "fecha_de_pago_esperada_original",
+        "from_selected_row": true
+      },
+      "saldo_por_cancelar": {
+        "source": "pagos",
+        "column": "saldo_por_cancelar",
+        "from_selected_row": true
+      },
+      "balance": {
+        "source": "pagos",
+        "column": "saldo_por_cancelar",
+        "from_selected_row": true
+      },
+      "cuota_esperada": {
+        "source": "pagos",
+        "coalesce": [
+          "cuota_esperada_actualizada",
+          "cuota_esperada_mensual"
+        ],
+        "from_selected_row": true
+      },
+      "next_installment_amount": {
+        "source": "pagos",
+        "coalesce": [
+          "cuota_esperada_actualizada",
+          "cuota_esperada_mensual"
+        ],
+        "from_selected_row": true
+      },
+      "valor_cuota": {
+        "source": "pagos",
+        "column": "cuota_esperada_mensual",
+        "from_selected_row": true
+      },
+      "saldo_capital_inicial": {
+        "source": "debt",
+        "column": "capital"
+      }
     },
     "role_column": "posicion_contractual",
-    "authorized_roles": ["SOLICITANTE", "GARANTE", "FIADOR SOLIDARIO"],
+    "authorized_roles": [
+      "SOLICITANTE",
+      "GARANTE",
+      "FIADOR SOLIDARIO"
+    ],
     "cronograma_columns": {
       "n_cuota": "nro_cuotas",
       "fecha_venc": "fecha_de_pago_esperada_original",
@@ -63,7 +137,6 @@
   },
   "cobranza": {
     "proxima_vencer_window_days": 5,
-    "penalidad_rate_per_week": 0.00008,
     "penalidad_rounding": "ceil_decimo",
     "commitment_window_days": 2,
     "credit_state_labels": {
@@ -73,7 +146,13 @@
     },
     "horario": {
       "timezone": "America/Lima",
-      "dias": ["lunes", "martes", "miércoles", "jueves", "viernes"],
+      "dias": [
+        "lunes",
+        "martes",
+        "miércoles",
+        "jueves",
+        "viernes"
+      ],
       "hora_inicio": "09:00",
       "hora_fin": "18:30",
       "refrigerio": {
@@ -83,7 +162,9 @@
       "feriados_source": "feriados_peru_2026.json"
     },
     "contrato_column": "id_credito",
-    "project_uid": "QUIdI0iwQY0l3pJwRKLB"
+    "project_uid": "QUIdI0iwQY0l3pJwRKLB",
+    "penalidad_rate_week1": 8e-05,
+    "penalidad_rate_week2_plus": 0.00016
   },
   "branding": {
     "primary_color": "#00b369",
@@ -132,6 +213,10 @@
     ]
   },
   "publishable_keys": [
-    {"key": "pk_live_ZJ00UdX9vTtREPppzS6hUDCOHGtdEAI5", "status": "current", "added": "2026-06-04"}
+    {
+      "key": "pk_live_ZJ00UdX9vTtREPppzS6hUDCOHGtdEAI5",
+      "status": "current",
+      "added": "2026-06-04"
+    }
   ]
 }

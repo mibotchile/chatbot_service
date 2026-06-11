@@ -151,7 +151,17 @@ async def consultar_deuda(profile: dict) -> dict:
     credit_state = profile.get("credit_state", "")
     if credit_state == "vencido":
         dias_overdue = int(profile.get("days_overdue") or 0)
-        saldo_capital_inicial = profile.get("saldo_capital_inicial") or profile.get("balance")
+        saldo_capital_inicial = profile.get("saldo_capital_inicial")
+        if saldo_capital_inicial is None and profile.get("balance") is not None:
+            # Degraded base: Naomi's rule wants the ORIGINAL disbursed capital;
+            # falling back to the outstanding balance keeps the demo rendering
+            # but must never happen silently.
+            from loguru import logger as _logger  # noqa: PLC0415
+            _logger.warning(
+                "build_moratoria_summary: saldo_capital_inicial missing from "
+                "profile (capital column not mapped?); using outstanding balance"
+            )
+            saldo_capital_inicial = profile.get("balance")
         amortizacion_cuota = profile.get("amortizacion_cuota")
         tasa_interes_mensual = profile.get("tasa_interes_mensual")
 
@@ -159,17 +169,20 @@ async def consultar_deuda(profile: dict) -> dict:
             from features.cobranza.scenario import calcular_penalidad  # noqa: PLC0415
             from loguru import logger as _log  # noqa: PLC0415
 
-            _rate = profile.get("penalidad_rate_per_week")
+            _rate_w1 = profile.get("penalidad_rate_week1")
+            _rate_w2 = profile.get("penalidad_rate_week2_plus")
             _rounding = profile.get("penalidad_rounding", "ceil_decimo")
-            if _rate is None:
+            if _rate_w1 is None or _rate_w2 is None:
                 _log.warning(
-                    "build_moratoria_summary: penalidad_rate_per_week not in profile; "
-                    "falling back to engine default 0.00008"
+                    "build_moratoria_summary: penalidad_rate_week1/week2_plus not in "
+                    "profile; falling back to engine defaults 0.00008/0.00016"
                 )
-                _rate = 0.00008
+                _rate_w1 = 0.00008 if _rate_w1 is None else _rate_w1
+                _rate_w2 = 0.00016 if _rate_w2 is None else _rate_w2
             summary["penalidad"] = calcular_penalidad(
                 float(saldo_capital_inicial), dias_overdue,
-                rate_per_week=float(_rate),
+                rate_week1=float(_rate_w1),
+                rate_week2_plus=float(_rate_w2),
                 rounding=str(_rounding),
             )
             summary["penalidad_formatted"] = _fmt(summary["penalidad"], sym)

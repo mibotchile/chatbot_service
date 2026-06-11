@@ -64,28 +64,37 @@ def calcular_penalidad(
     saldo_capital_inicial: float,
     dias_overdue: int,
     *,
-    rate_per_week: float = 0.00008,
+    rate_week1: float = 0.00008,
+    rate_week2_plus: float = 0.00016,
     rounding: str = "ceil_decimo",
 ) -> float:
-    """Compute the weekly overdue penalty (penalidad por mora) — inductive rule.
+    """Compute the weekly overdue penalty (penalidad por mora) — two-tier rule.
 
-    Formula (confirmed Ricky 2026-06-10):
+    Formula (confirmed Naomi 2026-06-11, supersedes the inductive rule):
         semana = max(1, ceil(dias_overdue / 7))
-        raw    = saldo_capital_inicial * rate_per_week * semana
+        rate   = rate_week1 if semana == 1 else rate_week2_plus
+        raw    = saldo_capital_inicial * rate
         result = ceil(raw * 10) / 10   (when rounding == "ceil_decimo")
 
-    No cap on semana — sem1, sem2, sem3, … indefinitely.
+    The penalty is NOT progressive: week 1 uses the base rate, week 2 onward
+    applies a single flat rate ("a partir de la segunda semana en adelante se
+    aplica únicamente la tasa de 0.016%").
 
     Args:
-        saldo_capital_inicial: outstanding principal balance (saldo pendiente).
+        saldo_capital_inicial: ORIGINAL disbursed principal (Naomi 2026-06-11:
+            "el cálculo se realiza sobre el saldo de capital original
+            desembolsado"), mapped from the asignación ``capital`` column —
+            NOT the outstanding balance.
         dias_overdue: days the credit is overdue (>= 0).
-        rate_per_week: weekly penalty rate (default 0.00008 = 0.008%).
-            Read from ``tenant.config.json → cobranza.penalidad_rate_per_week``.
+        rate_week1: penalty rate for the first overdue week (0.00008 = 0.008%).
+            Read from ``tenant.config.json → cobranza.penalidad_rate_week1``.
+        rate_week2_plus: flat rate from the second week onward (0.00016).
+            Read from ``tenant.config.json → cobranza.penalidad_rate_week2_plus``.
         rounding: rounding strategy (default "ceil_decimo" = ceil to nearest 0.1).
             Unknown value raises ValueError at call time.
 
     Returns:
-        Penalty amount ceiled to nearest tenth (e.g. 0.56 → 0.60).
+        Penalty amount ceiled to nearest tenth (e.g. 5.66 → 5.70).
 
     Raises:
         ValueError: when ``rounding`` is not a known strategy.
@@ -93,7 +102,8 @@ def calcular_penalidad(
     if rounding != "ceil_decimo":
         raise ValueError(f"Unknown penalidad rounding strategy: {rounding!r}")
     semana = max(1, math.ceil(dias_overdue / 7))
-    raw = saldo_capital_inicial * rate_per_week * semana
+    rate = rate_week1 if semana == 1 else rate_week2_plus
+    raw = saldo_capital_inicial * rate
     return math.ceil(raw * 10) / 10
 
 

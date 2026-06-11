@@ -38,15 +38,23 @@ import pytest
         (70750.0, 3, 5.70),
         # (c) saldo=7000, dias=10 → semana 2: 7000 * 0.00016 = 1.12 → ceil(1.12*10)/10 = 1.20
         (7000.0, 10, 1.20),
-        # (c2) saldo=7000, dias=16 → semana 3: 7000 * 0.00024 = 1.68 → ceil(1.68*10)/10 = 1.70
-        #      Verifies NOT capped at semana 2
-        (7000.0, 16, 1.70),
+        # (c-edges) week-2 boundary: dias=8 (first day) and dias=14 (last day)
+        (7000.0, 8, 1.20),
+        (7000.0, 14, 1.20),
+        # (c2) saldo=7000, dias=16 → semana 3: flat 0.00016 from week 2 onward
+        #      (Naomi 2026-06-11: NOT progressive) → 7000 * 0.00016 = 1.12 → 1.20
+        (7000.0, 16, 1.20),
+        # (c3) saldo=7000, dias=60 → semana 9: still flat 0.00016 → 1.20
+        (7000.0, 60, 1.20),
     ],
     ids=[
         "sem1_saldo7000_dias3",
         "sem1_naomi_example_5_66_to_5_70",
         "sem2_saldo7000_dias10",
-        "sem3_saldo7000_dias16_inductive_no_cap",
+        "sem2_boundary_dias8",
+        "sem2_boundary_dias14",
+        "sem3_flat_rate_not_progressive",
+        "sem9_flat_rate_far_overdue",
     ],
 )
 def test_calcular_penalidad(saldo: float, dias_overdue: int, expected: float) -> None:

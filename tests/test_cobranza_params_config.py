@@ -23,20 +23,22 @@ from datetime import date, timedelta
 
 
 def test_penalidad_custom_rate_changes_result():
-    """Different rate_per_week produces a proportionally different penalty."""
+    """Different week-1 / week-2+ rates produce different penalties."""
     from features.cobranza.scenario import calcular_penalidad
 
     saldo = 1000.0
-    dias = 7  # semana = 1
 
-    default_result = calcular_penalidad(saldo, dias)  # rate=0.00008
-    custom_result = calcular_penalidad(saldo, dias, rate_per_week=0.00016)
+    # Week 1: rate_week1 applies.
+    default_w1 = calcular_penalidad(saldo, 7)  # rate_week1=0.00008 → 0.1
+    custom_w1 = calcular_penalidad(saldo, 7, rate_week1=0.00016)  # → 0.2
+    assert default_w1 == pytest.approx(0.1)
+    assert custom_w1 == pytest.approx(0.2)
 
-    # Default: ceil(1000 * 0.00008 * 1 * 10) / 10 = ceil(0.08) / 10 = 0.1
-    # Custom:  ceil(1000 * 0.00016 * 1 * 10) / 10 = ceil(0.16) / 10 = 0.2
-    assert default_result == pytest.approx(0.1)
-    assert custom_result == pytest.approx(0.2)
-    assert custom_result != default_result
+    # Week 3: flat rate_week2_plus applies (NOT progressive — Naomi 2026-06-11).
+    default_w3 = calcular_penalidad(saldo, 16)  # 0.00016 flat → 0.2
+    custom_w3 = calcular_penalidad(saldo, 16, rate_week2_plus=0.00032)  # → 0.4
+    assert default_w3 == pytest.approx(0.2)
+    assert custom_w3 == pytest.approx(0.4)
 
 
 def test_penalidad_config_rate_from_prestamype_config():
@@ -49,7 +51,8 @@ def test_penalidad_config_rate_from_prestamype_config():
         / "tenants" / "prestamype" / "tenant.config.json"
     )
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-    rate = cfg["cobranza"]["penalidad_rate_per_week"]
+    rate_w1 = cfg["cobranza"]["penalidad_rate_week1"]
+    rate_w2 = cfg["cobranza"]["penalidad_rate_week2_plus"]
     rounding = cfg["cobranza"]["penalidad_rounding"]
 
     from features.cobranza.scenario import calcular_penalidad
@@ -57,7 +60,9 @@ def test_penalidad_config_rate_from_prestamype_config():
     saldo = 5000.0
     dias = 14  # semana = 2
 
-    result_config = calcular_penalidad(saldo, dias, rate_per_week=rate, rounding=rounding)
+    result_config = calcular_penalidad(
+        saldo, dias, rate_week1=rate_w1, rate_week2_plus=rate_w2, rounding=rounding
+    )
     result_default = calcular_penalidad(saldo, dias)  # engine defaults
 
     assert result_config == result_default
@@ -239,16 +244,16 @@ async def test_penalidad_fallback_when_rate_missing_from_profile():
             "credit_state": "vencido",
             "days_overdue": 7,
             "saldo_capital_inicial": 1000.0,
-            # penalidad_rate_per_week intentionally absent
+            # penalidad_rate_week1 / week2_plus intentionally absent
         }
         summary = await consultar_deuda(profile)
     finally:
         logger.remove(sink_id)
 
-    # Warning was emitted about the missing key
-    assert any("penalidad_rate_per_week" in msg for msg in warning_messages)
+    # Warning was emitted about the missing keys
+    assert any("penalidad_rate_week1" in msg for msg in warning_messages)
 
-    # Fallback still produces a result (0.1 for 1000 * 0.00008 * 1 week)
+    # Fallback still produces a result (0.1 for 1000 * 0.00008, week 1)
     assert summary.get("penalidad") == pytest.approx(0.1)
 
 
@@ -270,8 +275,31 @@ def test_tenant_config_has_cobranza_keys(slug):
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     cobranza = cfg.get("cobranza", {})
 
-    assert "penalidad_rate_per_week" in cobranza, f"{slug}: missing penalidad_rate_per_week"
+    assert "penalidad_rate_week1" in cobranza, f"{slug}: missing penalidad_rate_week1"
+    assert "penalidad_rate_week2_plus" in cobranza, f"{slug}: missing penalidad_rate_week2_plus"
     assert "penalidad_rounding" in cobranza, f"{slug}: missing penalidad_rounding"
     assert "commitment_window_days" in cobranza, f"{slug}: missing commitment_window_days"
     assert "credit_state_labels" in cobranza, f"{slug}: missing credit_state_labels"
     assert "timezone" in cobranza.get("horario", {}), f"{slug}: missing horario.timezone"
+
+
+def test_saldo_capital_inicial_mapped_to_capital_column():
+    """Penalty base = ORIGINAL disbursed capital (Naomi 2026-06-11): the
+    prestamype column_map maps saldo_capital_inicial to the asignación
+    ``capital`` column, and the built SQL selects it."""
+    import json
+    from pathlib import Path
+
+    from features.cobranza import doris_debt_source as dds
+
+    cfg_path = (
+        Path(__file__).resolve().parent.parent
+        / "tenants" / "prestamype" / "tenant.config.json"
+    )
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cm = cfg["doris_schema"]["column_map"]
+    assert cm.get("saldo_capital_inicial", {}).get("column") == "capital"
+    assert cm["saldo_capital_inicial"].get("source") == "debt"
+
+    sql, _db = dds._build_sql(cfg["doris_schema"])
+    assert "capital AS saldo_capital_inicial" in sql

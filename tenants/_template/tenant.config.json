@@ -22,7 +22,6 @@
   },
   "cobranza": {
     "proxima_vencer_window_days": 5,
-    "penalidad_rate_per_week": 0.00008,
     "penalidad_rounding": "ceil_decimo",
     "commitment_window_days": 2,
     "credit_state_labels": {
@@ -32,17 +31,25 @@
     },
     "horario": {
       "timezone": "America/Lima"
-    }
+    },
+    "penalidad_rate_week1": 8e-05,
+    "penalidad_rate_week2_plus": 0.00016
   },
   "_doris_schema_example": {
     "_doc": "Include this block (renamed to 'doris_schema') when data_source is 'doris'. Keys are required unless noted.",
     "db": null,
     "debt_table": "YOUR_DEBT_TABLE",
     "pagos_table": "YOUR_PAGOS_TABLE",
-    "join": { "debt_key": "YOUR_DEBT_KEY", "pagos_key": "YOUR_PAGOS_KEY" },
+    "join": {
+      "debt_key": "YOUR_DEBT_KEY",
+      "pagos_key": "YOUR_PAGOS_KEY"
+    },
     "dni_column": "YOUR_DNI_COLUMN",
     "role_column": "YOUR_ROLE_COLUMN",
-    "authorized_roles": ["ROLE_A", "ROLE_B"],
+    "authorized_roles": [
+      "ROLE_A",
+      "ROLE_B"
+    ],
     "cronograma_columns": {
       "n_cuota": "YOUR_N_CUOTA_COLUMN",
       "fecha_venc": "YOUR_FECHA_VENC_COLUMN",
@@ -56,7 +63,11 @@
     "column_map": {}
   },
   "publishable_keys": [
-    {"key": "pk_live_PLACEHOLDER_TEMPLATE", "status": "current", "added": "2026-01-01"}
+    {
+      "key": "pk_live_PLACEHOLDER_TEMPLATE",
+      "status": "current",
+      "added": "2026-01-01"
+    }
   ],
   "embed_origins": [
     "https://demos.mibot.cl",

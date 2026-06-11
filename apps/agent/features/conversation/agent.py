@@ -297,22 +297,41 @@ class SoreliaAgent:
             # Thread penalidad config into profile so build_moratoria_summary
             # and shared/templates.py can read them without re-loading tenant config.
             # Falls back to engine constants when key is absent (old prod configs).
-            if "penalidad_rate_per_week" not in profile:
-                if "penalidad_rate_per_week" in cobranza_cfg:
-                    profile["penalidad_rate_per_week"] = cobranza_cfg["penalidad_rate_per_week"]
-                    profile["penalidad_rounding"] = cobranza_cfg.get(
-                        "penalidad_rounding", "ceil_decimo"
+            if "penalidad_rate_week1" not in profile:
+                _slug = getattr(getattr(self, "tenant", None), "slug", "unknown")
+                if "penalidad_rate_week1" in cobranza_cfg:
+                    profile["penalidad_rate_week1"] = cobranza_cfg["penalidad_rate_week1"]
+                    profile["penalidad_rate_week2_plus"] = cobranza_cfg.get(
+                        "penalidad_rate_week2_plus",
+                        cobranza_cfg["penalidad_rate_week1"] * 2,
                     )
+                elif "penalidad_rate_per_week" in cobranza_cfg:
+                    # Deprecated linear key: week1 = rate, week2+ = 2×rate keeps
+                    # weeks 1-2 identical to the old inductive rule. Week 3+
+                    # CHANGES for tenants on this key (flat 2×rate instead of
+                    # N×rate) — that is the corrected business rule.
+                    _old = cobranza_cfg["penalidad_rate_per_week"]
+                    logger.warning(
+                        "cobranza.penalidad_rate_per_week is deprecated for tenant "
+                        "'{}'; migrate to penalidad_rate_week1/week2_plus",
+                        _slug,
+                    )
+                    profile["penalidad_rate_week1"] = _old
+                    profile["penalidad_rate_week2_plus"] = _old * 2
                 else:
                     logger.warning(
-                        "cobranza.penalidad_rate_per_week missing for tenant '{}'; "
-                        "falling back to engine default 0.00008",
-                        getattr(getattr(self, "tenant", None), "slug", "unknown"),
+                        "cobranza.penalidad_rate_week1 missing for tenant '{}'; "
+                        "falling back to engine defaults 0.00008/0.00016",
+                        _slug,
                     )
-                    # Set the fallbacks here so tools.py/templates.py see a value
+                    # Set the fallbacks here so tools.py/templates.py see values
                     # and don't emit a second warning for the same request.
-                    profile["penalidad_rate_per_week"] = 0.00008
-                    profile["penalidad_rounding"] = "ceil_decimo"
+                    profile["penalidad_rate_week1"] = 0.00008
+                    profile["penalidad_rate_week2_plus"] = 0.00016
+                profile.setdefault(
+                    "penalidad_rounding",
+                    cobranza_cfg.get("penalidad_rounding", "ceil_decimo"),
+                )
 
             # INF-12 (GAP-1): enrich vencido profile with moratoria fields so
             # calcular_penalidad / calcular_interes_compensatorio can fire in the
