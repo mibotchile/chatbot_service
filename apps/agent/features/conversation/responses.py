@@ -293,6 +293,12 @@ class RouterOutcome:
     rerender_with_result: bool = False
 
 
+_DOMINGO_FERIADO_INTENTS = frozenset({
+    "domingo_feriado_al_dia_por_vencer",
+    "domingo_feriado_vencido_redirect",
+})
+
+
 def route_layer1(
     text: str,
     spec: ResponsesSpec,
@@ -300,6 +306,7 @@ def route_layer1(
     *,
     session_state: dict | None = None,
     identity_verified: bool = False,
+    now: "datetime | None" = None,
 ) -> RouterOutcome:
     """Layer-1 routing: keyword/pattern → canned, zero LLM. Decides the next step.
 
@@ -366,9 +373,56 @@ def route_layer1(
                     logger.info("responses: layer1 identification intent={} (no LLM)", intent)
                     return out
 
+    # Resolve `now` once for the gates below (freezeable via parameter for tests).
+    _now: "datetime"
+    if now is not None:
+        _now = now
+    else:
+        # Aware UTC, NOT naive now(): the container runs in UTC and
+        # is_business_hours treats naive datetimes as tenant-local time.
+        from datetime import datetime as _dt, timezone as _tz  # noqa: PLC0415
+        _now = _dt.now(_tz.utc)
+
+    _tenant_id_l1 = getattr(spec, "_tenant_id", None) or ""
+
     match = match_keyword_intent(text, spec)
     if match:
         intent, captured = match
+
+        # ── INF-08: domingo/feriado gate — dynamic calendar check before static
+        # emit. Handles both vencido (redirect) and al_dia/por_vencer (info).
+        # Without a tenant_id the calendar cannot be resolved — fail OPEN to the
+        # static template (pre-gate behavior) instead of gating on a default.
+        if intent in _DOMINGO_FERIADO_INTENTS and _tenant_id_l1:
+            gate = check_due_date_holiday(
+                intent, spec, profile,
+                session_state=session_state,
+                source=SOURCE_KEYWORD,
+                tenant_id=_tenant_id_l1,
+            )
+            if gate is not None:
+                logger.info("responses: layer1 domingo_feriado gate intent={}", intent)
+                return gate
+
+        # ── INF-09: out-of-hours gate — asesor derivation is deferred outside
+        # business hours. Only fires for the explicit asesor-request intent.
+        # Without a tenant_id, fail OPEN (derive as before) — gating against the
+        # engine's default schedule would apply wrong hours silently.
+        if intent == "derivar_asesor":
+            if not _tenant_id_l1:
+                logger.warning(
+                    "responses: spec has no tenant_id — out-of-hours gate skipped"
+                )
+            else:
+                gate = check_out_of_hours(
+                    _now, spec, profile,
+                    source=SOURCE_KEYWORD,
+                    tenant_id=_tenant_id_l1,
+                )
+                if gate is not None:
+                    logger.info("responses: layer1 out-of-hours gate → fuera_de_horario")
+                    return gate
+
         out = _emit_intent(
             intent, spec, profile, SOURCE_KEYWORD,
             session_state=session_state, identity_verified=identity_verified,
@@ -788,12 +842,17 @@ def record_misunderstood(
     *,
     session_state: dict | None,
     source: str,
+    now: "datetime | None" = None,
 ) -> RouterOutcome:
     """INF-10: 2-strike fallback for unrecognized input.
 
     Strike 1: emit ``no_comprendida_1`` and increment ``misunderstood_count``.
     Strike 2+: escalate to asesor via ``no_comprendida_2_asesor``.
     ``misunderstood_count`` is reset on any successfully handled intent.
+
+    ``now``: injectable current datetime for testing (None → datetime.now()).
+    When outside business hours at strike 2, emits ``fuera_de_horario`` instead
+    of escalating so the asesor handoff is deferred until business hours.
     """
     if session_state is None:
         session_state = {}
@@ -802,6 +861,29 @@ def record_misunderstood(
     session_state[_MISUNDERSTOOD_COUNT_KEY] = count
 
     if count >= 2:
+        # ── INF-09: out-of-hours gate at strike-2 — defer asesor handoff ──
+        _now_mis: "datetime"
+        if now is not None:
+            _now_mis = now
+        else:
+            # Aware UTC, NOT naive now() — see route_layer1 note.
+            from datetime import datetime as _dt, timezone as _tz  # noqa: PLC0415
+            _now_mis = _dt.now(_tz.utc)
+        _tenant_id_mis = getattr(spec, "_tenant_id", None) or ""
+        if _tenant_id_mis:  # no tenant_id → fail open (derive as before)
+            ooh = check_out_of_hours(
+                _now_mis, spec, profile,
+                source=source,
+                tenant_id=_tenant_id_mis,
+            )
+            if ooh is not None:
+                # Reset the strike counter: without this, every later message
+                # re-enters here at count>=2 and the user is stuck in a
+                # fuera_de_horario loop until business hours.
+                _reset_misunderstood(session_state)
+                logger.info("responses: strike-2 out-of-hours gate → fuera_de_horario")
+                return ooh
+
         result = render_intent(spec, "no_comprendida_2_asesor", profile, source=source)
         text = result.text if result else "Te derivo con un asesor."
         return RouterOutcome(
@@ -898,10 +980,6 @@ def check_due_date_holiday(
     Uses ``is_feriado`` from ``features.cobranza.horario`` — reads
     ``feriados_peru_2026.json`` exclusively. No hardcoded date lists.
     """
-    _DOMINGO_FERIADO_INTENTS = frozenset({
-        "domingo_feriado_al_dia_por_vencer",
-        "domingo_feriado_vencido_redirect",
-    })
     if intent not in _DOMINGO_FERIADO_INTENTS:
         return None
 

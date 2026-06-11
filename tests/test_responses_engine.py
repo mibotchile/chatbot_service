@@ -169,10 +169,16 @@ def test_variant_intent_persists_index_in_session_state():
     ],
 )
 def test_layer1_keyword_resolves_without_llm(text, intent):
+    from datetime import datetime
     spec = _spec()
     prof = _profile(LUIS)
     # identity verified so gated intents (consulta_deuda, donde_pagar) resolve.
-    out = R.route_layer1(text, spec, prof, session_state={}, identity_verified=True)
+    # Freeze time to a Monday at 11:00 (within business hours) so the
+    # out-of-hours gate does not intercept derivar_asesor.
+    now_in_hours = datetime(2026, 6, 15, 11, 0, 0)  # Monday 11:00 Lima
+    out = R.route_layer1(
+        text, spec, prof, session_state={}, identity_verified=True, now=now_in_hours,
+    )
     assert out.handled is True
     assert out.intent == intent
     assert out.source == R.SOURCE_KEYWORD     # resolved with NO LLM call

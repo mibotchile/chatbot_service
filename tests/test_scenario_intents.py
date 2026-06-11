@@ -174,13 +174,17 @@ def test_consulta_deuda_vencido_shows_overdue_branch():
 
 def test_two_consecutive_misunderstood_escalates_to_asesor():
     """Strike 1 → no_comprendida_1; strike 2 → asesor escalation."""
+    from datetime import datetime
     spec = _spec()
     profile = _al_dia_profile()
     session_state: dict = {}
+    # Freeze to business hours so the out-of-hours gate does not intercept.
+    now_in_hours = datetime(2026, 6, 15, 11, 0, 0)  # Monday 11:00 Lima
 
     # Strike 1
     outcome1 = R.record_misunderstood(
-        spec, profile, session_state=session_state, source=R.SOURCE_KEYWORD
+        spec, profile, session_state=session_state, source=R.SOURCE_KEYWORD,
+        now=now_in_hours,
     )
     assert outcome1.handled is True
     assert outcome1.intent == "no_comprendida_1"
@@ -188,7 +192,8 @@ def test_two_consecutive_misunderstood_escalates_to_asesor():
 
     # Strike 2
     outcome2 = R.record_misunderstood(
-        spec, profile, session_state=session_state, source=R.SOURCE_KEYWORD
+        spec, profile, session_state=session_state, source=R.SOURCE_KEYWORD,
+        now=now_in_hours,
     )
     assert outcome2.handled is True
     assert outcome2.intent == "no_comprendida_2_asesor"
