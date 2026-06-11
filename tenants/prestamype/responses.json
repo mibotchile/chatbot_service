@@ -598,8 +598,14 @@
     "keywords": [
       "cuotas pendientes",
       "cuántas cuotas me faltan",
+      "cuantas cuotas me faltan",
+      "cuántas me faltan",
       "cuantas me faltan",
-      "cuánto me falta"
+      "cuánto me falta",
+      "cuanto me falta"
+    ],
+    "patterns": [
+      "cu[aá]nt[ao]s?\\s+(cuotas?\\s+)?(me\\s+)?faltan?"
     ],
     "template": "Te faltan {cuotas_pendientes} cuotas por pagar en el crédito {loan}."
   },
