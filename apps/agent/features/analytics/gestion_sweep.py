@@ -21,7 +21,7 @@ import asyncpg
 from loguru import logger
 
 from features.analytics.gestion_catalog import EventType, Outcome
-from shared.persistence.persistence import append_gestion_event, upsert_gestion
+from shared.persistence.persistence import append_gestion_event
 from features.analytics.gestion_sink import record_gestion, record_gestion_event
 
 

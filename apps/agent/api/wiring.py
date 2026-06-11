@@ -220,7 +220,6 @@ async def _emit_gestion(conv, result, tool_pairs) -> None:
             TERMINAL_SIGNALS,
             INTENT_TO_CAPABILITY,
             EventType,
-            Outcome,
         )
         from features.analytics.gestion_derivation import derive_outcome
 
@@ -386,7 +385,6 @@ async def _start_gestion_sweep(pool, schema: str) -> None:
     """
     import asyncio as _asyncio
     from pathlib import Path as _P
-    import json as _j
 
     from features.analytics import gestion_sweep as _gestion_sweep
 
