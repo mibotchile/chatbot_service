@@ -253,8 +253,8 @@ Chain strategy: pending
 > Satisfies: CPR-01 (N° cuota definition confirmed)
 > Source: definiciones-naomi-2026-06-10.md §4
 
-- [ ] 10.1 In `apps/agent/features/cobranza/tools.py`, in the comprobante payload builder, validate that `n_cuota` is a positive integer string matching a valid correlativo from the user's cronograma (via `get_cronograma`). If `n_cuota` provided does not match any `n_cuota` in the cronograma, ask the user to confirm or re-enter. Do NOT silently accept arbitrary strings. (The correlativo is 1, 2, 3… matching the "Nro Cuotas" column in Prestamype's payment file.)
+- [x] 10.1 In `apps/agent/features/cobranza/tools.py`, in the comprobante payload builder, validate that `n_cuota` is a positive integer string matching a valid correlativo from the user's cronograma (via `get_cronograma`). If `n_cuota` provided does not match any `n_cuota` in the cronograma, ask the user to confirm or re-enter. Do NOT silently accept arbitrary strings. (The correlativo is 1, 2, 3… matching the "Nro Cuotas" column in Prestamype's payment file.)
   - Verify: `uv run pytest tests/test_ncuota_validation.py -v`
 
-- [ ] 10.2 Create `tests/test_ncuota_validation.py`: (a) valid `n_cuota=2` matching cronograma → payload accepted; (b) `n_cuota=99` not in cronograma → re-ask triggered; (c) `n_cuota="abc"` (non-integer) → re-ask triggered; (d) `n_cuota=None` → required field error; (e) cronograma unavailable → accept `n_cuota` without cross-validation (best-effort, do NOT block flow on Doris error).
+- [x] 10.2 Create `tests/test_ncuota_validation.py`: (a) valid `n_cuota=2` matching cronograma → payload accepted; (b) `n_cuota=99` not in cronograma → re-ask triggered; (c) `n_cuota="abc"` (non-integer) → re-ask triggered; (d) `n_cuota=None` → required field error; (e) cronograma unavailable → accept `n_cuota` without cross-validation (best-effort, do NOT block flow on Doris error).
   - Verify: 5 cases pass, `uv run pytest tests/test_ncuota_validation.py -v`

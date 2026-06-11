@@ -46,6 +46,21 @@ _TIPO_LABELS = {"pago": "Pago", "abono": "Abono", "cancelacion": "Cancelación"}
 _ACCOUNT_TYPE_LABELS = {"cci": "CCI", "cuenta": "Número de cuenta"}
 
 
+def _get_cronograma_for_validation(account_id: str, tenant_id: str) -> list[dict]:
+    """Thin wrapper around get_cronograma — exists as a module-level name so tests
+    can monkeypatch it without touching the Doris source directly.
+
+    Returns a list of {n_cuota, fecha_venc, monto, estado} dicts ordered by
+    n_cuota, or [] on any error / unavailability.
+    """
+    try:
+        from features.cobranza.doris_debt_source import get_cronograma  # noqa: PLC0415
+
+        return get_cronograma(account_id, tenant_id)
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _normalize_account_type(account_type: str | None) -> str:
     """Coerce the destination-account type to 'cci' | 'cuenta' (default 'cci')."""
     t = (account_type or "").strip().lower()
@@ -102,6 +117,7 @@ async def validar_comprobante(
     account_type: str = "cci",
     cci: str | None = None,  # backward-compat alias for cuenta_destino
     n_cuota: str | None = None,  # CPR-01: installment number (correlativo 1,2,3…)
+    tenant_id: str = "",
 ) -> dict:
     """Register a payment voucher for the verified borrower (PrestamYpe).
 
@@ -131,6 +147,58 @@ async def validar_comprobante(
     account_type = _normalize_account_type(account_type)
     cuenta_in = normalize_cci(cuenta_destino if cuenta_destino is not None else (cci or ""))
     credito = profile.get("account_id")
+
+    # CPR-01: n_cuota correlativo validation — only when tenant_id is provided.
+    # When tenant_id is absent the caller is a legacy/non-Prestamype path; skip
+    # all n_cuota gates to preserve backward compatibility.
+    #
+    # (i)  tenant_id set + None → required-field error; do NOT proceed.
+    # (ii) Non-positive-integer string → re-ask; do NOT proceed.
+    # (iii) Cronograma available + n_cuota not in it → re-ask.
+    # (iv)  Cronograma unavailable (empty) → accept best-effort; do NOT block.
+    if tenant_id:
+        if n_cuota is None:
+            return {
+                "ncuota_required": True,
+                "n_cuota": None,
+                "mensaje": "Por favor indicá el número de cuota (por ejemplo, 1, 2, 3…).",
+            }
+
+        # Validate that n_cuota is a positive integer string
+        try:
+            n_cuota_int = int(n_cuota)
+            if n_cuota_int <= 0:
+                raise ValueError("non-positive")
+        except (ValueError, TypeError):
+            return {
+                "ncuota_reask": True,
+                "n_cuota": n_cuota,
+                "mensaje": (
+                    "El número de cuota debe ser un número entero positivo "
+                    "(por ejemplo, 1, 2, 3…). ¿Podés indicarme el número correcto?"
+                ),
+            }
+
+        # Cross-validate against cronograma when available
+        cronograma = _get_cronograma_for_validation(credito or "", tenant_id)
+        if cronograma:  # non-empty → we can validate
+            valid_correlativos = {
+                row["n_cuota"] for row in cronograma if row.get("n_cuota") is not None
+            }
+            if n_cuota_int not in valid_correlativos:
+                valid_range = (
+                    f"1 a {max(valid_correlativos)}" if valid_correlativos else "tu cronograma"
+                )
+                return {
+                    "ncuota_reask": True,
+                    "n_cuota": n_cuota,
+                    "mensaje": (
+                        f"El número de cuota {n_cuota} no coincide con tu cronograma "
+                        f"(cuotas disponibles: {valid_range}). "
+                        f"¿Podés confirmar o ingresar el número correcto?"
+                    ),
+                }
+        # cronograma empty → Doris unavailable; accept best-effort (no blocking)
 
     # (a) tipo de operación — contra el crédito del DNI (NO depende de la CCI)
     cuota = float(profile.get("cuota_esperada") or profile.get("next_installment_amount") or 0.0)
