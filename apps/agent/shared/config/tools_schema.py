@@ -1,4 +1,4 @@
-"""NEUTRAL tool definitions for the PrestaUnion cobranza agent (DEMO).
+"""Tenant-neutral tool definitions for the cobranza agent.
 
 Provider-agnostic schema: each tool is {name, description, parameters} where
 `parameters` is a JSON Schema object. Providers translate it (Anthropic →
@@ -220,7 +220,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "escalate_to_human",
-        "description": "Deriva la conversación a un asesor humano de PrestaUnion (consultas legales, disputas formales, casos sensibles, o usuario sin enlace).",
+        "description": "Deriva la conversación a un asesor humano (consultas legales, disputas formales, casos sensibles, o usuario sin enlace).",
         "parameters": {
             "type": "object",
             "properties": {

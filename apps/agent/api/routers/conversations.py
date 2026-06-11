@@ -263,6 +263,17 @@ async def chat(request: Request, body: ChatRequest):
         _deliverables, _delivery_mode = m._delivery_for(body.tenant_id)
         _agent_type = _tenant_config.agent_type if _tenant_config is not None else "cobranza"
         _agent_spec = m.agent_type_registry.get(_agent_type)
+        _tenant_name = _tenant_config.soul.company if _tenant_config is not None else ""
+        _agent_name = _tenant_config.soul.name if _tenant_config is not None else ""
+        # from_email: soul.escalation_contact is contact.email as mapped by
+        # AgentSoul.from_tenant_config — reuse the parsed config, no second read.
+        _contact_email = (
+            _tenant_config.soul.escalation_contact if _tenant_config is not None else ""
+        )
+        _tenant_from_email = (
+            f"{_tenant_name} <{_contact_email}>" if _contact_email and _tenant_name
+            else _contact_email
+        )
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.debtor,
@@ -273,6 +284,9 @@ async def chat(request: Request, body: ChatRequest):
             debt_context=conv.debt_context,
             download_base_url=_download_base,
             tenant_id=body.tenant_id or "prestaunion",
+            tenant_name=_tenant_name,
+            agent_name=_agent_name,
+            tenant_from_email=_tenant_from_email,
             on_identity_resolved=_persist_identity,
             on_identification_attempt=_ident_attempt,
             deliverables=_deliverables,

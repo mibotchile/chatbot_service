@@ -140,7 +140,9 @@ class _SpyEmail:
     def __init__(self):
         self.calls = []
 
-    async def send_document(self, to_email, name, label, *, pdf_path=None, summary_html=""):
+    async def send_document(
+        self, to_email, name, label, *, pdf_path=None, summary_html="", tenant_slug=""
+    ):
         self.calls.append((to_email, label, summary_html))
         return True
 

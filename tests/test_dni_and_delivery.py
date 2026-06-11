@@ -195,9 +195,17 @@ class _SpyWhatsApp:
         self.text_calls.append((phone, message))
         return True
 
-    async def send_document(self, phone, customer_name, doc_label, media_url="", caption=""):
+    async def send_document(
+        self, phone, customer_name, doc_label, media_url="", caption="", company_name=""
+    ):
         self.document_calls.append(
-            {"phone": phone, "name": customer_name, "label": doc_label, "media_url": media_url}
+            {
+                "phone": phone,
+                "name": customer_name,
+                "label": doc_label,
+                "media_url": media_url,
+                "company_name": company_name,
+            }
         )
         return bool(media_url)
 
@@ -232,6 +240,7 @@ async def test_certificate_whatsapp_builds_media_url_with_public_base():
         debt_context=maria,
         whatsapp_service=spy,
         download_base_url="https://demos.mibot.cl/pubot-gj5w2a0p",
+        tenant_name="PrestaUnion",
     )
     r = await reg.execute(
         "enviar_documento", {"tipo": "certificado_no_adeudo", "destino": "999111222"}
@@ -243,6 +252,8 @@ async def test_certificate_whatsapp_builds_media_url_with_public_base():
     assert media_url.startswith("https://demos.mibot.cl/pubot-gj5w2a0p/api/v1/cobranza/certificate/")
     assert media_url.endswith(".pdf")
     assert r["delivered"] is True  # spy returns True when media_url present
+    # tenant brand flows from ToolRegistry config to the WhatsApp caption builder
+    assert spy.document_calls[0]["company_name"] == "PrestaUnion"
 
 
 # ── Token still works (pre-identified) alongside DNI ───────────────────────

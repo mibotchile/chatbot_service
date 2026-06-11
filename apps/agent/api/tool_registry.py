@@ -84,6 +84,9 @@ class ToolRegistry:
         debt_context: dict | None = None,
         download_base_url: str = "",
         tenant_id: str = "prestaunion",
+        tenant_name: str = "",
+        agent_name: str = "",
+        tenant_from_email: str = "",
         on_identity_resolved: Callable[[dict], None] | None = None,
         on_identification_attempt: Callable[[str], Any] | None = None,
         # Envío de info bajo demanda (CORE, data-driven). ``deliverables`` is the
@@ -115,6 +118,11 @@ class ToolRegistry:
         self._debt_context = debt_context or {}
         self._download_base_url = download_base_url
         self._tenant_id = tenant_id
+        # Brand strings resolved from tenant config — passed per-call so no
+        # process-level singleton carries a hardcoded brand.
+        self._tenant_name = tenant_name
+        self._agent_name = agent_name
+        self._tenant_from_email = tenant_from_email
         # Callback to persist a mid-conversation DNI identification back to the
         # ConversationState (so the next turn starts already verified).
         self._on_identity_resolved = on_identity_resolved
@@ -296,7 +304,9 @@ class ToolRegistry:
 
     async def _emitir_certificado_no_adeudo(self) -> dict:
         return await emitir_certificado_no_adeudo(
-            self._debt_context, download_base_url=self._download_base_url
+            self._debt_context,
+            download_base_url=self._download_base_url,
+            tenant_name=self._tenant_name,
         )
 
     async def _enviar_documento(self, tipo: str, destino: str = "", canal: str = "") -> dict:
@@ -305,6 +315,10 @@ class ToolRegistry:
             email_service=self._email_service,
             whatsapp_service=self._whatsapp_service,
             download_base_url=self._download_base_url,
+            tenant_name=self._tenant_name,
+            agent_name=self._agent_name,
+            from_email=self._tenant_from_email,
+            tenant_slug=self._tenant_id,
         )
 
     async def _enviar_info(self, tipo: str = "", canal: str = "") -> dict:
@@ -318,6 +332,7 @@ class ToolRegistry:
             delivery_mode=self._delivery_mode,
             email_service=self._email_service,
             chathub_outbound=self._chathub_outbound,
+            tenant_slug=self._tenant_id,
         )
 
     async def _validar_comprobante(

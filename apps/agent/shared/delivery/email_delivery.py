@@ -14,13 +14,21 @@ from loguru import logger
 
 DEFAULT_MAIL_API = "https://apiintranet.mibot.cl:8085/api/v2/mail_sengrid/send"
 
+# Sentinel: no from_email configured — callers must pass company_name + from_email
+# via send_document(). This is never used as an actual address.
+_NO_FROM = ""
+
 
 class EmailService:
-    """Email delivery via internal mail API with graceful fallback to logging."""
+    """Email delivery via internal mail API with graceful fallback to logging.
 
-    def __init__(
-        self, api_url: str = "", from_email: str = "PrestaUnion <no-reply@prestaunion.pe>"
-    ):
+    ``from_email`` is intentionally left empty by default — each send_document
+    call must supply the tenant-specific sender address (resolved from
+    tenant.config.json → contact.email or a brand-specific key). This prevents
+    any hardcoded brand from leaking through a forgotten constructor default.
+    """
+
+    def __init__(self, api_url: str = "", from_email: str = _NO_FROM):
         self.api_url = api_url or DEFAULT_MAIL_API
         self.from_email = from_email
         self._enabled = bool(api_url)
@@ -35,16 +43,34 @@ class EmailService:
         *,
         pdf_path: str | Path | None = None,
         summary_html: str = "",
+        company_name: str = "",
+        agent_name: str = "",
+        from_email: str = "",
+        tenant_slug: str = "",
     ) -> bool:
-        """Send a cobranza document to the borrower (PrestaUnion).
+        """Send a cobranza document to the borrower.
 
         ``doc_label`` is human text, e.g. "Certificado de no adeudo" or
         "Estado de cuenta". If ``pdf_path`` is given the PDF is attached as
         base64; otherwise ``summary_html`` carries the info in the body.
+        ``company_name`` and ``agent_name`` come from tenant config (name +
+        agent.agent_name). ``from_email`` overrides self.from_email when given.
+        ``tenant_slug`` builds the mail-API ``origin`` field
+        (``{slug}-cobranza``) so the proxy keeps per-tenant routing.
         Returns True if sent (or logged in dry-run).
         """
-        subject = f"{doc_label} — PrestaUnion"
-        body = _document_html(customer_name, doc_label, summary_html)
+        _company = company_name or self.from_email or "Cobranza"
+        if not company_name:
+            logger.warning(
+                "EmailService.send_document: company_name not provided; "
+                "falling back to '{}'. Set tenant config name.",
+                _company,
+            )
+        subject = f"{doc_label} — {_company}"
+        body = _document_html(
+            customer_name, doc_label, summary_html,
+            company_name=_company, agent_name=agent_name,
+        )
 
         attachments = []
         if pdf_path:
@@ -60,7 +86,11 @@ class EmailService:
             else:
                 logger.warning("send_document: PDF not found at {}", p)
 
-        return await self._send(to_email, subject, body, event="document", attachments=attachments)
+        return await self._send(
+            to_email, subject, body,
+            event="document", attachments=attachments, from_email=from_email,
+            tenant_slug=tenant_slug,
+        )
 
     async def _send(
         self,
@@ -69,6 +99,8 @@ class EmailService:
         html_content: str,
         event: str,
         attachments: list[dict] | None = None,
+        from_email: str = "",
+        tenant_slug: str = "",
     ) -> bool:
         """Send email via internal mail API or log if not configured."""
         attachments = attachments or []
@@ -83,15 +115,23 @@ class EmailService:
             logger.debug("[EMAIL-DRY-RUN] body:\n{}", html_content[:500])
             return True
 
+        _effective_from = from_email or self.from_email
+        if not _effective_from:
+            logger.warning(
+                "EmailService._send: no from_email configured; "
+                "email may be rejected by the mail API."
+            )
         payload = {
-            "from": self.from_email,
+            "from": _effective_from,
             "to": [to_email],
             "cc": "",
             "bcc": "",
             "subject": subject,
             "data": html_content,
             "attachments": attachments,
-            "origin": "prestaunion-cobranza",
+            # Per-tenant origin so the mail proxy keeps routing/filtering by it
+            # (prestaunion emits exactly the historical "prestaunion-cobranza").
+            "origin": f"{tenant_slug}-cobranza" if tenant_slug else "cobranza",
         }
 
         try:
@@ -117,8 +157,21 @@ class EmailService:
             return False
 
 
-def _document_html(customer_name: str, doc_label: str, summary_html: str = "") -> str:
-    """HTML body for a PrestaUnion cobranza document email (Peruvian Spanish)."""
+def _document_html(
+    customer_name: str,
+    doc_label: str,
+    summary_html: str = "",
+    company_name: str = "",
+    agent_name: str = "",
+) -> str:
+    """HTML body for a cobranza document email (Peruvian Spanish).
+
+    ``company_name`` and ``agent_name`` come from tenant config — no brand
+    is hardcoded here. Falls back to generic labels when not provided (with a
+    loguru warning emitted by the caller).
+    """
+    _co = company_name or "la entidad"
+    _agent = agent_name or "el asistente virtual"
     extra = f'<div style="margin: 16px 0;">{summary_html}</div>' if summary_html else ""
     attach_note = (
         "<p>Adjuntamos el documento solicitado en formato PDF.</p>" if not summary_html else ""
@@ -129,7 +182,7 @@ def _document_html(customer_name: str, doc_label: str, summary_html: str = "") -
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, sans-serif; color: #1A1A1C; max-width: 600px; margin: 0 auto;">
   <div style="background: #0083E0; padding: 24px; text-align: center;">
-    <h1 style="color: #fff; margin: 0; font-size: 22px;">PrestaUnion</h1>
+    <h1 style="color: #fff; margin: 0; font-size: 22px;">{_co}</h1>
   </div>
   <div style="padding: 24px;">
     <p>Hola <strong>{customer_name}</strong>,</p>
@@ -138,7 +191,7 @@ def _document_html(customer_name: str, doc_label: str, summary_html: str = "") -
     {extra}
     <p>Si necesitas algo más, escríbenos por este medio y con gusto te ayudamos.</p>
     <p style="color: #888; font-size: 12px; margin-top: 32px;">
-      Este correo fue enviado por Ada, asistente virtual de PrestaUnion. Datos de demostración.
+      Este correo fue enviado por {_agent}, asistente virtual de {_co}. Datos de demostración.
     </p>
   </div>
 </body>
