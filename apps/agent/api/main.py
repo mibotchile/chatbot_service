@@ -94,6 +94,8 @@ from api.wiring import (  # noqa: F401
     _analytics_tasks,
     _emit_analytics,
     _spawn_analytics,
+    _emit_gestion,
+    _spawn_gestion,
     _register_whatsapp_webhook,
 )
 

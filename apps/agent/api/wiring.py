@@ -31,6 +31,11 @@ from features.messaging.whatsapp_service import WhatsAppService
 from features.messaging.chathub_outbound import ChathubOutboundClient
 from shared.config.settings import settings
 
+# Layer-3 gestion imports — at module level so they are patchable in tests.
+from shared.persistence.persistence import append_gestion_event, upsert_gestion
+from features.analytics.gestion_sink import record_gestion, record_gestion_event
+from features.messaging.chathub_adapter import was_escalated
+
 # ---------------------------------------------------------------------------
 # Application singletons
 # ---------------------------------------------------------------------------
@@ -183,6 +188,181 @@ def _spawn_analytics(**kwargs) -> None:
 
     try:
         task = _asyncio.create_task(_emit_analytics(**kwargs))
+        _analytics_tasks.add(task)
+        task.add_done_callback(_analytics_tasks.discard)
+    except RuntimeError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Gestion (Layer-3) fire-and-forget helpers
+# ---------------------------------------------------------------------------
+
+async def _emit_gestion(conv, result, tool_pairs) -> None:
+    """Write one turn's gestion data to Postgres + Doris (fire-and-forget).
+
+    Detection logic is fully data-driven via TERMINAL_SIGNALS and
+    INTENT_TO_CAPABILITY from gestion_catalog — no strings hardcoded here.
+
+    Uses the module-level ``store`` singleton (same pattern as _emit_analytics).
+
+    Guards:
+      - store.db_pool is None → silent no-op.
+      - Any exception is caught and logged; never propagates to the request path.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    try:
+        if store.db_pool is None:
+            return
+
+        from features.analytics.gestion_catalog import (
+            TERMINAL_SIGNALS,
+            INTENT_TO_CAPABILITY,
+            EventType,
+            Outcome,
+        )
+        from features.analytics.gestion_derivation import derive_outcome
+
+        pool = store.db_pool
+        schema = store.db_schema
+        conversation_id = conv.conversation_id
+        session_state = conv.session_state or {}
+        resolved_intent = (result.get("metadata") or {}).get("intent")
+
+        # -- Detect terminal signals (data-driven from TERMINAL_SIGNALS) --
+        tool_names = {name for name, _ in (tool_pairs or [])}
+
+        commitment_registered = bool(
+            tool_names & set(TERMINAL_SIGNALS.get("commitment_registered", []))
+        )
+        proof_submitted = bool(
+            tool_names & set(TERMINAL_SIGNALS.get("proof_submitted", []))
+        )
+        identity_failed = any(
+            session_state.get(k) for k in TERMINAL_SIGNALS.get("identity_failed", [])
+        )
+        fallback_exhausted = any(
+            session_state.get(k) for k in TERMINAL_SIGNALS.get("fallback_exhausted", [])
+        )
+        escalated = was_escalated(list(tool_pairs or []))
+
+        # info_provided: intent matches known info intents
+        info_provided = resolved_intent in TERMINAL_SIGNALS.get("info_provided_intents", [])
+        # identified: intent matches identity intents
+        identified = resolved_intent in TERMINAL_SIGNALS.get("identified_intents", [])
+
+        is_terminal = (
+            commitment_registered
+            or proof_submitted
+            or identity_failed
+            or fallback_exhausted
+            or escalated
+        )
+
+        # -- Check if already closed (first-close-wins guard) --
+        existing = await pool.fetchrow(
+            f"SELECT closed_at, capabilities_used FROM \"{schema}\".gestiones"
+            " WHERE conversation_id = $1",
+            conversation_id,
+        )
+        already_closed = existing is not None and existing["closed_at"] is not None
+
+        # -- Determine capability for this turn --
+        capability = INTENT_TO_CAPABILITY.get(resolved_intent or "")
+        if not capability:
+            # Fall back to first matching tool name
+            for t in tool_names:
+                if t in INTENT_TO_CAPABILITY:
+                    capability = INTENT_TO_CAPABILITY[t]
+                    break
+
+        # -- Append capability_used event (every non-empty turn) --
+        cap_event_row = None
+        if capability:
+            cap_event_row = await append_gestion_event(
+                pool, schema, conversation_id,
+                event_type=EventType.capability_used,
+                intent=resolved_intent,
+                capability=capability,
+            )
+            await record_gestion_event(event=cap_event_row)
+
+        # -- Upsert snapshot (open state or terminal close) --
+        now = _dt.now(_tz.utc)
+        upsert_fields: dict = {
+            "tenant_id": getattr(conv, "tenant_id", None),
+            "channel": getattr(conv, "channel", None),
+            "project_uid": _tenant_project_uid(getattr(conv, "tenant_id", None)),
+            "schema_version": 1,
+            "closed_at": None,
+            "outcome": None,
+            "outcome_reason": None,
+            "escalated": escalated or None,
+        }
+        if capability:
+            upsert_fields["capabilities_used"] = [capability]
+
+        terminal_event_row = None
+        if is_terminal and not already_closed:
+            outcome, reason = derive_outcome(
+                session_state=session_state,
+                resolved_intent=resolved_intent,
+                was_escalated=escalated,
+                identity_failed=identity_failed,
+                commitment_registered=commitment_registered,
+                proof_submitted=proof_submitted,
+                fallback_exhausted=fallback_exhausted,
+                identified=identified,
+                info_provided=info_provided,
+            )
+            outcome_val = outcome.value if hasattr(outcome, "value") else str(outcome)
+            upsert_fields["closed_at"] = now
+            upsert_fields["outcome"] = outcome_val
+            upsert_fields["outcome_reason"] = reason
+
+            terminal_event_row = await append_gestion_event(
+                pool, schema, conversation_id,
+                event_type=EventType.terminal,
+                intent=resolved_intent,
+                capability=capability,
+                payload={"outcome": outcome_val, "outcome_reason": reason},
+            )
+            await record_gestion_event(event=terminal_event_row)
+
+        await upsert_gestion(pool, schema, conversation_id, fields=upsert_fields)
+
+        # -- Send snapshot to Doris using the fields we just upserted --
+        # Avoids an extra round-trip; the sink only needs stable scalar fields.
+        doris_snapshot = {
+            "conversation_id": conversation_id,
+            "tenant_id": upsert_fields.get("tenant_id") or "",
+            "project_uid": upsert_fields.get("project_uid") or "",
+            "channel": upsert_fields.get("channel") or "",
+            "capabilities_used": upsert_fields.get("capabilities_used") or [],
+            "outcome": upsert_fields.get("outcome") or "",
+            "outcome_reason": upsert_fields.get("outcome_reason") or "",
+            "escalated": escalated,
+            "schema_version": 1,
+            "closed_at": upsert_fields.get("closed_at"),
+            "updated_at": now,
+        }
+        await record_gestion(snapshot=doris_snapshot)
+
+    except Exception:
+        logger.opt(exception=True).warning("_emit_gestion failed (ignored)")
+
+
+def _spawn_gestion(conv, result, tool_pairs) -> None:
+    """Schedule _emit_gestion as a background task (fire-and-forget).
+
+    Mirrors _spawn_analytics exactly: asyncio.create_task, ref kept in
+    _analytics_tasks to prevent GC before completion.
+    """
+    import asyncio as _asyncio
+
+    try:
+        task = _asyncio.create_task(_emit_gestion(conv, result, tool_pairs))
         _analytics_tasks.add(task)
         task.add_done_callback(_analytics_tasks.discard)
     except RuntimeError:
