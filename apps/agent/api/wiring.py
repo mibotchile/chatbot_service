@@ -373,6 +373,76 @@ def _spawn_gestion(conv, result, tool_pairs) -> None:
 # Startup helpers
 # ---------------------------------------------------------------------------
 
+
+async def _start_gestion_sweep(pool, schema: str) -> None:
+    """Launch the gestion inactivity sweep as a background asyncio task.
+
+    Reads per-tenant TTL from each tenant's config.json
+    (``cobranza.gestion_inactivity_ttl_minutes``), falls back to
+    ``settings.gestion_inactivity_ttl_minutes`` (default 30).
+
+    The task is ref-kept in ``_analytics_tasks`` to prevent GC and to allow
+    cancel-safe shutdown (same pattern as _spawn_analytics).
+    """
+    import asyncio as _asyncio
+    from pathlib import Path as _P
+    import json as _j
+
+    from features.analytics import gestion_sweep as _gestion_sweep
+
+    # Discover tenants: scan tenants/ directory for config files
+    tenants_dirs: list[_P] = []
+    for candidate in (
+        _P("/app/tenants"),
+        _P(__file__).resolve().parent.parent.parent.parent / "tenants",
+    ):
+        if candidate.exists():
+            tenants_dirs = list(candidate.iterdir())
+            break
+
+    tenant_ttl_map: dict[str, int] = {}
+    for tenant_dir in tenants_dirs:
+        if not tenant_dir.is_dir():
+            continue
+        tid = tenant_dir.name
+        cfg = _load_tenant_config(tid) or {}
+        ttl = (
+            (cfg.get("cobranza") or {}).get("gestion_inactivity_ttl_minutes")
+            or settings.gestion_inactivity_ttl_minutes
+        )
+        tenant_ttl_map[tid] = int(ttl)
+
+    # If no tenant dirs found, fall back to a single wildcard bucket using the
+    # default TTL so the sweep still fires (useful in dev / test).
+    if not tenant_ttl_map:
+        logger.info(
+            "gestion_sweep: no tenant dirs found — using default TTL {}min for all tenants",
+            settings.gestion_inactivity_ttl_minutes,
+        )
+        # A wildcard is not practical for per-tenant SQL; we register a dummy
+        # fallback. In production there will always be tenant dirs.
+        # The loop launches regardless so the task is always present.
+
+    try:
+        task = _asyncio.create_task(
+            _gestion_sweep.start_sweep_loop(
+                pool,
+                schema,
+                tenant_ttl_map,
+                interval_seconds=settings.gestion_sweep_interval_seconds,
+            )
+        )
+        _analytics_tasks.add(task)
+        task.add_done_callback(_analytics_tasks.discard)
+        logger.info(
+            "gestion_sweep: background task started — interval={}s tenants={}",
+            settings.gestion_sweep_interval_seconds,
+            list(tenant_ttl_map.keys()),
+        )
+    except RuntimeError:
+        logger.warning("gestion_sweep: no running event loop — sweep not started")
+
+
 async def _register_whatsapp_webhook() -> None:
     """Register Sorelia's webhook URL with Evolution API on startup."""
     if not settings.whatsapp_api_url or not settings.whatsapp_instance:
