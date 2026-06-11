@@ -405,6 +405,83 @@ def get_cronograma(account_id: str, tenant_id: str) -> list[dict]:
     return result
 
 
+def get_moratoria_fields(account_id: str, tenant_id: str) -> dict:
+    """Return moratoria-specific fields for an overdue credit.
+
+    Fetches from Doris:
+      - amortizacion_cuota: amortizacion_esperada_original of the first unpaid
+        installment (NOT amortizacion_esperada_actualizado — 95% null).
+      - tasa_interes_mensual: tasa_de_interes from batch_asignacion_review_bronze,
+        parsed from varchar "X.XX%" to decimal (e.g. "3.50%" → 0.035). Uses
+        DISTINCT to collapse raw dupes in the debt table.
+
+    JOIN: batch_pagos_v2_bronze.codigo_contrato = batch_asignacion_review_bronze.id_credito
+
+    Returns a dict with keys:
+      amortizacion_cuota (float | None)
+      tasa_interes_mensual (float | None)
+
+    Returns {"amortizacion_cuota": None, "tasa_interes_mensual": None} on any
+    error or missing data — callers must handle None (omit moratoria display).
+    """
+    _empty: dict = {"amortizacion_cuota": None, "tasa_interes_mensual": None}
+    if not account_id:
+        return _empty
+
+    try:
+        schema = _load_schema(tenant_id)
+        db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
+        pagos = _safe_ident(schema["pagos_table"], what="pagos_table")
+        debt = _safe_ident(schema["debt_table"], what="debt_table")
+        pagos_key = _safe_ident(schema["join"]["pagos_key"], what="join.pagos_key")
+        debt_key = _safe_ident(schema["join"]["debt_key"], what="join.debt_key")
+
+        # First unpaid installment's amortization + credit's interest rate.
+        # DISTINCT on debt table prevents raw-dupe inflation of tasa_de_interes.
+        sql = (
+            f"SELECT\n"
+            f"  p.amortizacion_esperada_original AS amortizacion_cuota,\n"
+            f"  d.tasa_de_interes AS tasa_de_interes_raw\n"
+            f"FROM {db}.{pagos} p\n"
+            f"JOIN (\n"
+            f"  SELECT DISTINCT {debt_key}, tasa_de_interes\n"
+            f"  FROM {db}.{debt}\n"
+            f"  WHERE {debt_key} = %s\n"
+            f") d ON p.{pagos_key} = d.{debt_key}\n"
+            f"WHERE p.{pagos_key} = %s\n"
+            f"  AND p.fecha_de_pago_del_cliente IS NULL\n"
+            f"ORDER BY p.nro_cuotas\n"
+            f"LIMIT 1"
+        )
+        conn = _connect(db)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (account_id, account_id))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        return _empty
+
+    if not row:
+        return _empty
+
+    # Parse tasa_de_interes varchar "X.XX%" → decimal
+    tasa_raw = row.get("tasa_de_interes_raw")
+    tasa: float | None = None
+    if tasa_raw is not None:
+        try:
+            tasa_str = str(tasa_raw).replace("%", "").strip()
+            tasa = float(tasa_str) / 100
+        except (ValueError, TypeError):
+            tasa = None
+
+    amort_raw = row.get("amortizacion_cuota")
+    amort: float | None = _to_float(amort_raw) if amort_raw is not None else None
+
+    return {"amortizacion_cuota": amort, "tasa_interes_mensual": tasa}
+
+
 def validate_comprobante(
     dni: str,
     cci: str,

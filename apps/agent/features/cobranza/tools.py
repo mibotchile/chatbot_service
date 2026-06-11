@@ -121,6 +121,46 @@ async def consultar_deuda(profile: dict) -> dict:
         "cci_masked": _mask_cci(profile.get("cci")),
     }
 
+    # INF-12 — Moratoria: when credit is vencido, compute penalidad +
+    # interes_compensatorio from verified profile fields. Omit entirely when
+    # any required source field is missing (do NOT invent numbers).
+    credit_state = profile.get("credit_state", "")
+    if credit_state == "vencido":
+        dias_overdue = int(profile.get("days_overdue") or 0)
+        saldo_capital_inicial = profile.get("saldo_capital_inicial") or profile.get(
+            "saldo_por_cancelar"
+        )
+        amortizacion_cuota = profile.get("amortizacion_cuota")
+        tasa_interes_mensual = profile.get("tasa_interes_mensual")
+
+        if saldo_capital_inicial is not None and dias_overdue > 0:
+            from features.cobranza.scenario import calcular_penalidad  # noqa: PLC0415
+
+            summary["penalidad"] = calcular_penalidad(
+                float(saldo_capital_inicial), dias_overdue
+            )
+            summary["penalidad_formatted"] = _fmt(summary["penalidad"], sym)
+        else:
+            summary["penalidad"] = None
+
+        if (
+            amortizacion_cuota is not None
+            and tasa_interes_mensual is not None
+            and dias_overdue > 0
+        ):
+            from features.cobranza.scenario import calcular_interes_compensatorio  # noqa: PLC0415
+
+            summary["interes_compensatorio"] = calcular_interes_compensatorio(
+                float(amortizacion_cuota),
+                float(tasa_interes_mensual),
+                dias_overdue,
+            )
+            summary["interes_compensatorio_formatted"] = _fmt(
+                summary["interes_compensatorio"], sym
+            )
+        else:
+            summary["interes_compensatorio"] = None
+
     # PrestamYpe casuística: un mismo DNI puede tener VARIOS créditos vigentes.
     # Se exponen aquí para que el asistente los liste (saldo y estado de c/u).
     extra = profile.get("additional_credits") or []

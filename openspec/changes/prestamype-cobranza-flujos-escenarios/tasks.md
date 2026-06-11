@@ -186,13 +186,13 @@ Chain strategy: pending
 > Satisfies: INF-12 (spec §INF-12)
 > Source: definiciones-naomi-2026-06-10.md §1 — fórmulas exactas confirmadas por Naomi.
 
-- [ ] 7.1 In `apps/agent/features/cobranza/scenario.py` (or a dedicated `moratoria.py`), add two pure functions:
+- [x] 7.1 In `apps/agent/features/cobranza/scenario.py` (or a dedicated `moratoria.py`), add two pure functions:
   - `calcular_penalidad(saldo_capital_inicial: float, dias_overdue: int) -> float` — **regla inductiva (confirmada Ricky 2026-06-10)**: `semana = max(1, math.ceil(dias_overdue / 7))`; `raw = saldo_capital_inicial * 0.00008 * semana` (0.008% por semana: sem1=0.008%, sem2=0.016%, sem3=0.024%, sin tope); return `math.ceil(raw * 10) / 10` (**ceil al décimo de sol**, ej. 0.56 → 0.60). Do NOT cap at semana 2.
   - `calcular_interes_compensatorio(amortizacion_cuota: float, tasa_interes_mensual: float, dias_transcurridos: int) -> float`: `amortizacion_cuota * (tasa_interes_mensual / 30) * dias_transcurridos`.
   - Both are pure functions, no DB access, no side effects.
   - Verify: `uv run pytest tests/test_moratoria.py -v`
 
-- [ ] 7.2 Create `tests/test_moratoria.py` covering:
+- [x] 7.2 Create `tests/test_moratoria.py` covering:
   - (a) `calcular_penalidad(saldo=7000, dias_overdue=3)` → semana 1: `7000 * 0.00008 = 0.56 → ceil a 0.60`.
   - (b) Example from Naomi: saldo que da 5.66 (semana 1) → ceil a 5.70.
   - (c) `calcular_penalidad(saldo=7000, dias_overdue=10)` → semana 2: `7000 * 0.00016 = 1.12 → ceil a 1.20`.
@@ -201,7 +201,7 @@ Chain strategy: pending
   - (e) `dias_transcurridos = 0` → interés = 0.
   - Verify: 6 cases pass, `uv run pytest tests/test_moratoria.py -v`
 
-- [ ] 7.3 In `apps/agent/features/cobranza/tools.py`, integrate moratoria into overdue display: when `credit_state = "vencido"` and overdue detail is surfaced (INF-11 / INF-12), compute and include `penalidad` and `interes_compensatorio` in the response context. Required profile fields (mapeo Doris validado 2026-06-10): `saldo_capital_inicial` ← `batch_pagos_v2_bronze.saldo_por_cancelar` (⚠️ confirmar con Naomi si es saldo pendiente o capital inicial), `amortizacion_cuota` ← `batch_pagos_v2_bronze.amortizacion_esperada_original`, `tasa_interes_mensual` ← `batch_asignacion_review_bronze.tasa_de_interes` (varchar `"X.XX%"` → `CAST(REPLACE(...,'%','') AS DOUBLE)/100`, JOIN por `codigo_contrato = id_credito`), `dias_overdue`. If any required field is missing, omit moratoria amounts and escalate partial display (do NOT invent numbers).
+- [x] 7.3 In `apps/agent/features/cobranza/tools.py`, integrate moratoria into overdue display: when `credit_state = "vencido"` and overdue detail is surfaced (INF-11 / INF-12), compute and include `penalidad` and `interes_compensatorio` in the response context. Required profile fields (mapeo Doris validado 2026-06-10): `saldo_capital_inicial` ← `batch_pagos_v2_bronze.saldo_por_cancelar` (⚠️ confirmar con Naomi si es saldo pendiente o capital inicial), `amortizacion_cuota` ← `batch_pagos_v2_bronze.amortizacion_esperada_original`, `tasa_interes_mensual` ← `batch_asignacion_review_bronze.tasa_de_interes` (varchar `"X.XX%"` → `CAST(REPLACE(...,'%','') AS DOUBLE)/100`, JOIN por `codigo_contrato = id_credito`), `dias_overdue`. If any required field is missing, omit moratoria amounts and escalate partial display (do NOT invent numbers).
   - Verify: `uv run pytest tests/test_moratoria.py tests/test_scenario_intents.py -v`
 
 ---
