@@ -98,6 +98,46 @@ def _load_schema(tenant_id: str) -> dict:
     return schema
 
 
+# Fallback column names used when the schema lacks 'cronograma_columns'.
+# Keeps old configs working; new configs should declare it explicitly.
+_CRONOGRAMA_DEFAULTS = {
+    "n_cuota": "nro_cuotas",
+    "fecha_venc": "fecha_de_pago_esperada_original",
+    "monto": "cuota_esperada_mensual",
+    "fecha_pago": "fecha_de_pago_del_cliente",
+}
+
+# Schemas (keyed by debt_table) already warned about missing cronograma_columns —
+# the fallback is used from several SQL builders; warn once per tenant, not per call.
+_warned_missing_cronograma_cols: set[str] = set()
+
+
+def _get_cronograma_cols(schema: dict) -> dict[str, str]:
+    """Resolve cronograma column identifiers from config (fallback + one warning).
+
+    Shared by the profile SQL builder (days_overdue + pagos_agg aggregates),
+    ``get_cronograma`` and ``get_moratoria_fields``. Missing keys fall back to
+    the Prestamype-era literals so old configs keep working; the warning fires
+    at most once per tenant schema.
+    """
+    from loguru import logger as _log  # noqa: PLC0415
+
+    ccols = schema.get("cronograma_columns") or {}
+    if not ccols:
+        guard_key = str(schema.get("debt_table", ""))
+        if guard_key not in _warned_missing_cronograma_cols:
+            _warned_missing_cronograma_cols.add(guard_key)
+            _log.warning(
+                "doris_schema: 'cronograma_columns' key missing — "
+                "falling back to built-in defaults. "
+                "Add 'cronograma_columns' to doris_schema in tenant.config.json.",
+            )
+    return {
+        key: _safe_ident(ccols.get(key, default), what=f"cronograma_columns.{key}")
+        for key, default in _CRONOGRAMA_DEFAULTS.items()
+    }
+
+
 def _build_sql(schema: dict) -> tuple[str, str]:
     """Build the (parameterized) profile SQL + the DB name from a schema dict.
 
@@ -222,10 +262,17 @@ def _build_sql_window(
             col = _safe_ident(spec["column"], what=f"column_map[{field}].column")
             select_parts.append(f"{alias}.{col} AS {field}")
 
+    # Per-installment column names from cronograma_columns config (fallback + warning).
+    cron = _get_cronograma_cols(schema)
+    fecha_venc_col = cron["fecha_venc"]
+    monto_col = cron["monto"]
+    fecha_pago_col = cron["fecha_pago"]
+    n_cuota_col = cron["n_cuota"]
+
     # days_overdue is derived from date arithmetic (always correct, never stale).
     # Injected here regardless of column_map entry — it overwrites any mapped value.
     select_parts.append(
-        "GREATEST(DATEDIFF(CURDATE(), p.fecha_de_pago_esperada_original), 0) AS days_overdue"
+        f"GREATEST(DATEDIFF(CURDATE(), p.{fecha_venc_col}), 0) AS days_overdue"
     )
     # Overdue aggregates: monto_vencido = sum of overdue unpaid installments;
     # cuotas_vencidas = count of same. These drive the PRIMARY "cuánto debo" display
@@ -262,19 +309,19 @@ def _build_sql_window(
         f"  -- the full schedule — all on the SAME GROUP BY {pagos_key} (no clash).\n"
         f"  SELECT\n"
         f"    {pagos_key} AS {pagos_key},\n"
-        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NULL\n"
-        f"             AND fecha_de_pago_esperada_original <= CURDATE()\n"
-        f"             THEN cuota_esperada_mensual ELSE 0 END) AS monto_vencido,\n"
-        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NULL\n"
-        f"             AND fecha_de_pago_esperada_original <= CURDATE()\n"
+        f"    SUM(CASE WHEN {fecha_pago_col} IS NULL\n"
+        f"             AND {fecha_venc_col} <= CURDATE()\n"
+        f"             THEN {monto_col} ELSE 0 END) AS monto_vencido,\n"
+        f"    SUM(CASE WHEN {fecha_pago_col} IS NULL\n"
+        f"             AND {fecha_venc_col} <= CURDATE()\n"
         f"             THEN 1 ELSE 0 END) AS cuotas_vencidas,\n"
-        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NOT NULL\n"
+        f"    SUM(CASE WHEN {fecha_pago_col} IS NOT NULL\n"
         f"             THEN 1 ELSE 0 END) AS cuotas_pagadas,\n"
-        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NULL\n"
+        f"    SUM(CASE WHEN {fecha_pago_col} IS NULL\n"
         f"             THEN 1 ELSE 0 END) AS cuotas_pendientes,\n"
-        f"    MAX(fecha_de_pago_esperada_original) AS fecha_venc_contrato,\n"
-        f"    MIN(fecha_de_pago_esperada_original) AS fecha_inicio_prestamo,\n"
-        f"    MAX(nro_cuotas) AS plazo\n"
+        f"    MAX({fecha_venc_col}) AS fecha_venc_contrato,\n"
+        f"    MIN({fecha_venc_col}) AS fecha_inicio_prestamo,\n"
+        f"    MAX({n_cuota_col}) AS plazo\n"
         f"  FROM {db}.{pagos}\n"
         f"  GROUP BY {pagos_key}\n"
         f"),\n"
@@ -648,15 +695,18 @@ def get_cronograma(account_id: str, tenant_id: str) -> list[dict]:
     pagos = _safe_ident(schema["pagos_table"], what="pagos_table")
     pagos_key = _safe_ident(schema["join"]["pagos_key"], what="join.pagos_key")
 
+    # Column names from cronograma_columns config (fallback + once-per-tenant warning).
+    cron = _get_cronograma_cols(schema)
+
     sql = (
         f"SELECT\n"
-        f"  nro_cuotas AS n_cuota,\n"
-        f"  fecha_de_pago_esperada_original AS fecha_venc,\n"
-        f"  cuota_esperada_mensual AS monto,\n"
-        f"  fecha_de_pago_del_cliente\n"
+        f"  {cron['n_cuota']} AS n_cuota,\n"
+        f"  {cron['fecha_venc']} AS fecha_venc,\n"
+        f"  {cron['monto']} AS monto,\n"
+        f"  {cron['fecha_pago']} AS fecha_pago_cliente\n"
         f"FROM {db}.{pagos}\n"
         f"WHERE {pagos_key} = %s\n"
-        f"ORDER BY nro_cuotas"
+        f"ORDER BY {cron['n_cuota']}"
     )
     try:
         conn = _connect(db)
@@ -673,7 +723,7 @@ def get_cronograma(account_id: str, tenant_id: str) -> list[dict]:
     for row in rows:
         fecha_raw = row.get("fecha_venc")
         fecha_str = str(fecha_raw) if fecha_raw else None
-        paid = row.get("fecha_de_pago_del_cliente") is not None
+        paid = row.get("fecha_pago_cliente") is not None
         monto_raw = row.get("monto")
         result.append({
             "n_cuota": int(row["n_cuota"]) if row.get("n_cuota") is not None else None,
@@ -708,6 +758,8 @@ def get_moratoria_fields(account_id: str, tenant_id: str) -> dict:
         return _empty
 
     try:
+        from loguru import logger as _log  # noqa: PLC0415
+
         schema = _load_schema(tenant_id)
         db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
         pagos = _safe_ident(schema["pagos_table"], what="pagos_table")
@@ -715,21 +767,43 @@ def get_moratoria_fields(account_id: str, tenant_id: str) -> dict:
         pagos_key = _safe_ident(schema["join"]["pagos_key"], what="join.pagos_key")
         debt_key = _safe_ident(schema["join"]["debt_key"], what="join.debt_key")
 
+        # Column names from config; fallback to Prestamype defaults + warning.
+        _mcols = schema.get("moratoria_columns") or {}
+        if not _mcols:
+            _log.warning(
+                "doris_schema: 'moratoria_columns' key missing for tenant %r — "
+                "falling back to built-in defaults. "
+                "Add 'moratoria_columns' to doris_schema in tenant.config.json.",
+                tenant_id,
+            )
+        # cronograma_columns.fecha_pago/n_cuota reused for IS NULL filter + ORDER BY.
+        cron = _get_cronograma_cols(schema)
+        _col_amort = _safe_ident(
+            _mcols.get("amortizacion_cuota", "amortizacion_esperada_original"),
+            what="moratoria_columns.amortizacion_cuota",
+        )
+        _col_tasa = _safe_ident(
+            _mcols.get("tasa_interes", "tasa_de_interes"),
+            what="moratoria_columns.tasa_interes",
+        )
+        _col_fecha_pago = cron["fecha_pago"]
+        _col_n_cuota = cron["n_cuota"]
+
         # First unpaid installment's amortization + credit's interest rate.
         # DISTINCT on debt table prevents raw-dupe inflation of tasa_de_interes.
         sql = (
             f"SELECT\n"
-            f"  p.amortizacion_esperada_original AS amortizacion_cuota,\n"
-            f"  d.tasa_de_interes AS tasa_de_interes_raw\n"
+            f"  p.{_col_amort} AS amortizacion_cuota,\n"
+            f"  d.{_col_tasa} AS tasa_de_interes_raw\n"
             f"FROM {db}.{pagos} p\n"
             f"JOIN (\n"
-            f"  SELECT DISTINCT {debt_key}, tasa_de_interes\n"
+            f"  SELECT DISTINCT {debt_key}, {_col_tasa}\n"
             f"  FROM {db}.{debt}\n"
             f"  WHERE {debt_key} = %s\n"
             f") d ON p.{pagos_key} = d.{debt_key}\n"
             f"WHERE p.{pagos_key} = %s\n"
-            f"  AND p.fecha_de_pago_del_cliente IS NULL\n"
-            f"ORDER BY p.nro_cuotas\n"
+            f"  AND p.{_col_fecha_pago} IS NULL\n"
+            f"ORDER BY p.{_col_n_cuota}\n"
             f"LIMIT 1"
         )
         conn = _connect(db)
@@ -763,11 +837,40 @@ def get_moratoria_fields(account_id: str, tenant_id: str) -> dict:
 
 # ── IDC-01: Contract + DNI dual-factor identification ─────────────────────────
 
-# Roles that constitute an obligated party of the credit — authorized to access.
-# TESTIGO DE IDENTIDAD is explicitly excluded (witness only, not financially bound).
-# FIADOR SOLIDARIO included by default (solidary guarantor = obligated party)
-# — PENDING Naomi confirmation (2026-06-11).
-_AUTHORIZED_ROLES = frozenset({"SOLICITANTE", "GARANTE", "FIADOR SOLIDARIO"})
+# Fallback roles used when the tenant's doris_schema lacks 'authorized_roles'.
+# Keeps old configs working; new configs should declare it explicitly.
+_AUTHORIZED_ROLES_DEFAULT = frozenset({"SOLICITANTE", "GARANTE", "FIADOR SOLIDARIO"})
+
+
+def _get_authorized_roles(schema: dict) -> frozenset[str]:
+    """Return the authorized role set from the schema, with fallback + warning."""
+    from loguru import logger as _log  # noqa: PLC0415
+
+    raw = schema.get("authorized_roles")
+    if raw is None:
+        _log.warning(
+            "doris_schema: 'authorized_roles' key missing — "
+            "falling back to built-in default ({}). "
+            "Add 'authorized_roles' to doris_schema in tenant.config.json.",
+            ", ".join(sorted(_AUTHORIZED_ROLES_DEFAULT)),
+        )
+        return _AUTHORIZED_ROLES_DEFAULT
+    return frozenset(str(r).strip().upper() for r in raw)
+
+
+def _get_role_column(schema: dict) -> str:
+    """Return the role column identifier from the schema, with fallback + warning."""
+    from loguru import logger as _log  # noqa: PLC0415
+
+    raw = schema.get("role_column")
+    if not raw:
+        _log.warning(
+            "doris_schema: 'role_column' key missing — "
+            "falling back to 'posicion_contractual'. "
+            "Add 'role_column' to doris_schema in tenant.config.json.",
+        )
+        return "posicion_contractual"
+    return _safe_ident(raw, what="role_column")
 
 
 def _query_contrato_rows(contrato_id: str, tenant_id: str) -> list[dict]:
@@ -775,15 +878,23 @@ def _query_contrato_rows(contrato_id: str, tenant_id: str) -> list[dict]:
 
     Uses ROW_NUMBER() OVER (PARTITION BY id_credito ORDER BY creado_el DESC) to
     collapse raw duplicates — callers receive at most one row per (id_credito,
-    posicion_contractual) combination. Returns the raw rows keyed by column name.
+    role_column) combination. Returns the raw rows keyed by column name.
     May raise on connection/query failure — caller must catch.
     """
+    import json as _json  # noqa: PLC0415
+
     schema = _load_schema(tenant_id)
     db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
     debt = _safe_ident(schema["debt_table"], what="debt_table")
+    # debt_key is the credit-level partition column (same as join.debt_key).
+    debt_key = _safe_ident(schema["join"]["debt_key"], what="join.debt_key")
+    # dni_col used for per-person partition (collapse raw dupes, keep distinct parties).
+    dni_col = _safe_ident(schema["dni_column"], what="dni_column")
+    # role_column and authorized_roles from doris_schema (fallback + warning when absent).
+    role_col = _get_role_column(schema)
+    authorized_roles = _get_authorized_roles(schema)
 
-    # Read contrato_column from tenant cobranza config (default "id_contrato").
-    import json as _json  # noqa: PLC0415
+    # Read contrato_column from tenant cobranza config (default "id_credito").
     _cfg_path = _tenants_root() / tenant_id / "tenant.config.json"
     try:
         _tcfg = _json.loads(_cfg_path.read_text(encoding="utf-8"))
@@ -792,30 +903,32 @@ def _query_contrato_rows(contrato_id: str, tenant_id: str) -> list[dict]:
         _contrato_col_raw = "id_credito"
     contrato_col = _safe_ident(_contrato_col_raw, what="contrato_column")
 
+    # Build a parameterized IN-list for authorized roles (NEVER interpolate values).
+    _placeholders = ", ".join(["%s"] * len(authorized_roles))
+    _role_params = tuple(sorted(authorized_roles))
+
     # Dedup the raw 3-6x duplicates of the SAME person, but keep EVERY distinct
     # involved party (grupal credits have multiple SOLICITANTES and/or GARANTES —
-    # all of them are authorized). Partition by dni_ruc too so co-borrowers and
+    # all of them are authorized). Partition by dni_col too so co-borrowers and
     # co-guarantors are NOT collapsed (that bug fail-closed valid garantes).
     sql = (
         f"SELECT t.*\n"
         f"FROM (\n"
         f"  SELECT *,\n"
         f"    ROW_NUMBER() OVER (\n"
-        f"      PARTITION BY id_credito, posicion_contractual, dni_ruc\n"
+        f"      PARTITION BY {debt_key}, {role_col}, {dni_col}\n"
         f"      ORDER BY creado_el DESC\n"
         f"    ) AS _rn\n"
         f"  FROM {db}.{debt}\n"
         f"  WHERE {contrato_col} = %s\n"
-        f"    AND posicion_contractual IN (\n"
-        f"      'SOLICITANTE', 'GARANTE', 'FIADOR SOLIDARIO'\n"
-        f"    )\n"
+        f"    AND {role_col} IN ({_placeholders})\n"
         f") t\n"
         f"WHERE t._rn = 1"
     )
     conn = _connect(db)
     try:
         with conn.cursor() as cur:
-            cur.execute(sql, (contrato_id,))
+            cur.execute(sql, (contrato_id, *_role_params))
             return list(cur.fetchall())
     finally:
         conn.close()
@@ -850,15 +963,19 @@ def resolve_contrato(contrato_id: str, dni: str, tenant_id: str) -> dict | None:
         return None
 
     # Verify the provided DNI is an authorized party.
-    # Filter on posicion_contractual in Python as defense-in-depth (the SQL
-    # WHERE clause already restricts to authorized roles, but this layer ensures
-    # correctness even when rows come from mocks or partial queries).
+    # Filter on role_column in Python as defense-in-depth (the SQL WHERE clause
+    # already restricts to authorized roles, but this layer ensures correctness
+    # even when rows come from mocks or partial queries).
+    _schema = _load_schema(tenant_id)
+    _role_col = _get_role_column(_schema)
+    _authorized = _get_authorized_roles(_schema)
+    _dni_col = _schema.get("dni_column", "dni_ruc")
     authorized_dnis: set[str] = set()
     for row in rows:
-        role = str(row.get("posicion_contractual") or "").strip().upper()
-        if role not in _AUTHORIZED_ROLES:
+        role = str(row.get(_role_col) or "").strip().upper()
+        if role not in _authorized:
             continue
-        row_dni = _normalize_dni(str(row.get("dni_ruc") or ""))
+        row_dni = _normalize_dni(str(row.get(_dni_col) or ""))
         if row_dni:
             authorized_dnis.add(row_dni)
 

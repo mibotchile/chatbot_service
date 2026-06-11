@@ -320,7 +320,11 @@ def route_layer1(
     # ── IDC-01 (GAP-2): two-step id_contrato+DNI flow — runs before any other
     # routing so a pending DNI input is never hijacked by a keyword match. ──
     if is_id_contrato_flow_active(session_state):
-        _tenant_id = (getattr(spec, "_tenant_id", None) or "prestamype")
+        _tenant_id = getattr(spec, "_tenant_id", None)
+        if not _tenant_id:
+            raise ValueError(
+                "ResponsesSpec missing tenant_id — cannot run id_contrato flow"
+            )
         id_contrato_outcome = handle_id_contrato_step(
             text, spec, profile,
             session_state=session_state,
@@ -646,7 +650,10 @@ _PREQUESTION_INTENT = "comprobante_proxima_cuota_pregunta"
 
 _MISUNDERSTOOD_COUNT_KEY = "misunderstood_count"
 
-_VENCIDO_ONLY_INTENTS = frozenset({"compromiso_pago", "realizar_pago_vencido"})
+# Deprecated fallback — used only when spec.vencido_only_intents is empty
+# (e.g. a tenant's responses.json predates the "vencido_only" flag).
+# Prefer deriving this set from spec.vencido_only_intents (responses.json flags).
+_VENCIDO_ONLY_INTENTS_FALLBACK = frozenset({"compromiso_pago", "realizar_pago_vencido"})
 
 
 _PENDING_INTENT_KEY = "pending_intent"
@@ -753,12 +760,18 @@ def handle_vencido_only_intent(
     session_state: dict | None,
     source: str,
 ) -> RouterOutcome | None:
-    """Guard vencido-only intents (compromiso_pago, realizar_pago_vencido).
+    """Guard vencido-only intents (e.g. compromiso_pago, realizar_pago_vencido).
+
+    The set of guarded intents is derived from ``spec.vencido_only_intents``
+    (intents with ``"vencido_only": true`` in responses.json). Falls back to
+    ``_VENCIDO_ONLY_INTENTS_FALLBACK`` when the spec carries no flags (e.g.
+    older responses.json without the flag).
 
     Returns a redirect to the credit-state menu when ``credit_state != 'vencido'``.
     Returns None when the intent is not in the vencido-only set (caller continues).
     """
-    if intent not in _VENCIDO_ONLY_INTENTS:
+    vencido_only = spec.vencido_only_intents or _VENCIDO_ONLY_INTENTS_FALLBACK
+    if intent not in vencido_only:
         return None
 
     credit_state = (session_state or {}).get("credit_state", "al_dia")
@@ -821,7 +834,7 @@ def check_out_of_hours(
     profile: dict,
     *,
     source: str,
-    tenant_id: str = "prestamype",
+    tenant_id: str,
 ) -> RouterOutcome | None:
     """INF-09: Return a ``fuera_de_horario`` outcome when outside business hours.
 
@@ -869,7 +882,7 @@ def check_due_date_holiday(
     *,
     session_state: dict | None,
     source: str,
-    tenant_id: str = "prestamype",
+    tenant_id: str,
 ) -> RouterOutcome | None:
     """INF-08: Route the domingo/feriado intent based on credit_state + date check.
 
@@ -1129,7 +1142,7 @@ def handle_id_contrato_step(
     *,
     session_state: dict | None,
     source: str,
-    tenant_id: str = "prestamype",
+    tenant_id: str,
 ) -> RouterOutcome | None:
     """IDC-01: Two-step contrato+DNI identification flow.
 
@@ -1218,6 +1231,7 @@ async def handle_compromiso_date_reply(
     pool: "Any | None" = None,
     schema: str = "dev",
     conversation_id: str = "",
+    window_days: int = 2,
 ) -> RouterOutcome | None:
     """CMP-01/CMP-02: Handle the user's date reply to the compromiso_pago prompt.
 
@@ -1249,6 +1263,7 @@ async def handle_compromiso_date_reply(
         date_str=(text or "").strip(),
         amount=amount,
         profile=profile,
+        window_days=window_days,
     )
 
     # Clear the pending flag regardless of outcome

@@ -60,25 +60,40 @@ def classify_credit_state(profile: dict, window_days: int = 5) -> str:
 # ── Moratoria calculation (INF-12) ──────────────────────────────────────────
 
 
-def calcular_penalidad(saldo_capital_inicial: float, dias_overdue: int) -> float:
+def calcular_penalidad(
+    saldo_capital_inicial: float,
+    dias_overdue: int,
+    *,
+    rate_per_week: float = 0.00008,
+    rounding: str = "ceil_decimo",
+) -> float:
     """Compute the weekly overdue penalty (penalidad por mora) — inductive rule.
 
     Formula (confirmed Ricky 2026-06-10):
         semana = max(1, ceil(dias_overdue / 7))
-        raw    = saldo_capital_inicial * 0.00008 * semana   # 0.008% per week
-        result = ceil(raw * 10) / 10                        # ceil to nearest 0.1 sol
+        raw    = saldo_capital_inicial * rate_per_week * semana
+        result = ceil(raw * 10) / 10   (when rounding == "ceil_decimo")
 
-    No cap on semana — sem1=0.008%, sem2=0.016%, sem3=0.024%, … indefinitely.
+    No cap on semana — sem1, sem2, sem3, … indefinitely.
 
     Args:
         saldo_capital_inicial: outstanding principal balance (saldo pendiente).
         dias_overdue: days the credit is overdue (>= 0).
+        rate_per_week: weekly penalty rate (default 0.00008 = 0.008%).
+            Read from ``tenant.config.json → cobranza.penalidad_rate_per_week``.
+        rounding: rounding strategy (default "ceil_decimo" = ceil to nearest 0.1).
+            Unknown value raises ValueError at call time.
 
     Returns:
-        Penalty amount in soles, ceiled to nearest tenth (e.g. 0.56 → 0.60).
+        Penalty amount ceiled to nearest tenth (e.g. 0.56 → 0.60).
+
+    Raises:
+        ValueError: when ``rounding`` is not a known strategy.
     """
+    if rounding != "ceil_decimo":
+        raise ValueError(f"Unknown penalidad rounding strategy: {rounding!r}")
     semana = max(1, math.ceil(dias_overdue / 7))
-    raw = saldo_capital_inicial * 0.00008 * semana
+    raw = saldo_capital_inicial * rate_per_week * semana
     return math.ceil(raw * 10) / 10
 
 

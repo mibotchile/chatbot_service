@@ -51,6 +51,20 @@
       "Atención clara, sin letra chica"
     ]
   },
+  "cobranza": {
+    "proxima_vencer_window_days": 5,
+    "penalidad_rate_per_week": 0.00008,
+    "penalidad_rounding": "ceil_decimo",
+    "commitment_window_days": 2,
+    "credit_state_labels": {
+      "al_dia": "Al día",
+      "por_vencer": "Próximo a vencer",
+      "vencido": "Vencido"
+    },
+    "horario": {
+      "timezone": "America/Lima"
+    }
+  },
   "publishable_keys": [
     {"key": "pk_live_au4T89W4nJn1poZzag0AqmK48xDlqcfA", "status": "current", "added": "2026-06-04"}
   ],

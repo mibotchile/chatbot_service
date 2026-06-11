@@ -294,6 +294,26 @@ class SoreliaAgent:
             session_state["credit_state"] = _cs
             profile["credit_state"] = _cs
 
+            # Thread penalidad config into profile so build_moratoria_summary
+            # and shared/templates.py can read them without re-loading tenant config.
+            # Falls back to engine constants when key is absent (old prod configs).
+            if "penalidad_rate_per_week" not in profile:
+                if "penalidad_rate_per_week" in cobranza_cfg:
+                    profile["penalidad_rate_per_week"] = cobranza_cfg["penalidad_rate_per_week"]
+                    profile["penalidad_rounding"] = cobranza_cfg.get(
+                        "penalidad_rounding", "ceil_decimo"
+                    )
+                else:
+                    logger.warning(
+                        "cobranza.penalidad_rate_per_week missing for tenant '{}'; "
+                        "falling back to engine default 0.00008",
+                        getattr(getattr(self, "tenant", None), "slug", "unknown"),
+                    )
+                    # Set the fallbacks here so tools.py/templates.py see a value
+                    # and don't emit a second warning for the same request.
+                    profile["penalidad_rate_per_week"] = 0.00008
+                    profile["penalidad_rounding"] = "ceil_decimo"
+
             # INF-12 (GAP-1): enrich vencido profile with moratoria fields so
             # calcular_penalidad / calcular_interes_compensatorio can fire in the
             # overdue display. Fetched once per session (skip if already present).
@@ -344,6 +364,8 @@ class SoreliaAgent:
                     except Exception:
                         pass
                 _conv_id = getattr(self.tool_registry, "_conversation_id", "") or ""
+                _cobranza_cfg2 = getattr(getattr(self, "tenant", None), "cobranza", {}) or {}
+                _commitment_window = _cobranza_cfg2.get("commitment_window_days", 2)
                 commitment_outcome = await responses_engine.handle_compromiso_date_reply(
                     text, spec, prof,
                     session_state=session_state,
@@ -351,6 +373,7 @@ class SoreliaAgent:
                     pool=_pool,
                     schema=_schema or "dev",
                     conversation_id=_conv_id,
+                    window_days=_commitment_window,
                 )
                 if commitment_outcome is not None:
                     return await self._canned_result(

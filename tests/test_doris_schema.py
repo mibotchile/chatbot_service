@@ -302,3 +302,482 @@ def test_validate_comprobante_uses_mapped_fields(monkeypatch):
 
     abono = dds.validate_comprobante("44218903", cci="x", monto=100.0, nro_operacion="OP-3", tenant_id=TENANT)
     assert abono["tipo"] == "abono"
+
+
+# ── role_column / authorized_roles from config ───────────────────────────────
+
+
+def test_get_role_column_reads_from_schema():
+    """role_column is read from doris_schema config."""
+    schema = _prestamype_schema()
+    assert schema["role_column"] == "posicion_contractual"
+    result = dds._get_role_column(schema)
+    assert result == "posicion_contractual"
+
+
+def test_get_role_column_fallback_when_missing():
+    """Missing role_column triggers a loguru warning and falls back to 'posicion_contractual'."""
+    from loguru import logger
+
+    warnings: list[str] = []
+
+    def _sink(msg):
+        if msg.record["level"].name == "WARNING":
+            warnings.append(msg.record["message"])
+
+    sid = logger.add(_sink, level="WARNING", format="{message}")
+    try:
+        schema = {k: v for k, v in _prestamype_schema().items() if k != "role_column"}
+        result = dds._get_role_column(schema)
+    finally:
+        logger.remove(sid)
+
+    assert result == "posicion_contractual"
+    assert any("role_column" in w and "falling back" in w for w in warnings)
+
+
+def test_get_authorized_roles_reads_from_schema():
+    """authorized_roles is read from doris_schema config and returned as frozenset."""
+    schema = _prestamype_schema()
+    roles = dds._get_authorized_roles(schema)
+    assert roles == frozenset({"SOLICITANTE", "GARANTE", "FIADOR SOLIDARIO"})
+
+
+def test_get_authorized_roles_fallback_when_missing():
+    """Missing authorized_roles triggers a loguru warning and returns the built-in defaults."""
+    from loguru import logger
+
+    warnings: list[str] = []
+
+    def _sink(msg):
+        if msg.record["level"].name == "WARNING":
+            warnings.append(msg.record["message"])
+
+    sid = logger.add(_sink, level="WARNING", format="{message}")
+    try:
+        schema = {k: v for k, v in _prestamype_schema().items() if k != "authorized_roles"}
+        roles = dds._get_authorized_roles(schema)
+    finally:
+        logger.remove(sid)
+
+    assert roles == dds._AUTHORIZED_ROLES_DEFAULT
+    assert any("authorized_roles" in w and "falling back" in w for w in warnings)
+
+
+def test_get_authorized_roles_custom_set():
+    """A custom authorized_roles list produces the expected frozenset (uppercased)."""
+    schema = dict(_prestamype_schema())
+    schema["authorized_roles"] = ["titular", "aval"]
+    roles = dds._get_authorized_roles(schema)
+    assert roles == frozenset({"TITULAR", "AVAL"})
+
+
+# ── cronograma_columns SQL mapping ───────────────────────────────────────────
+
+
+def test_get_cronograma_sql_uses_configured_columns(monkeypatch):
+    """get_cronograma builds SQL with column names from cronograma_columns config."""
+
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params):
+            self._sql = sql
+            self._params = params
+
+        def fetchall(self):
+            return []
+
+    _cur = _Cursor()
+
+    class _Conn:
+        def cursor(self):
+            return _cur
+
+        def close(self):
+            pass
+
+    dds._load_schema.cache_clear()
+    monkeypatch.setattr(dds, "_connect", lambda db: _Conn())
+
+    dds.get_cronograma("P02137", tenant_id=TENANT)
+
+    sql = _cur._sql
+    # Configured column names must appear in the SQL.
+    assert "nro_cuotas" in sql          # cronograma_columns.n_cuota
+    assert "fecha_de_pago_esperada_original" in sql  # cronograma_columns.fecha_venc
+    assert "cuota_esperada_mensual" in sql            # cronograma_columns.monto
+    assert "fecha_de_pago_del_cliente" in sql         # cronograma_columns.fecha_pago
+    # Aliased to canonical names the caller uses.
+    assert "AS n_cuota" in sql
+    assert "AS fecha_venc" in sql
+    assert "AS monto" in sql
+    assert "AS fecha_pago_cliente" in sql  # row.get("fecha_pago_cliente") depends on it
+    # account_id is parameterized.
+    assert "%s" in sql
+    assert "P02137" not in sql
+
+
+def test_get_cronograma_sql_custom_columns(monkeypatch):
+    """Custom cronograma_columns produce different SQL identifiers."""
+
+    captured = {}
+
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params):
+            captured["sql"] = sql
+
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        def close(self):
+            pass
+
+    # Patch _load_schema to return a schema with custom column names.
+    original_schema = _prestamype_schema()
+    custom_schema = dict(original_schema)
+    custom_schema["cronograma_columns"] = {
+        "n_cuota": "numero_cuota",
+        "fecha_venc": "fecha_vencimiento",
+        "monto": "monto_cuota",
+        "fecha_pago": "fecha_pago_real",
+    }
+    dds._load_schema.cache_clear()
+    monkeypatch.setattr(dds, "_load_schema", lambda tid: custom_schema)
+    monkeypatch.setattr(dds, "_connect", lambda db: _Conn())
+
+    dds.get_cronograma("P02137", tenant_id=TENANT)
+
+    sql = captured["sql"]
+    assert "numero_cuota" in sql
+    assert "fecha_vencimiento" in sql
+    assert "monto_cuota" in sql
+    assert "fecha_pago_real" in sql
+    # Old hardcoded names must NOT appear.
+    assert "nro_cuotas" not in sql
+    assert "fecha_de_pago_esperada_original" not in sql
+
+
+def test_get_cronograma_fallback_warns_when_columns_missing(monkeypatch):
+    """Missing cronograma_columns emits a loguru warning and uses built-in defaults."""
+    from loguru import logger
+
+    original_schema = _prestamype_schema()
+    schema_no_cron = {k: v for k, v in original_schema.items() if k != "cronograma_columns"}
+
+    captured: dict = {}
+    warnings: list[str] = []
+
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params):
+            captured["sql"] = sql
+
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        def close(self):
+            pass
+
+    def _sink(msg):
+        if msg.record["level"].name == "WARNING":
+            warnings.append(msg.record["message"])
+
+    sid = logger.add(_sink, level="WARNING", format="{message}")
+    try:
+        dds._load_schema.cache_clear()
+        dds._warned_missing_cronograma_cols.clear()  # reset once-per-tenant guard
+        monkeypatch.setattr(dds, "_load_schema", lambda tid: schema_no_cron)
+        monkeypatch.setattr(dds, "_connect", lambda db: _Conn())
+        dds.get_cronograma("P02137", tenant_id=TENANT)
+        # Second call must NOT warn again (once-per-tenant guard).
+        dds.get_cronograma("P02137", tenant_id=TENANT)
+    finally:
+        logger.remove(sid)
+        dds._warned_missing_cronograma_cols.clear()
+
+    cron_warnings = [w for w in warnings if "cronograma_columns" in w]
+    assert len(cron_warnings) == 1
+    assert "falling back" in cron_warnings[0]
+    # Fallback defaults must be present in SQL.
+    assert "nro_cuotas" in captured["sql"]
+
+
+# ── moratoria_columns SQL mapping ────────────────────────────────────────────
+
+
+def test_get_moratoria_fields_sql_uses_configured_columns(monkeypatch):
+    """get_moratoria_fields builds SQL with column names from moratoria_columns config."""
+
+    captured = {}
+
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params):
+            captured["sql"] = sql
+
+        def fetchone(self):
+            return None  # triggers _empty return path — we only care about the SQL
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        def close(self):
+            pass
+
+    dds._load_schema.cache_clear()
+    monkeypatch.setattr(dds, "_connect", lambda db: _Conn())
+
+    dds.get_moratoria_fields("P02137", tenant_id=TENANT)
+
+    sql = captured["sql"]
+    # Configured column names from moratoria_columns and cronograma_columns.
+    assert "amortizacion_esperada_original" in sql   # moratoria_columns.amortizacion_cuota
+    assert "tasa_de_interes" in sql                  # moratoria_columns.tasa_interes
+    # cronograma_columns.fecha_pago used in IS NULL filter
+    assert "fecha_de_pago_del_cliente" in sql
+    assert "nro_cuotas" in sql                       # cronograma_columns.n_cuota (ORDER BY)
+    # account_id is parameterized (appears twice — once for DISTINCT subquery, once for WHERE).
+    assert sql.count("%s") == 2
+    assert "P02137" not in sql
+
+
+def test_get_moratoria_fields_fallback_warns_when_columns_missing(monkeypatch):
+    """Missing moratoria_columns emits a loguru warning and uses built-in defaults."""
+    from loguru import logger
+
+    original_schema = _prestamype_schema()
+    schema_no_mort = {k: v for k, v in original_schema.items() if k != "moratoria_columns"}
+
+    captured: dict = {}
+    warnings: list[str] = []
+
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params):
+            captured["sql"] = sql
+
+        def fetchone(self):
+            return None
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        def close(self):
+            pass
+
+    def _sink(msg):
+        if msg.record["level"].name == "WARNING":
+            warnings.append(msg.record["message"])
+
+    sid = logger.add(_sink, level="WARNING", format="{message}")
+    try:
+        dds._load_schema.cache_clear()
+        monkeypatch.setattr(dds, "_load_schema", lambda tid: schema_no_mort)
+        monkeypatch.setattr(dds, "_connect", lambda db: _Conn())
+        dds.get_moratoria_fields("P02137", tenant_id=TENANT)
+    finally:
+        logger.remove(sid)
+
+    assert any("moratoria_columns" in w and "falling back" in w for w in warnings)
+    assert "amortizacion_esperada_original" in captured["sql"]
+
+
+# ── _query_contrato_rows uses config role_column + parameterized IN-list ─────
+
+
+def test_query_contrato_rows_sql_uses_role_column_from_config(monkeypatch):
+    """_query_contrato_rows SQL uses role_column from config (not hardcoded)."""
+
+    captured = {}
+
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params):
+            captured["sql"] = sql
+            captured["params"] = params
+
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        def close(self):
+            pass
+
+    dds._load_schema.cache_clear()
+    monkeypatch.setattr(dds, "_connect", lambda db: _Conn())
+
+    dds._query_contrato_rows("C001", tenant_id=TENANT)
+
+    sql = captured["sql"]
+    params = captured["params"]
+
+    # role_column from config must appear in PARTITION BY and WHERE.
+    assert "posicion_contractual" in sql
+    # Roles must be parameterized — NOT interpolated as string literals in SQL.
+    assert "SOLICITANTE" not in sql
+    assert "GARANTE" not in sql
+    assert "FIADOR SOLIDARIO" not in sql
+    # Role values appear as bound params (after contrato_id).
+    assert "SOLICITANTE" in params
+    assert "GARANTE" in params
+    assert "FIADOR SOLIDARIO" in params
+    # contrato_id is the first param.
+    assert params[0] == "C001"
+    # %s placeholders for all roles.
+    assert sql.count("%s") == 1 + 3  # contrato_id + 3 roles
+
+
+def test_query_contrato_rows_custom_role_column_and_roles(monkeypatch):
+    """Custom role_column and authorized_roles produce different SQL + params."""
+
+    captured = {}
+
+    class _Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params):
+            captured["sql"] = sql
+            captured["params"] = params
+
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        def close(self):
+            pass
+
+    original_schema = _prestamype_schema()
+    custom_schema = dict(original_schema)
+    custom_schema["role_column"] = "tipo_vinculo"
+    custom_schema["authorized_roles"] = ["TITULAR", "AVAL"]
+
+    dds._load_schema.cache_clear()
+    monkeypatch.setattr(dds, "_load_schema", lambda tid: custom_schema)
+    monkeypatch.setattr(dds, "_connect", lambda db: _Conn())
+
+    dds._query_contrato_rows("C002", tenant_id=TENANT)
+
+    sql = captured["sql"]
+    params = captured["params"]
+
+    # Custom role_column.
+    assert "tipo_vinculo" in sql
+    assert "posicion_contractual" not in sql
+    # Custom roles as params, not literals.
+    assert "TITULAR" not in sql
+    assert "AVAL" not in sql
+    assert "TITULAR" in params
+    assert "AVAL" in params
+    assert params[0] == "C002"
+    assert sql.count("%s") == 1 + 2  # contrato_id + 2 roles
+
+
+# ── profile SQL aggregates use cronograma_columns ────────────────────────────
+
+
+def test_build_sql_aggregates_use_cronograma_columns():
+    """days_overdue + pagos_agg aggregates use column names from cronograma_columns."""
+    schema = _prestamype_schema()
+    sql, _db = dds._build_sql(schema)
+
+    # days_overdue derivation uses cronograma_columns.fecha_venc.
+    assert "GREATEST(DATEDIFF(CURDATE(), p.fecha_de_pago_esperada_original), 0)" in sql
+    # Aggregate block uses fecha_pago / fecha_venc / monto / n_cuota from config.
+    assert "fecha_de_pago_del_cliente IS NULL" in sql
+    assert "THEN cuota_esperada_mensual ELSE 0 END) AS monto_vencido" in sql
+    assert "MAX(fecha_de_pago_esperada_original) AS fecha_venc_contrato" in sql
+    assert "MIN(fecha_de_pago_esperada_original) AS fecha_inicio_prestamo" in sql
+    assert "MAX(nro_cuotas) AS plazo" in sql
+
+
+def test_build_sql_aggregates_custom_cronograma_columns():
+    """Custom cronograma_columns change the aggregate SQL identifiers."""
+    schema = json.loads(json.dumps(_prestamype_schema()))  # deep copy
+    schema["cronograma_columns"] = {
+        "n_cuota": "numero_cuota",
+        "fecha_venc": "fecha_vencimiento",
+        "monto": "monto_cuota",
+        "fecha_pago": "fecha_pago_real",
+    }
+    sql, _db = dds._build_sql(schema)
+
+    assert "GREATEST(DATEDIFF(CURDATE(), p.fecha_vencimiento), 0)" in sql
+    assert "SUM(CASE WHEN fecha_pago_real IS NULL" in sql
+    assert "THEN monto_cuota ELSE 0 END) AS monto_vencido" in sql
+    assert "MAX(fecha_vencimiento) AS fecha_venc_contrato" in sql
+    assert "MAX(numero_cuota) AS plazo" in sql
+    # Derived/aggregate fragments must not carry the old hardcoded names.
+    # (pagos_selection.order_by still references raw columns verbatim — that is
+    # its own tenant-owned config block, not a hardcoded literal in code.)
+    assert "MAX(nro_cuotas)" not in sql
+    assert "SUM(CASE WHEN fecha_de_pago_del_cliente" not in sql
+    assert "GREATEST(DATEDIFF(CURDATE(), p.fecha_de_pago_esperada_original" not in sql
+
+
+def test_build_sql_aggregates_fallback_identical_when_cronograma_missing():
+    """Regression: schema WITHOUT cronograma_columns builds string-identical SQL
+    (fallback defaults == prestamype's configured values)."""
+    schema_with = _prestamype_schema()
+    schema_without = {
+        k: v for k, v in _prestamype_schema().items() if k != "cronograma_columns"
+    }
+
+    dds._warned_missing_cronograma_cols.clear()
+    try:
+        sql_with, _ = dds._build_sql(schema_with)
+        sql_without, _ = dds._build_sql(schema_without)
+    finally:
+        dds._warned_missing_cronograma_cols.clear()
+
+    assert sql_with == sql_without

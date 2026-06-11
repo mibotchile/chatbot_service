@@ -218,4 +218,4 @@ def prestamype_spec():
     root = Path(__file__).resolve().parent.parent
     path = root / "tenants" / "prestamype" / "responses.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    return ResponsesSpec(data)
+    return ResponsesSpec(data, _tenant_id="prestamype")

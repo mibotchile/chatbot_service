@@ -19,6 +19,9 @@ class ResponsesSpec:
 
     intents: dict[str, dict] = field(default_factory=dict)
     response_mode: str = "llm"
+    # Tenant identifier — set by from_dir() so engine code can read tenant_id
+    # from the spec without a separate lookup.
+    _tenant_id: str = field(default="", repr=False)
     # Data-driven SENDABLE info types (envío de info bajo demanda). Keyed by tipo
     # (e.g. estado_cuenta), each with per-channel copy (correo/whatsapp). Lives in
     # responses.json under the reserved ``_deliverables`` key (ignored as an
@@ -50,21 +53,40 @@ class ResponsesSpec:
     def has_intent(self, intent: str) -> bool:
         return intent in self.intents
 
+    @property
+    def vencido_only_intents(self) -> frozenset[str]:
+        """Set of intent keys that carry ``"vencido_only": true`` in responses.json.
+
+        Used by ``handle_vencido_only_intent`` to guard intents that only make
+        sense for overdue borrowers. Derived from the spec so no tenant intent
+        names are hardcoded in the engine.
+        """
+        return frozenset(
+            key
+            for key, cfg in self.intents.items()
+            if (cfg or {}).get("vencido_only") is True
+        )
+
     @classmethod
     def from_dir(cls, tenant_dir: str | Path, response_mode: str = "llm") -> ResponsesSpec:
         """Load ``responses.json`` from a tenant directory. Missing → empty spec.
 
         A missing file is the normal "tenant uses pure LLM" case — never an
         error. A malformed file logs a warning and degrades to empty (LLM).
+
+        Sets ``_tenant_id`` from the directory name so engine code can reference
+        the tenant without a separate lookup.
         """
-        path = Path(tenant_dir) / "responses.json"
+        tenant_dir = Path(tenant_dir)
+        tenant_id = tenant_dir.name  # e.g. "prestamype" from ".../tenants/prestamype"
+        path = tenant_dir / "responses.json"
         if not path.exists():
-            return cls(intents={}, response_mode=response_mode or "llm")
+            return cls(intents={}, response_mode=response_mode or "llm", _tenant_id=tenant_id)
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             logger.warning("responses.json malformed for {}; falling back to llm", tenant_dir)
-            return cls(intents={}, response_mode=response_mode or "llm")
+            return cls(intents={}, response_mode=response_mode or "llm", _tenant_id=tenant_id)
         # Allow an in-file ``response_mode`` override; the tenant.config flag wins
         # when provided (passed in), else the file's own, else llm.
         file_mode = data.pop("_response_mode", None)
@@ -76,4 +98,5 @@ class ResponsesSpec:
             response_mode=(response_mode or file_mode or "llm"),
             deliverables=deliverables if isinstance(deliverables, dict) else {},
             chips=chips if isinstance(chips, dict) else {},
+            _tenant_id=tenant_id,
         )
