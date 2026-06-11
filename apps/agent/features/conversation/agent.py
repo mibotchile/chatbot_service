@@ -310,6 +310,48 @@ class SoreliaAgent:
                 except Exception:
                     logger.opt(exception=True).debug("get_moratoria_fields failed (non-blocking)")
 
+        # ── CMP-01: compromiso_pago date-reply gate (async, pool-aware) ──
+        # When the bot just asked "¿En qué fecha realizarás el pago?" the next
+        # user message IS the date. Intercept it before the keyword router so
+        # "2026-06-15" or "15/06/2026" doesn't hit an unrelated keyword.
+        if (session_state or {}).get("compromiso_pago_pending_date") and verified:
+            try:
+                _pool = getattr(
+                    getattr(getattr(self, "tool_registry", None), "_store", None),
+                    "db_pool",
+                    None,
+                )
+                _schema = getattr(
+                    getattr(getattr(self, "tool_registry", None), "_store", None),
+                    "db_schema",
+                    "dev",
+                )
+                # Fallback: grab from wiring module store singleton
+                if _pool is None:
+                    try:
+                        from api.wiring import store as _wiring_store  # noqa: PLC0415
+                        _pool = getattr(_wiring_store, "db_pool", None)
+                        _schema = getattr(_wiring_store, "db_schema", "dev")
+                    except Exception:
+                        pass
+                _conv_id = getattr(self.tool_registry, "_conversation_id", "") or ""
+                commitment_outcome = await responses_engine.handle_compromiso_date_reply(
+                    text, spec, prof,
+                    session_state=session_state,
+                    source=responses_engine.SOURCE_KEYWORD,
+                    pool=_pool,
+                    schema=_schema or "dev",
+                    conversation_id=_conv_id,
+                )
+                if commitment_outcome is not None:
+                    return await self._canned_result(
+                        commitment_outcome, spec, session_state=session_state
+                    )
+            except Exception:
+                logger.opt(exception=True).warning(
+                    "compromiso_pago date-reply handler failed (non-blocking)"
+                )
+
         outcome = responses_engine.route_layer1(
             text, spec, prof, session_state=session_state, identity_verified=verified,
         )
@@ -460,6 +502,7 @@ class SoreliaAgent:
         # classify_tipo returns "abono" for partial payments (< cuota, not cancellation).
         if tool_result.get("tipo") == "abono" and session_state is not None:
             session_state["pending_intent"] = "compromiso_pago"
+            session_state["compromiso_pago_pending_date"] = True
             logger.info("abono detected after comprobante → chaining to compromiso_pago")
 
         # Delivery-style intents (envío de info bajo demanda): the tool builds the
@@ -484,6 +527,10 @@ class SoreliaAgent:
             if pending and pending != intent:
                 ans = responses_engine.render_intent(spec, pending, profile, source=outcome.source)
                 if ans and ans.text:
+                    # CMP-01: when the pending intent is compromiso_pago, arm the
+                    # date-reply gate so the next turn is intercepted for the date.
+                    if pending == "compromiso_pago" and session_state is not None:
+                        session_state["compromiso_pago_pending_date"] = True
                     confirm_tpl = cfg.get("confirm")
                     ack = responses_engine.render_template(confirm_tpl, profile) if confirm_tpl else ""
                     return f"{ack}\n\n{ans.text}".strip()

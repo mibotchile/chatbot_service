@@ -504,12 +504,16 @@
   "compromiso_pago": {
     "mode": "verbatim",
     "description": "El usuario vencido quiere registrar un compromiso de pago para una fecha próxima.",
+    "capability": "compromiso",
     "requires_identity": true,
     "keywords": [
       "compromiso de pago",
       "me comprometo a pagar",
       "voy a pagar el"
     ],
+    "set_session": {
+      "compromiso_pago_pending_date": true
+    },
     "template": "¿En qué fecha realizarás el pago? (formato DD/MM/AAAA o AAAA-MM-DD)"
   },
   "consulta_deuda_total": {
@@ -737,5 +741,12 @@
       "ya deposite"
     ],
     "template": "Perfecto. Para registrar tu pago, por favor sube el comprobante. ¿Tienes el comprobante a la mano?"
+  },
+  "compromiso_pago_confirmado": {
+    "mode": "verbatim",
+    "description": "Confirmación de compromiso de pago registrado exitosamente (CMP-02).",
+    "requires_identity": true,
+    "classifiable": false,
+    "template": "Registramos tu compromiso de pago para el {commitment_date}. Te enviaremos un recordatorio ese día."
   }
 }

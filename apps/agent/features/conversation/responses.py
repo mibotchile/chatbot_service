@@ -52,7 +52,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -1183,3 +1183,88 @@ def arm_id_contrato_flow(session_state: dict | None, contrato_id: str) -> None:
     """Store the contrato_id and await the DNI step (arms the two-step flow)."""
     if session_state is not None:
         session_state[_ID_CONTRATO_PENDING_KEY] = contrato_id
+
+
+# ── CMP-01/CMP-02: Bot-owned payment commitment ───────────────────────────────
+
+_COMPROMISO_DATE_PENDING_KEY = "compromiso_pago_pending_date"
+
+
+async def handle_compromiso_date_reply(
+    text: str,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+    pool: "Any | None" = None,
+    schema: str = "dev",
+    conversation_id: str = "",
+) -> RouterOutcome | None:
+    """CMP-01/CMP-02: Handle the user's date reply to the compromiso_pago prompt.
+
+    Flow:
+      1. Called only when session_state["compromiso_pago_pending_date"] is True
+         (set by _handle_compromiso_pending in route_layer1).
+      2. Parses the date from text.
+      3. Calls register_commitment — synchronous user-facing action (awaited).
+      4. On success → emit confirmation (CMP-02) and return to vencido menu.
+         On failure (out-of-window, unparseable, DB error) → escalate to asesor.
+
+    Returns None when the compromiso_pago_pending_date flag is not active
+    (caller continues normal routing).
+    """
+    if not (session_state or {}).get(_COMPROMISO_DATE_PENDING_KEY):
+        return None
+
+    from features.cobranza.commitment import register_commitment  # noqa: PLC0415
+
+    amount: float = float(
+        profile.get("saldo_por_cancelar")
+        or profile.get("monto_cuota")
+        or profile.get("cuota")
+        or 0.0
+    )
+
+    result = await register_commitment(
+        pool, schema, conversation_id,
+        date_str=(text or "").strip(),
+        amount=amount,
+        profile=profile,
+    )
+
+    # Clear the pending flag regardless of outcome
+    session_state.pop(_COMPROMISO_DATE_PENDING_KEY, None)
+
+    if result.escalate:
+        # Escalate to asesor (beyond window, unparseable, past, or DB failure)
+        escalate_result = render_intent(spec, "derivar_asesor", profile, source=source)
+        escalate_text = escalate_result.text if escalate_result else (
+            "Te derivo con un asesor de PrestamYpe para coordinar tu compromiso de pago."
+        )
+        return RouterOutcome(
+            handled=True,
+            text=escalate_text,
+            intent="derivar_asesor",
+            source=source,
+            run_tool=intent_tool(spec, "derivar_asesor"),
+        )
+
+    # CMP-02: success confirmation
+    commitment_date_str = (
+        result.commitment_date.strftime("%d/%m/%Y") if result.commitment_date else text.strip()
+    )
+    confirm_cfg = spec.intents.get("compromiso_pago_confirmado") or {}
+    confirm_tpl = confirm_cfg.get("template") or (
+        "Registramos tu compromiso de pago para el {commitment_date}. "
+        "Te enviaremos un recordatorio ese día."
+    )
+    rendered_text = confirm_tpl.replace("{commitment_date}", commitment_date_str)
+
+    _reset_misunderstood(session_state)
+    return RouterOutcome(
+        handled=True,
+        text=rendered_text,
+        intent="compromiso_pago_confirmado",
+        source=source,
+    )
