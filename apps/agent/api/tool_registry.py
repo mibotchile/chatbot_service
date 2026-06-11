@@ -30,6 +30,7 @@ from features.cobranza.debt_source import resolve_dni
 
 _DNI_CLEAN_RE = re.compile(r"\D")
 from features.cobranza.tools import (
+    consultar_cronograma,
     consultar_deuda,
     emitir_certificado_no_adeudo,
     enviar_documento,
@@ -44,6 +45,7 @@ from features.comprobantes.validator import validar_comprobante
 # explicit gated_tools param (e.g. unit tests, backward-compat callers).
 # identificar_cliente is NOT here — it is the mechanism that OPENS the gate.
 _DEFAULT_GATED_TOOLS: frozenset[str] = frozenset({
+    "consultar_cronograma",
     "consultar_deuda",
     "registrar_reclamo",
     "emitir_certificado_no_adeudo",
@@ -136,6 +138,7 @@ class ToolRegistry:
             "identificar_cliente": self._identificar_cliente,
             # cobranza domain tools (gated)
             "consultar_deuda": self._consultar_deuda,
+            "consultar_cronograma": self._consultar_cronograma,
             "registrar_reclamo": self._registrar_reclamo,
             "emitir_certificado_no_adeudo": self._emitir_certificado_no_adeudo,
             "enviar_documento": self._enviar_documento,
@@ -284,6 +287,9 @@ class ToolRegistry:
 
     async def _consultar_deuda(self) -> dict:
         return await consultar_deuda(self._debt_context)
+
+    async def _consultar_cronograma(self) -> dict:
+        return await consultar_cronograma(self._debt_context, self._tenant_id)
 
     async def _registrar_reclamo(self, tipo: str, descripcion: str) -> dict:
         return await registrar_reclamo(self._debt_context, tipo, descripcion)

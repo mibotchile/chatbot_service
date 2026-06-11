@@ -264,7 +264,10 @@ async def consultar_cronograma(profile: dict, tenant_id: str) -> dict:
     from features.cobranza.doris_debt_source import get_cronograma  # noqa: PLC0415
 
     account_id = profile.get("account_id") or ""
-    cronograma = get_cronograma(account_id, tenant_id)
+    try:
+        cronograma = get_cronograma(account_id, tenant_id)
+    except Exception:  # noqa: BLE001 — Doris/schema unavailable → escalate, never crash
+        cronograma = []
     if not cronograma:
         return {
             "escalate": True,
@@ -274,10 +277,22 @@ async def consultar_cronograma(profile: dict, tenant_id: str) -> dict:
                 "Te derivo con un asesor."
             ),
         }
+    # INF-01: build a customer-facing message listing the installments (capped).
+    sym = profile.get("currency_symbol", "S/")
+    shown = cronograma[:12]
+    lines = [
+        f"Cuota {c.get('n_cuota')}: vence {c.get('fecha_venc')} — {_fmt(c.get('monto') or 0, sym)}"
+        + (f" ({c.get('estado')})" if c.get("estado") else "")
+        for c in shown
+    ]
+    message = "Tu cronograma de pagos:\n" + "\n".join(lines)
+    if len(cronograma) > 12:
+        message += f"\n…y {len(cronograma) - 12} cuota(s) más."
     return {
         "escalate": False,
         "account_id": account_id,
         "cronograma": cronograma,
+        "message": message,
     }
 
 

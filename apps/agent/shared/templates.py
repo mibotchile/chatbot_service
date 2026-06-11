@@ -58,6 +58,26 @@ def build_variables(profile: dict) -> dict[str, str]:
     cuotas_vencidas = int(profile.get("cuotas_vencidas") or 0)
     _cp = profile.get("cuotas_pagadas")
     _cpe = profile.get("cuotas_pendientes")
+    # Moratoria (INF-12): compute penalidad + interés when vencido and the
+    # profile carries the fields (enriched on vencido). Empty string otherwise.
+    _pen_fmt, _int_fmt = "", ""
+    _saldo_ci = profile.get("saldo_capital_inicial") or profile.get("saldo_por_cancelar")
+    _dov = int(profile.get("days_overdue") or 0)
+    if _saldo_ci is not None and _dov > 0:
+        try:
+            from features.cobranza.scenario import (  # noqa: PLC0415
+                calcular_interes_compensatorio,
+                calcular_penalidad,
+            )
+            _pen_fmt = _money(calcular_penalidad(float(_saldo_ci), _dov), sym)
+            _am = profile.get("amortizacion_cuota")
+            _ta = profile.get("tasa_interes_mensual")
+            if _am is not None and _ta is not None:
+                _int_fmt = _money(
+                    calcular_interes_compensatorio(float(_am), float(_ta), _dov), sym
+                )
+        except Exception:  # noqa: BLE001
+            pass
     return {
         "nombre": first_name,
         "nombre_completo": _title(profile.get("borrower_name", "")),
@@ -79,6 +99,9 @@ def build_variables(profile: dict) -> dict[str, str]:
         "cuotas_pagadas": "" if _cp is None else str(_cp),
         "cuotas_pendientes": "" if _cpe is None else str(_cpe),
         "fecha_venc_contrato": profile.get("fecha_venc_contrato") or "",
+        # Moratoria (INF-12) — empty unless vencido with the required fields.
+        "penalidad": _pen_fmt,
+        "interes_compensatorio": _int_fmt,
     }
 
 
