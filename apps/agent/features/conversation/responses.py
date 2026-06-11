@@ -551,6 +551,127 @@ def resolve_chips(
     return None
 
 
+_MISUNDERSTOOD_COUNT_KEY = "misunderstood_count"
+
+_VENCIDO_ONLY_INTENTS = frozenset({"compromiso_pago", "realizar_pago_vencido"})
+
+
+def handle_consulta_deuda(
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome | None:
+    """SCR-02: Render ``consulta_deuda`` with internal branching on ``credit_state``.
+
+    Reads ``session_state["credit_state"]`` to choose the branch copy from the
+    spec's ``credit_state_branches`` map inside the ``consulta_deuda`` intent.
+    Returns None when the spec carries no ``consulta_deuda`` intent (tenant opt-out).
+    """
+    cfg = spec.intents.get("consulta_deuda")
+    if not cfg:
+        return None
+
+    credit_state = (session_state or {}).get("credit_state", "al_dia")
+    branches = cfg.get("credit_state_branches") or {}
+    branch_cfg = branches.get(credit_state) or {}
+
+    # Render the branch template
+    branch_template = branch_cfg.get("template") or cfg.get("template", "")
+    from shared.templates import render_template  # noqa: PLC0415
+    text = render_template(branch_template, profile).strip()
+
+    # Append options list from the branch (for display)
+    options = branch_cfg.get("options") or []
+    if options and text:
+        opts_text = "\n".join(f"• {o['label']}" for o in options if o.get("label"))
+        if opts_text:
+            text = f"{text}\n{opts_text}"
+
+    if not text:
+        return None
+
+    _reset_misunderstood(session_state)
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="consulta_deuda",
+        source=source,
+        run_tool=intent_tool(spec, "consulta_deuda"),
+    )
+
+
+def handle_vencido_only_intent(
+    intent: str,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome | None:
+    """Guard vencido-only intents (compromiso_pago, realizar_pago_vencido).
+
+    Returns a redirect to the credit-state menu when ``credit_state != 'vencido'``.
+    Returns None when the intent is not in the vencido-only set (caller continues).
+    """
+    if intent not in _VENCIDO_ONLY_INTENTS:
+        return None
+
+    credit_state = (session_state or {}).get("credit_state", "al_dia")
+    if credit_state != "vencido":
+        # Redirect to the state-appropriate menu by re-triggering consulta_deuda
+        return handle_consulta_deuda(spec, profile, session_state=session_state, source=source)
+
+    return None  # allowed — caller proceeds
+
+
+def record_misunderstood(
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome:
+    """INF-10: 2-strike fallback for unrecognized input.
+
+    Strike 1: emit ``no_comprendida_1`` and increment ``misunderstood_count``.
+    Strike 2+: escalate to asesor via ``no_comprendida_2_asesor``.
+    ``misunderstood_count`` is reset on any successfully handled intent.
+    """
+    if session_state is None:
+        session_state = {}
+
+    count = session_state.get(_MISUNDERSTOOD_COUNT_KEY, 0) + 1
+    session_state[_MISUNDERSTOOD_COUNT_KEY] = count
+
+    if count >= 2:
+        result = render_intent(spec, "no_comprendida_2_asesor", profile, source=source)
+        text = result.text if result else "Te derivo con un asesor."
+        return RouterOutcome(
+            handled=True,
+            text=text,
+            intent="no_comprendida_2_asesor",
+            source=source,
+            run_tool=intent_tool(spec, "no_comprendida_2_asesor"),
+        )
+
+    result = render_intent(spec, "no_comprendida_1", profile, source=source)
+    text = result.text if result else "No entendí bien. ¿Puedes reformular tu consulta?"
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="no_comprendida_1",
+        source=source,
+    )
+
+
+def _reset_misunderstood(session_state: dict | None) -> None:
+    """Reset the 2-strike counter after a successfully handled intent."""
+    if session_state is not None:
+        session_state.pop(_MISUNDERSTOOD_COUNT_KEY, None)
+
+
 def apply_comprobante_prequestion_gate(
     outcome: RouterOutcome,
     spec: ResponsesSpec,

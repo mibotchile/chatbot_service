@@ -87,20 +87,20 @@ Chain strategy: pending
 ## Phase 3 — Informational Intents + Multi-Credit (Slices D + E)
 > Satisfies: SCR-02, SCR-03, INF-01–INF-11, MCD-01
 
-- [ ] 3.1 In `apps/agent/features/cobranza/doris_debt_source.py`, extend the profile-building query to return three new fields: `cuotas_pagadas: int` (count of `batch_pagos_v2_bronze` rows where `fecha_de_pago_del_cliente IS NOT NULL`), `cuotas_pendientes: int` (complement), `fecha_venc_contrato: str | None` (MAX of `fecha_de_pago_esperada_original` formatted as ISO string). Add `get_cronograma(account_id: str, tenant_id: str) -> list[dict]` querying `batch_pagos_v2_bronze`, returning `[{n_cuota, fecha_venc, monto, estado}]` ordered by `n_cuota`.
+- [x] 3.1 In `apps/agent/features/cobranza/doris_debt_source.py`, extend the profile-building query to return three new fields: `cuotas_pagadas: int` (count of `batch_pagos_v2_bronze` rows where `fecha_de_pago_del_cliente IS NOT NULL`), `cuotas_pendientes: int` (complement), `fecha_venc_contrato: str | None` (MAX of `fecha_de_pago_esperada_original` formatted as ISO string). Add `get_cronograma(account_id: str, tenant_id: str) -> list[dict]` querying `batch_pagos_v2_bronze`, returning `[{n_cuota, fecha_venc, monto, estado}]` ordered by `n_cuota`.
   - Verify: `uv run pytest tests/test_doris_schema.py tests/test_doris_sql_firstunpaid.py -v`
 
-- [ ] 3.2 In `apps/agent/features/cobranza/tools.py`, add `async def consultar_cronograma(profile: dict, tenant_id: str) -> dict` calling `get_cronograma`; returns formatted installment list or asesor-escalation dict on empty result. Add `def render_cuentas_bancarias(credits: list[dict]) -> str` rendering one labeled block per credit (`[{credit_id}] Inversionista: X | Cuenta: Y | CCI: Z`); single-credit path unchanged.
+- [x] 3.2 In `apps/agent/features/cobranza/tools.py`, add `async def consultar_cronograma(profile: dict, tenant_id: str) -> dict` calling `get_cronograma`; returns formatted installment list or asesor-escalation dict on empty result. Add `def render_cuentas_bancarias(credits: list[dict]) -> str` rendering one labeled block per credit (`[{credit_id}] Inversionista: X | Cuenta: Y | CCI: Z`); single-credit path unchanged.
   - Verify: `uv run pytest tests/test_tool_registry.py -v`
 
-- [ ] 3.3 In `apps/agent/features/conversation/responses.py`, add `consulta_deuda` intent handler with **internal branching on `session_state["credit_state"]`** — one intent binding, three response paths:
+- [x] 3.3 In `apps/agent/features/conversation/responses.py`, add `consulta_deuda` intent handler with **internal branching on `session_state["credit_state"]`** — one intent binding, three response paths:
   - `al_dia` → emit `al_dia` message + option menu
   - `por_vencer` → emit `por_vencer` message + option menu
   - `vencido` → emit overdue installment list + `vencido` option menu
   Do NOT create three separate top-level intent bindings. Apply `vencido`-only guard to `"compromiso_pago"` and `"realizar_pago_vencido"` intents. Add 2-strike fallback: increment `session_state["misunderstood_count"]` on unrecognized intent; emit `"no_comprendida_1"` on count=1; escalate asesor on count>=2; reset count on any handled intent.
   - Verify: `uv run pytest tests/test_responses_engine.py -v`
 
-- [ ] 3.4 In `tenants/prestamype/responses.json`, add all new intent templates (NOT n1/n2/n3 anywhere):
+- [x] 3.4 In `tenants/prestamype/responses.json`, add all new intent templates (NOT n1/n2/n3 anywhere):
   - `consulta_deuda` — single binding; contains a `credit_state_branches` map with keys `al_dia`, `por_vencer`, `vencido` holding state-specific copy + option lists per spec §SCR-02. Do NOT create three separate top-level intent keys.
   - `consulta_deuda_total` Sí/No (§SCR-03)
   - `cronograma` (§INF-01)
@@ -117,7 +117,7 @@ Chain strategy: pending
   All copy in Spanish per spec wording.
   - Verify: JSON parses without error; `uv run pytest tests/test_responses_engine.py -v`
 
-- [ ] 3.5 Create `tests/test_scenario_intents.py`: (a) `al_dia` profile → `consulta_deuda` intent branches internally to `al_dia` response (NOT a separate `consulta_deuda_al_dia` binding); (b) `vencido` profile (2 overdue) → `consulta_deuda` branches to overdue installment list; (c) unrecognized input × 2 consecutive → asesor escalation; (d) `vencido` profile + `domingo_feriado` intent → vencido menu redirect, not holiday copy; (e) multi-credit profile + `cuentas_bancarias` → each credit has a labeled row.
+- [x] 3.5 Create `tests/test_scenario_intents.py`: (a) `al_dia` profile → `consulta_deuda` intent branches internally to `al_dia` response (NOT a separate `consulta_deuda_al_dia` binding); (b) `vencido` profile (2 overdue) → `consulta_deuda` branches to overdue installment list; (c) unrecognized input × 2 consecutive → asesor escalation; (d) `vencido` profile + `domingo_feriado` intent → vencido menu redirect, not holiday copy; (e) multi-credit profile + `cuentas_bancarias` → each credit has a labeled row.
   - Verify: 5 cases pass, `uv run pytest tests/test_scenario_intents.py -v`
 
 ---

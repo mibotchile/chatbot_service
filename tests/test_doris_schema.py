@@ -195,10 +195,14 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
         "inversionista": "INVERSIONISTA DEMO UNO",
         "cuota_esperada": 462.14,
         "saldo_por_cancelar": 23800.0,
+        # Phase 3 additions (INF-02, INF-03): present but None when not in Doris row.
+        "cuotas_pagadas": None,
+        "cuotas_pendientes": None,
+        "fecha_venc_contrato": None,
     }
     for key, value in expected.items():
         assert prof[key] == value, f"{key}: {prof.get(key)!r} != {value!r}"
-    # Exact same key set as the legacy hardcoded profile — no extra fields leak.
+    # Key set now includes the Phase 3 additions.
     assert set(prof.keys()) == set(expected.keys())
 
 

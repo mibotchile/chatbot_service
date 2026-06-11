@@ -122,27 +122,6 @@
     "not_found": "No encontré una cuenta con ese DNI. Verifica el número (son 8 dígitos) o, si prefieres, te derivo con un asesor."
   },
 
-  "consulta_deuda": {
-    "mode": "verbatim",
-    "description": "El usuario pregunta por su deuda, saldo, cuota, vencimiento o estado de su préstamo.",
-    "requires_identity": true,
-    "tool": "consultar_deuda",
-    "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
-    "patterns": ["cu[aá]nt[oa].*(debo|pago|deuda|cuota)", "(saldo|deuda).*(pendiente|actual|tengo)"],
-    "chips": ["Subir comprobante", "Datos de pago", "Hablar con un asesor"],
-    "template": "Tu crédito {loan} tiene un saldo de {saldo}. La próxima cuota es de {cuota} y vence el {fecha_venc}. Estado: {estado}.",
-    "list": {
-      "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
-      "item": "• Crédito {loan}: saldo {saldo}, cuota {cuota} (vence {fecha_venc}) — {estado}.",
-      "footer": "Saldo total entre tus créditos: {total}. ¿Sobre cuál quieres avanzar?"
-    },
-    "grupal": {
-      "header": "Este es un crédito grupal; lo comparten:",
-      "item": "• {codeudor} ({rol}) — DNI {dni}.",
-      "footer": "El saldo y las cuotas son compartidos por el grupo."
-    }
-  },
-
   "elegir_credito": {
     "mode": "verbatim",
     "description": "Hay más de un crédito y se necesita que el usuario elija sobre cuál operar.",
@@ -241,5 +220,201 @@
     "needs_session": ["tipo", "canal"],
     "rerender_with_result": true,
     "template": "Te envío la información al canal que elegiste."
+  },
+
+  "consulta_deuda": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta por su deuda, saldo, cuota, vencimiento o estado de su préstamo.",
+    "requires_identity": true,
+    "tool": "consultar_deuda",
+    "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
+    "patterns": ["cu[aá]nt[oa].*(debo|pago|deuda|cuota)", "(saldo|deuda).*(pendiente|actual|tengo)"],
+    "chips": ["Subir comprobante", "Datos de pago", "Hablar con un asesor"],
+    "credit_state_branches": {
+      "al_dia": {
+        "template": "Tu crédito está al día. ¿Qué deseas hacer?",
+        "options": [
+          {"label": "Consultar cronograma"},
+          {"label": "Subir comprobante"},
+          {"label": "Hablar con un asesor"}
+        ]
+      },
+      "por_vencer": {
+        "template": "Tu próxima cuota vence el {fecha_venc} por S/{cuota}.",
+        "options": [
+          {"label": "Subir comprobante"},
+          {"label": "Ver cuentas bancarias"},
+          {"label": "Consultar cronograma"},
+          {"label": "Hablar con un asesor"}
+        ]
+      },
+      "vencido": {
+        "template": "Tienes cuotas vencidas con {dias_mora} días de atraso. Saldo pendiente: {saldo}.",
+        "options": [
+          {"label": "Realizar pago"},
+          {"label": "Pago parcial"},
+          {"label": "Compromiso de pago"},
+          {"label": "Ver alternativas"},
+          {"label": "Hablar con un asesor"}
+        ]
+      }
+    },
+    "template": "Tu crédito {loan} tiene un saldo de {saldo}. La próxima cuota es de {cuota} y vence el {fecha_venc}. Estado: {estado}.",
+    "list": {
+      "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
+      "item": "• Crédito {loan}: saldo {saldo}, cuota {cuota} (vence {fecha_venc}) — {estado}.",
+      "footer": "Saldo total entre tus créditos: {total}. ¿Sobre cuál quieres avanzar?"
+    },
+    "grupal": {
+      "header": "Este es un crédito grupal; lo comparten:",
+      "item": "• {codeudor} ({rol}) — DNI {dni}.",
+      "footer": "El saldo y las cuotas son compartidos por el grupo."
+    }
+  },
+
+  "consulta_deuda_total": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta por su deuda total o quiere pagarla completa.",
+    "requires_identity": true,
+    "keywords": ["deuda total", "pagar todo", "cancelar todo", "saldo total"],
+    "template": "¿Deseas pagar toda tu deuda?",
+    "options": [
+      {"label": "Sí", "action": "asesor_deuda_total"},
+      {"label": "No", "action": "menu_estado"}
+    ]
+  },
+
+  "cronograma": {
+    "mode": "verbatim",
+    "description": "El usuario pide ver el cronograma o calendario de pagos de su crédito.",
+    "requires_identity": true,
+    "tool": "consultar_cronograma",
+    "keywords": ["cronograma", "calendario de pagos", "mis cuotas", "cuotas pendientes", "plan de cuotas"],
+    "template": "Aquí está tu cronograma de pagos para el crédito {loan}."
+  },
+
+  "fecha_venc_contrato": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta cuándo vence su contrato o la fecha de la última cuota.",
+    "requires_identity": true,
+    "keywords": ["fecha vencimiento", "cuándo vence mi contrato", "cuando termina mi prestamo", "última cuota", "vencimiento contrato"],
+    "template": "Tu contrato vence el {fecha_venc_contrato}."
+  },
+
+  "cuotas_pagadas": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta cuántas cuotas ha pagado.",
+    "requires_identity": true,
+    "keywords": ["cuotas pagadas", "cuántas cuotas pagué", "cuantas pagué", "cuánto llevo pagado"],
+    "template": "Has pagado {cuotas_pagadas} cuotas de tu crédito {loan}."
+  },
+
+  "cuotas_pendientes": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta cuántas cuotas le faltan por pagar.",
+    "requires_identity": true,
+    "keywords": ["cuotas pendientes", "cuántas cuotas me faltan", "cuantas me faltan", "cuánto me falta"],
+    "template": "Te faltan {cuotas_pendientes} cuotas por pagar en el crédito {loan}."
+  },
+
+  "cuentas_bancarias": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta a qué cuenta depositar, pedir las cuentas bancarias o el CCI del inversionista.",
+    "requires_identity": true,
+    "keywords": ["cuentas bancarias", "cuenta bancaria", "numero de cuenta", "cuenta para depositar", "inversionista cuenta", "datos bancarios"],
+    "template": "Para pagar tu crédito {loan}, transfiere a:\nInversionista: {inversionista} | CCI: {cci}",
+    "list": {
+      "header": "Datos bancarios para tus créditos:",
+      "item": "• Crédito {loan}: Inversionista {inversionista} | CCI {cci}",
+      "footer": "Envíanos el comprobante una vez realizado el pago."
+    }
+  },
+
+  "ya_pague": {
+    "mode": "verbatim",
+    "description": "El usuario indica que ya realizó un pago y quiere registrarlo.",
+    "requires_identity": true,
+    "keywords": ["ya pagué", "ya pague", "hice un pago", "realicé el pago", "ya deposité", "ya deposite"],
+    "template": "Perfecto. Para registrar tu pago, por favor sube el comprobante. ¿Tienes el comprobante a la mano?"
+  },
+
+  "no_puede_pagar": {
+    "mode": "verbatim",
+    "description": "El usuario indica que no puede pagar su cuota.",
+    "requires_identity": true,
+    "keywords": ["no puedo pagar", "no tengo dinero", "no me alcanza", "dificultades para pagar"],
+    "template": "Entiendo la situación. ¿Cuál es el motivo por el que no puedes pagar en este momento?"
+  },
+
+  "alternativas": {
+    "mode": "verbatim",
+    "description": "El usuario pide alternativas de pago, reclama o quiere hablar con un asesor.",
+    "requires_identity": false,
+    "tool": "escalate_to_human",
+    "keywords": ["alternativas", "otras opciones", "reclamo", "queja", "no estoy de acuerdo"],
+    "template": "Te derivo con un asesor de PrestamYpe para que analice tu caso y te ofrezca las mejores alternativas."
+  },
+
+  "domingo_feriado_al_dia_por_vencer": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta qué pasa si su fecha de vencimiento cae en domingo o feriado (solo aplica a créditos al día o próximos a vencer).",
+    "requires_identity": true,
+    "keywords": ["domingo", "feriado", "día no hábil", "que pasa si cae en feriado"],
+    "template": "Si tu fecha de vencimiento cae en domingo o feriado, se traslada al siguiente día hábil. No hay cargo adicional por este motivo."
+  },
+
+  "domingo_feriado_vencido_redirect": {
+    "mode": "verbatim",
+    "description": "Respuesta cuando un cliente vencido pregunta sobre domingo/feriado — redirige al menú de vencido.",
+    "requires_identity": true,
+    "classifiable": false,
+    "template": "Para tu caso, lo más importante es regularizar el pago pendiente. ¿Cómo te podemos ayudar?",
+    "options": [
+      {"label": "Realizar pago"},
+      {"label": "Compromiso de pago"},
+      {"label": "Ver alternativas"},
+      {"label": "Hablar con un asesor"}
+    ]
+  },
+
+  "fuera_de_horario": {
+    "mode": "verbatim",
+    "description": "El bot detecta que la consulta llega fuera del horario de atención.",
+    "requires_identity": false,
+    "template": "En este momento estamos fuera del horario de atención (Lun-Vie 9:00–18:30, con pausa 13:00–14:00). Puedes dejarnos tu consulta y un asesor te contactará en el próximo horario hábil."
+  },
+
+  "no_comprendida_1": {
+    "mode": "verbatim",
+    "description": "Primera vez que el bot no entiende la consulta del usuario (strike 1).",
+    "requires_identity": false,
+    "classifiable": false,
+    "template": "No entendí bien tu consulta. ¿Puedes reformularla? Puedo ayudarte con el estado de tu crédito, cronograma de pagos, comprobantes y más."
+  },
+
+  "no_comprendida_2_asesor": {
+    "mode": "verbatim",
+    "description": "Segunda vez consecutiva que el bot no entiende — escala a asesor (strike 2).",
+    "requires_identity": false,
+    "classifiable": false,
+    "tool": "escalate_to_human",
+    "template": "Parece que no estoy pudiendo ayudarte bien. Te derivo con un asesor de PrestamYpe para que te atienda directamente."
+  },
+
+  "realizar_pago_vencido": {
+    "mode": "verbatim",
+    "description": "El usuario con crédito vencido quiere realizar el pago de la cuota vencida.",
+    "requires_identity": true,
+    "tool": "escalate_to_human",
+    "keywords": ["realizar pago", "quiero pagar", "pagar mi cuota"],
+    "template": "Te derivo con un asesor para coordinar el pago de tu cuota vencida. Te indicarán el monto exacto incluyendo los cargos aplicables."
+  },
+
+  "compromiso_pago": {
+    "mode": "verbatim",
+    "description": "El usuario vencido quiere registrar un compromiso de pago para una fecha próxima.",
+    "requires_identity": true,
+    "keywords": ["compromiso de pago", "me comprometo a pagar", "voy a pagar el"],
+    "template": "¿En qué fecha realizarás el pago? (formato DD/MM/AAAA o AAAA-MM-DD)"
   }
 }

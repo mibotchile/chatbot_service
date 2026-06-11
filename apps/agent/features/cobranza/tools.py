@@ -188,6 +188,60 @@ def _mask_dni(dni: str) -> str:
 
 # ── 2. Registrar reclamo (Libro de Reclamaciones — Indecopi) ───────────────
 
+async def consultar_cronograma(profile: dict, tenant_id: str) -> dict:
+    """Return the installment schedule for the verified borrower's credit.
+
+    Fetches from Doris via ``get_cronograma``. If the schedule is empty or
+    unavailable, returns an asesor-escalation dict so the agent can surface
+    a helpful escalation instead of an empty list.
+    """
+    from features.cobranza.doris_debt_source import get_cronograma  # noqa: PLC0415
+
+    account_id = profile.get("account_id") or ""
+    cronograma = get_cronograma(account_id, tenant_id)
+    if not cronograma:
+        return {
+            "escalate": True,
+            "reason": "cronograma_unavailable",
+            "message": (
+                "No encontré el cronograma de pagos para tu crédito. "
+                "Te derivo con un asesor."
+            ),
+        }
+    return {
+        "escalate": False,
+        "account_id": account_id,
+        "cronograma": cronograma,
+    }
+
+
+def render_cuentas_bancarias(credits: list[dict]) -> str:
+    """Render bank account info for one or more credits.
+
+    Single credit: returns a plain string (behavior unchanged).
+    Multiple credits: returns one labeled block per credit, e.g.:
+        [P02137] Inversionista: DEMO UNO | Cuenta: 001... | CCI: 003...
+    """
+    if not credits:
+        return ""
+    if len(credits) == 1:
+        c = credits[0]
+        return (
+            f"Inversionista: {c.get('inversionista', '')} | "
+            f"Cuenta: {c.get('numero_de_cuenta', c.get('cci', ''))} | "
+            f"CCI: {c.get('cci', '')}"
+        )
+    lines: list[str] = []
+    for c in credits:
+        label = c.get("account_id") or c.get("loan_number") or "?"
+        lines.append(
+            f"[{label}] Inversionista: {c.get('inversionista', '')} | "
+            f"Cuenta: {c.get('numero_de_cuenta', c.get('cci', ''))} | "
+            f"CCI: {c.get('cci', '')}"
+        )
+    return "\n".join(lines)
+
+
 async def registrar_reclamo(profile: dict, tipo: str, descripcion: str) -> dict:
     """Register a claim/complaint in the (mock) Libro de Reclamaciones.
 

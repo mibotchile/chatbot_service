@@ -191,6 +191,22 @@ def _row_to_profile(row: dict) -> dict:
     profile["email"] = row.get("email") or ""
     profile["status"] = "al_dia" if dias_mora == 0 else "en_mora"
     profile["status_label"] = "Al día" if dias_mora == 0 else "En mora"
+
+    # Phase 3 — INF-03 / INF-02: cuotas counts + contract end date.
+    # These come from the pagos table aggregates; they may be pre-mapped in the
+    # column_map (future-proof) or computed here from the raw counts when absent.
+    cuotas_pagadas = row.get("cuotas_pagadas")
+    cuotas_pendientes = row.get("cuotas_pendientes")
+    fecha_venc_contrato = row.get("fecha_venc_contrato")
+
+    profile["cuotas_pagadas"] = (
+        int(_to_float(cuotas_pagadas)) if cuotas_pagadas is not None else None
+    )
+    profile["cuotas_pendientes"] = (
+        int(_to_float(cuotas_pendientes)) if cuotas_pendientes is not None else None
+    )
+    profile["fecha_venc_contrato"] = str(fecha_venc_contrato) if fecha_venc_contrato else None
+
     return profile
 
 
@@ -337,6 +353,56 @@ def pick_credit_for_dni(dni: str, tenant_id: str) -> dict | None:
         credits,
         key=lambda c: (_to_float(c.get("saldo_por_cancelar")), str(c.get("account_id") or "")),
     )
+
+
+def get_cronograma(account_id: str, tenant_id: str) -> list[dict]:
+    """Return the installment schedule for a credit from Doris.
+
+    Queries ``batch_pagos_v2_bronze`` directly by ``codigo_contrato`` (the
+    per-installment table; same join key used in the profile query).
+
+    Returns a list of dicts with keys ``n_cuota``, ``fecha_venc``, ``monto``,
+    ``estado`` ordered by ``n_cuota``. Empty list when no rows or on error.
+    """
+    schema = _load_schema(tenant_id)
+    db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
+    pagos = _safe_ident(schema["pagos_table"], what="pagos_table")
+    pagos_key = _safe_ident(schema["join"]["pagos_key"], what="join.pagos_key")
+
+    sql = (
+        f"SELECT\n"
+        f"  nro_cuotas AS n_cuota,\n"
+        f"  fecha_de_pago_esperada_original AS fecha_venc,\n"
+        f"  cuota_esperada_mensual AS monto,\n"
+        f"  fecha_de_pago_del_cliente\n"
+        f"FROM {db}.{pagos}\n"
+        f"WHERE {pagos_key} = %s\n"
+        f"ORDER BY nro_cuotas"
+    )
+    try:
+        conn = _connect(db)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (account_id,))
+                rows = list(cur.fetchall())
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        return []
+
+    result: list[dict] = []
+    for row in rows:
+        fecha_raw = row.get("fecha_venc")
+        fecha_str = str(fecha_raw) if fecha_raw else None
+        paid = row.get("fecha_de_pago_del_cliente") is not None
+        monto_raw = row.get("monto")
+        result.append({
+            "n_cuota": int(row["n_cuota"]) if row.get("n_cuota") is not None else None,
+            "fecha_venc": fecha_str,
+            "monto": _to_float(monto_raw),
+            "estado": "pagada" if paid else "pendiente",
+        })
+    return result
 
 
 def validate_comprobante(
