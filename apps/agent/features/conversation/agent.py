@@ -19,6 +19,7 @@ from shared.ports.tool_registry import NullToolRegistry, ToolRegistryPort
 from features.conversation.response_builder import build_ui_actions
 from features.conversation.debtor_profile import build_debtor_profile, truncate_history
 from features.conversation import responses as responses_engine
+from features.cobranza.scenario import classify_credit_state
 
 # ── Sticky LLM-flow (data-driven multi-turn tool gathering) ───────────────────
 # When a ``flow: true`` intent routes a turn to the LLM (e.g. validar_comprobante
@@ -282,11 +283,25 @@ class SoreliaAgent:
         # The data-driven requires_identity flag gates the rest.
         prof = profile or {}
 
+        # Thread credit_state into session_state and profile once the identity is
+        # verified. This runs on every canned turn so the value stays current.
+        # credit_state = INPUT axis (al_dia/por_vencer/vencido) from the debt profile.
+        # NOT the gestión typification n1/n2/n3 — those are the OUTPUT axis.
+        if verified and profile and session_state is not None:
+            tenant_cfg = getattr(getattr(self, "tenant", None), "config", {}) or {}
+            _window = (tenant_cfg.get("cobranza") or {}).get("proxima_vencer_window_days", 5)
+            _cs = classify_credit_state(profile, _window)
+            session_state["credit_state"] = _cs
+            profile["credit_state"] = _cs
+
         outcome = responses_engine.route_layer1(
             text, spec, prof, session_state=session_state, identity_verified=verified,
         )
         if outcome.handled:
-            return await self._canned_result(outcome, spec)
+            outcome = responses_engine.apply_comprobante_prequestion_gate(
+                outcome, spec, prof, session_state=session_state,
+            )
+            return await self._canned_result(outcome, spec, session_state=session_state)
 
         if outcome.needs_llm_classification:
             intent = await self._classify_intent(text, spec)
@@ -295,7 +310,21 @@ class SoreliaAgent:
                     intent, spec, prof, session_state=session_state, identity_verified=verified,
                 )
                 if resolved.handled:
-                    return await self._canned_result(resolved, spec)
+                    resolved = responses_engine.apply_comprobante_prequestion_gate(
+                        resolved, spec, prof, session_state=session_state,
+                    )
+                    return await self._canned_result(resolved, spec, session_state=session_state)
+                # Not handled → check if it's a comprobante intent that needs the gate
+                # (comprobante_reportar renders empty → falls to LLM; apply gate before that)
+                if intent in responses_engine._COMPROBANTE_INTENTS and verified:
+                    gated = responses_engine.apply_comprobante_prequestion_gate(
+                        responses_engine.RouterOutcome(
+                            handled=False, intent=intent, source=responses_engine.SOURCE_INTENT,
+                        ),
+                        spec, prof, session_state=session_state,
+                    )
+                    if gated.handled:
+                        return await self._canned_result(gated, spec, session_state=session_state)
                 # Not handled → this intent hands the turn to the LLM. If it's a
                 # ``flow`` intent, ARM the sticky flag so subsequent turns bypass
                 # the router until the tool resolves (or the cap fires).
@@ -336,7 +365,7 @@ class SoreliaAgent:
             logger.opt(exception=True).debug("intent classification failed (non-blocking)")
         return None
 
-    async def _canned_result(self, outcome, spec=None) -> dict[str, Any]:
+    async def _canned_result(self, outcome, spec=None, *, session_state: dict | None = None) -> dict[str, Any]:
         """Build the standard process_message result dict for a canned reply.
 
         When the matched intent declares a ``tool`` (data-driven, in responses.json)
@@ -363,7 +392,8 @@ class SoreliaAgent:
                 tool_pairs = [(outcome.run_tool, tool_result)]
                 ui_actions = build_ui_actions(tool_pairs)
                 content = self._content_after_tool(
-                    outcome, tool_result, spec, fallback=content
+                    outcome, tool_result, spec, fallback=content,
+                    session_state=session_state,
                 )
             except Exception:
                 logger.opt(exception=True).warning(
@@ -388,7 +418,15 @@ class SoreliaAgent:
             "response_source": outcome.source,
         }
 
-    def _content_after_tool(self, outcome, tool_result: dict, spec, fallback: str) -> str:
+    def _content_after_tool(
+        self,
+        outcome,
+        tool_result: dict,
+        spec,
+        fallback: str,
+        *,
+        session_state: dict | None = None,
+    ) -> str:
         """Resolve the customer-facing text once a canned intent's tool has run.
 
         Generic for identification-style intents (those whose tool opens the
@@ -399,11 +437,21 @@ class SoreliaAgent:
           - on failure (tool reports ``identified``/``found`` false) → use the
             intent's ``not_found`` canned text if declared.
         Any other intent keeps its already-rendered ``fallback`` text.
+
+        CPR-01 (abono→compromiso chain): when a comprobante tool completes with
+        tipo == "abono" (partial payment), set pending_intent = "compromiso_pago"
+        so the next turn auto-enters the compromiso flow without an intermediate menu.
         """
         if not isinstance(tool_result, dict):
             return fallback
         intent = outcome.intent
         cfg = (getattr(spec, "intents", {}) or {}).get(intent, {}) if spec else {}
+
+        # CPR-01: abono after comprobante → chain to compromiso flow (no menu shown).
+        # classify_tipo returns "abono" for partial payments (< cuota, not cancellation).
+        if tool_result.get("tipo") == "abono" and session_state is not None:
+            session_state["pending_intent"] = "compromiso_pago"
+            logger.info("abono detected after comprobante → chaining to compromiso_pago")
 
         # Delivery-style intents (envío de info bajo demanda): the tool builds the
         # customer-facing confirmation WITH the masked destination (or an error

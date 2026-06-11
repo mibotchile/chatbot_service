@@ -521,8 +521,10 @@ async def test_sticky_flow_cap_releases_after_max_turns():
 
 
 async def test_sticky_flow_armed_when_flow_intent_classified():
-    # Classifying into comprobante_reportar (flow:true, identified, no template)
-    # falls through to the LLM AND arms the sticky flag for next turns.
+    # CPR-01 (Phase 2): comprobante_reportar now gates through the pre-question
+    # before the LLM flow starts. The pre-question is returned as a canned reply
+    # (SOURCE_INTENT) and pending_intent is set to 'comprobante'.
+    # After the user answers 'Sí', the sticky flow arms on the next turn.
     provider = _CountingProvider(classify_as="comprobante_reportar")
     agent = _agent(provider, identity_dni=LUIS)
     ss: dict = {}
@@ -531,8 +533,10 @@ async def test_sticky_flow_armed_when_flow_intent_classified():
         conversation_id="sf3", history=[], debtor_state={}, page_context={},
         session_state=ss,
     )
-    assert res["response_source"] == R.SOURCE_LLM
-    assert ss.get("llm_flow", {}).get("intent") == "comprobante_reportar"
+    # Pre-question gate fires: canned pre-question returned, no LLM call
+    assert res["response_source"] == R.SOURCE_INTENT
+    assert res["metadata"]["intent"] == "comprobante_proxima_cuota_pregunta"
+    assert ss.get("pending_intent") == "comprobante"
 
 
 async def test_sticky_flow_not_cleared_when_llm_only_converses():

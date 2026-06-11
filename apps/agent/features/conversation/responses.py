@@ -291,6 +291,56 @@ class RouterOutcome:
     rerender_with_result: bool = False
 
 
+_COMPROBANTE_INTENTS = frozenset({"comprobante_reportar"})
+_PREQUESTION_ANSWERED_KEY = "comprobante_prequestion_answered"
+_PREQUESTION_INTENT = "comprobante_proxima_cuota_pregunta"
+_PENDING_INTENT_KEY = "pending_intent"
+
+
+def _handle_prequestion_reply(
+    text: str,
+    session_state: dict | None,
+    spec: ResponsesSpec,
+    profile: dict,
+    source: str,
+) -> RouterOutcome | None:
+    """Handle 'Sí'/'No' replies to the comprobante pre-question gate.
+
+    Called from route_layer1 when a pending comprobante pre-question is active
+    (pending_intent == 'comprobante'). Returns a handled RouterOutcome or None
+    if the text is not a Sí/No reply (caller continues normal routing).
+    """
+    if session_state is None:
+        return None
+    if session_state.get(_PENDING_INTENT_KEY) != "comprobante":
+        return None
+    low = (text or "").lower().strip()
+    # "Sí" → clear pending, mark answered, continue to comprobante flow
+    if low in ("sí", "si", "s", "yes"):
+        session_state[_PREQUESTION_ANSWERED_KEY] = True
+        session_state.pop(_PENDING_INTENT_KEY, None)
+        # Emit comprobante_reportar so the LLM flow continues
+        out = _emit_intent(
+            "comprobante_reportar", spec, profile, source,
+            session_state=session_state, identity_verified=True,
+        )
+        return out
+    # "No" → escalate to asesor
+    if low in ("no", "n"):
+        session_state.pop(_PENDING_INTENT_KEY, None)
+        session_state.pop(_PREQUESTION_ANSWERED_KEY, None)
+        result = render_intent(spec, "derivar_asesor", profile, source=source)
+        text_out = result.text if result else "Te derivo con un asesor de PrestamYpe."
+        return RouterOutcome(
+            handled=True,
+            text=text_out,
+            intent="derivar_asesor",
+            source=source,
+            run_tool=intent_tool(spec, "derivar_asesor"),
+        )
+    return None
+
+
 def route_layer1(
     text: str,
     spec: ResponsesSpec,
@@ -314,6 +364,15 @@ def route_layer1(
     """
     if not spec.enabled:
         return RouterOutcome(handled=False, source=SOURCE_LLM)
+
+    # ── Comprobante pre-question gate (CPR-01): while the pre-question is pending,
+    # intercept Sí/No replies before normal routing. ──
+    if identity_verified:
+        prequestion_reply = _handle_prequestion_reply(
+            text, session_state, spec, profile, SOURCE_KEYWORD,
+        )
+        if prequestion_reply is not None:
+            return prequestion_reply
 
     # ── Identification priority (data-driven): while the user is UNVERIFIED, an
     # identification intent (requires_identity=false + a capture + a tool) must
@@ -490,6 +549,43 @@ def resolve_chips(
     if state_chips:
         return [str(c) for c in state_chips][:max_chips]
     return None
+
+
+def apply_comprobante_prequestion_gate(
+    outcome: RouterOutcome,
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+) -> RouterOutcome:
+    """CPR-01: intercept a comprobante intent and gate it behind a pre-question.
+
+    If the matched intent is a comprobante flow intent AND the pre-question has
+    not been answered yet in this session, replace the outcome with the
+    pre-question emit and store 'pending_intent=comprobante' in session_state.
+
+    Called by the agent AFTER the canned router resolves an outcome, so the
+    generic responses engine remains untouched (no behavior change for tenants
+    that don't ship the comprobante_proxima_cuota_pregunta intent).
+
+    Returns the (possibly replaced) outcome.
+    """
+    if session_state is None:
+        return outcome
+    if outcome.intent not in _COMPROBANTE_INTENTS:
+        return outcome
+    if session_state.get(_PREQUESTION_ANSWERED_KEY):
+        return outcome
+    prequestion = render_intent(spec, _PREQUESTION_INTENT, profile, source=outcome.source)
+    if not prequestion:
+        return outcome  # tenant has no pre-question intent — skip gate
+    session_state[_PENDING_INTENT_KEY] = "comprobante"
+    return RouterOutcome(
+        handled=True,
+        text=prequestion.text,
+        intent=_PREQUESTION_INTENT,
+        source=outcome.source,
+    )
 
 
 def known_intents(spec: ResponsesSpec) -> list[str]:

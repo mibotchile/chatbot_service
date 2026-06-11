@@ -53,6 +53,18 @@
     }
   },
 
+  "comprobante_proxima_cuota_pregunta": {
+    "mode": "verbatim",
+    "description": "Pre-pregunta del flujo de comprobante: pregunta si el comprobante corresponde a la próxima cuota.",
+    "requires_identity": true,
+    "classifiable": false,
+    "template": "¿El comprobante que vas a subir corresponde al pago de tu próxima cuota?",
+    "options": [
+      {"label": "Sí", "action": "continue_comprobante"},
+      {"label": "No", "action": "asesor"}
+    ]
+  },
+
   "saludo": {
     "mode": "variant",
     "description": "El usuario saluda o inicia la conversación sin pedir nada concreto.",

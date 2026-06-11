@@ -65,6 +65,21 @@
     ],
     "skills": null
   },
+  "cobranza": {
+    "proxima_vencer_window_days": 5,
+    "horario": {
+      "dias": ["lunes", "martes", "miércoles", "jueves", "viernes"],
+      "hora_inicio": "09:00",
+      "hora_fin": "18:30",
+      "refrigerio": {
+        "inicio": "13:00",
+        "fin": "14:00"
+      },
+      "feriados_source": "feriados_peru_2026.json"
+    },
+    "contrato_column": "id_contrato",
+    "project_uid": "QUIdI0iwQY0l3pJwRKLB"
+  },
   "soul": {
     "name": "Ada",
     "role": "asistente de PrestamYpe",

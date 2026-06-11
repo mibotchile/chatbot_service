@@ -101,6 +101,7 @@ async def validar_comprobante(
     cuenta_destino: str | None = None,
     account_type: str = "cci",
     cci: str | None = None,  # backward-compat alias for cuenta_destino
+    n_cuota: str | None = None,  # CPR-01: installment number (correlativo 1,2,3…)
 ) -> dict:
     """Register a payment voucher for the verified borrower (PrestamYpe).
 
@@ -163,6 +164,7 @@ async def validar_comprobante(
             "cci": cuenta_in,  # legacy alias (same value as cuenta_destino)
             "monto": float(monto or 0.0),
             "nro_operacion": nro,
+            "n_cuota": n_cuota,  # CPR-01: installment correlativo (1, 2, 3…)
             "tipo": tipo,
             "estado": "en_revision",
             "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -181,6 +183,7 @@ async def validar_comprobante(
         "tipo": tipo,
         "account_type": account_type,
         "cuenta_destino": cuenta_in,
+        "n_cuota": n_cuota,  # CPR-01: passed through for ChatHub/asesor context
         "dedup_ok": dedup_ok,
         "mensaje": mensaje,
     }
