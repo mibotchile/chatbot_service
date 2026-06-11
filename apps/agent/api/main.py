@@ -94,6 +94,9 @@ from api.wiring import (  # noqa: F401
     _analytics_tasks,
     _emit_analytics,
     _spawn_analytics,
+    _emit_gestion,
+    _spawn_gestion,
+    _start_gestion_sweep,
     _register_whatsapp_webhook,
 )
 
@@ -190,6 +193,10 @@ async def lifespan(app: FastAPI):
         logger.warning("No DB pool available — running with in-memory state only")
 
     await _register_whatsapp_webhook()
+
+    # Start gestion inactivity sweep (Layer 3) — only when DB pool is available
+    if db_pool is not None:
+        await _start_gestion_sweep(db_pool, settings.database_schema)
 
     yield
 

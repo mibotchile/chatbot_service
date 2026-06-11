@@ -1,8 +1,9 @@
 """Versioned outcome catalog for Layer-3 gestion tracking.
 
 This is the single source of truth for all outcome strings, event types,
-and lookup tables used in outcome derivation. No client-specific or
-tenant-specific vocabulary here.
+and vocabulary enums used in outcome derivation. No tenant-specific intent
+names, tool names, or hardcoded mappings here — those live in each tenant's
+responses.json and are resolved at runtime via intent_binding().
 
 SCHEMA_VERSION bumps when the catalog adds new values; consumers that handle
 only known v1 values can safely ignore unknown ones.
@@ -11,6 +12,10 @@ only known v1 values can safely ignore unknown ones.
 from __future__ import annotations
 
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tenancy.responses_spec import ResponsesSpec
 
 # ---------------------------------------------------------------------------
 # Version
@@ -53,91 +58,107 @@ class EventType(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# TERMINAL_SIGNALS
-# Data-driven detection table: signal name → tool names / session_state keys
-# that indicate that signal fired this turn.
+# Capability enum
+# Tenant-agnostic vocabulary of observable capabilities.
+# Binding to a real intent lives in tenants/{tenant}/responses.json.
 # ---------------------------------------------------------------------------
 
-TERMINAL_SIGNALS: dict[str, list[str]] = {
-    # Tool names whose presence in tool_pairs results indicates commitment
-    "commitment_registered": [
-        "register_payment_commitment",
-        "commit_payment",
-    ],
-    # Tool names whose presence indicates proof submitted
-    "proof_submitted": [
-        "upload_payment_proof",
-        "submit_comprobante",
-        "upload_comprobante",
-    ],
-    # session_state flag keys that indicate identity gate exhausted
-    "identity_failed": [
-        "identity_gate_exhausted",
-        "max_dni_retries_reached",
-    ],
-    # session_state flag keys that indicate 2nd-strike fallback exhausted
-    "fallback_exhausted": [
-        "fallback_count_exhausted",
-        "second_strike_fallback",
-    ],
-    # Intents that signal info was delivered and conversation closed
-    "info_provided_intents": [
-        "consulta_deuda",
-        "cronograma",
-        "cuotas",
-        "cuentas_bancarias",
-        "fecha_vencimiento",
-        "deuda_total",
-    ],
-    # Intents that signal identity verified with no further terminal action
-    "identified_intents": [
-        "identificacion",
-        "verify_identity",
-    ],
-}
+
+class Capability(str, Enum):
+    """Observable capabilities a conversation can exercise (vocabulary only)."""
+
+    identificacion = "identificacion"
+    consulta_deuda = "consulta_deuda"
+    cuentas_bancarias = "cuentas_bancarias"
+    estado_cuenta = "estado_cuenta"
+    constancia = "constancia"
+    politica_pago = "politica_pago"
+    comprobante = "comprobante"
+    multicredito = "multicredito"
+    # Reserved for flujos change:
+    cronograma = "cronograma"
+    cuotas = "cuotas"
+    fecha_vencimiento = "fecha_vencimiento"
+    compromiso = "compromiso"
+    pago = "pago"
+    deuda_total = "deuda_total"
+    horario_feriado = "horario_feriado"
+
 
 # ---------------------------------------------------------------------------
-# INTENT_TO_CAPABILITY
-# Maps resolved_intent / tool names → CAPABILITIES_USED axis value.
-# Used to accumulate capabilities_used in the gestiones snapshot.
+# TerminalSignal enum
+# Each value names a terminal-turn signal a resolved intent can carry.
 # ---------------------------------------------------------------------------
 
-INTENT_TO_CAPABILITY: dict[str, str] = {
-    "identificacion": "identificacion",
-    "verify_identity": "identificacion",
-    "consulta_deuda": "consulta_deuda",
-    "deuda_total": "deuda_total",
-    "cronograma": "cronograma",
-    "cuotas": "cuotas",
-    "cuentas_bancarias": "cuentas_bancarias",
-    "fecha_vencimiento": "fecha_vencimiento",
-    "upload_comprobante": "comprobante",
-    "submit_comprobante": "comprobante",
-    "upload_payment_proof": "comprobante",
-    "comprobante": "comprobante",
-    "register_payment_commitment": "compromiso",
-    "commit_payment": "compromiso",
-    "payment_commitment": "compromiso",
-    "pago": "pago",
-    "multicredito": "multicredito",
-    "horario_feriado": "horario_feriado",
-}
+
+class TerminalSignal(str, Enum):
+    """Signals that a resolved intent can carry to indicate terminal state."""
+
+    info_provided = "info_provided"
+    proof = "proof"
+    commitment = "commitment"
+    escalation = "escalation"
+    fallback = "fallback"
+    identity_failed = "identity_failed"
+
 
 # ---------------------------------------------------------------------------
-# INTENT_TO_REASON
-# Maps escalation-triggering intents → outcome_reason enum value.
-# Used by _reason_for_intent() in gestion_derivation.py.
-# Unknown intents return None (caller's responsibility).
+# OutcomeReason enum
+# Supplemental reason attached to some outcomes (escalation, fallback, etc.).
 # ---------------------------------------------------------------------------
 
-INTENT_TO_REASON: dict[str, str] = {
-    "cannot_pay": "cannot_pay",
-    "requested_alternatives": "requested_alternatives",
-    "commitment_beyond_window": "commitment_beyond_window",
-    "wants_full_payment": "wants_full_payment",
-    "pay_installment": "pay_installment",
-    "proof_other_installment": "proof_other_installment",
-    "explicit_agent_request": "explicit_agent_request",
-    "out_of_hours": "out_of_hours",
-    "fallback_exhausted": "fallback_exhausted",
-}
+
+class OutcomeReason(str, Enum):
+    """Supplemental reason values for escalated_to_agent / not_understood."""
+
+    explicit_agent_request = "explicit_agent_request"
+    fallback_exhausted = "fallback_exhausted"
+    cannot_pay = "cannot_pay"
+    requested_alternatives = "requested_alternatives"
+    commitment_beyond_window = "commitment_beyond_window"
+    wants_full_payment = "wants_full_payment"
+    pay_installment = "pay_installment"
+    proof_other_installment = "proof_other_installment"
+    out_of_hours = "out_of_hours"
+    max_identification_retries = "max_identification_retries"
+
+
+# ---------------------------------------------------------------------------
+# intent_binding — single DRY accessor
+# ---------------------------------------------------------------------------
+
+
+def intent_binding(
+    intent_name: str | None,
+    responses_cfg: "ResponsesSpec | None",
+) -> tuple[str | None, str | None, str | None]:
+    """Return (capability, terminal_signal, escalation_reason) for a resolved intent.
+
+    Each field is coerced against its catalog enum; any value not in the enum
+    (or absent) is returned as None.  Never raises — the hook is fire-and-forget.
+
+    Args:
+        intent_name: The resolved intent string from the conversation turn.
+        responses_cfg: A ResponsesSpec loaded for the tenant. None → all-None.
+
+    Returns:
+        A 3-tuple (capability, terminal_signal, escalation_reason), each a
+        string enum value or None.
+    """
+    if not intent_name or responses_cfg is None:
+        return (None, None, None)
+
+    cfg: dict = responses_cfg.intents.get(intent_name) or {}
+
+    def _ok(val: object, enum: type) -> str | None:
+        """Coerce val to an enum member value, or None if invalid/absent."""
+        try:
+            return enum(val).value if val is not None else None
+        except ValueError:
+            return None
+
+    return (
+        _ok(cfg.get("capability"), Capability),
+        _ok(cfg.get("terminal_signal"), TerminalSignal),
+        _ok(cfg.get("escalation_reason"), OutcomeReason),
+    )
