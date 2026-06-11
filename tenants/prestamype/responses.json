@@ -4,13 +4,18 @@
     "doc": "Guión curado de PrestamYpe (demo). Catálogo de intents 100% data-driven: agregar/editar intents = editar este JSON, sin tocar código. Por intent: keywords/patterns (router capa 1, sin LLM), description (catálogo que usa el clasificador LLM en capa 2), requires_identity (gate por DNI), tool (tool del engine a ejecutar antes de responder), mode (verbatim|variant) y templates (single/list/grupal/variants). Variables {nombre} {saldo} {moneda} {fecha_venc} {cuota} {loan} {dias_mora} {cci} {banco} las rellena el backend desde el crédito verificado (cero alucinación). Formato completo: docs/responses-format.md.",
     "redaccion": "Español peruano, trato de tú, sin voseo, copy breve. El cliente real reemplaza estos textos por los suyos."
   },
-
   "_chips": {
     "_doc": "Quick-reply chips data-driven (CORE). El BACKEND los devuelve según el intent resuelto (chips por intent) o el estado de la conversación (este bloque). El LLM NO inventa chips. Estado: cold = sin identificar, identified = DNI verificado. Acotados a las capacidades reales del bot (consultar deuda, subir comprobante, datos de pago, asesor). Máx 4. Formato: docs/responses-format.md.",
-    "cold": ["Consultar mi deuda", "Subir comprobante"],
-    "identified": ["Ver mi deuda", "Subir comprobante", "Datos de pago"]
+    "cold": [
+      "Consultar mi deuda",
+      "Subir comprobante"
+    ],
+    "identified": [
+      "Ver mi deuda",
+      "Subir comprobante",
+      "Datos de pago"
+    ]
   },
-
   "_deliverables": {
     "_doc": "Envío de info bajo demanda (CORE, data-driven). Cada tipo declara su copy por canal: correo (subject + body, soporta single {template}/list {header,item,footer}) y whatsapp (text). El backend rellena {variables} desde el crédito verificado y envía al correo/teléfono REGISTRADO del cliente (enmascarado). En demo (data_source=mock) el envío es SIMULADO; en prod (doris) es real (SendGrid / ChatHub). Formato completo: docs/deliverables-format.md.",
     "estado_cuenta": {
@@ -52,47 +57,68 @@
       }
     }
   },
-
   "saludo": {
     "mode": "variant",
     "description": "El usuario saluda o inicia la conversación sin pedir nada concreto.",
     "requires_identity": false,
-    "keywords": ["hola", "buenas", "buenos dias", "buenas tardes", "buenas noches", "que tal", "saludos"],
-    "patterns": ["^\\s*(hola|buen[oa]s|hey)\\b"],
-    "chips": ["Consultar mi deuda", "Subir comprobante"],
+    "keywords": [
+      "hola",
+      "buenas",
+      "buenos dias",
+      "buenas tardes",
+      "buenas noches",
+      "que tal",
+      "saludos"
+    ],
+    "patterns": [
+      "^\\s*(hola|buen[oa]s|hey)\\b"
+    ],
+    "chips": [
+      "Consultar mi deuda",
+      "Subir comprobante"
+    ],
     "variants": [
       "Hola, soy Ada de PrestamYpe. Puedo ayudarte a consultar tu deuda o validar un comprobante de pago. ¿Qué necesitas?",
       "Hola, qué gusto. Soy Ada de PrestamYpe. Te ayudo con la consulta de tu préstamo o a registrar tu comprobante. ¿En qué empezamos?",
       "Hola. Soy Ada, tu asistente de PrestamYpe. Dime tu DNI y reviso tu préstamo, o cuéntame si quieres validar un pago."
     ]
   },
-
   "despedida": {
     "mode": "variant",
     "description": "El usuario agradece, se despide o indica que no necesita nada más.",
     "requires_identity": false,
-    "keywords": ["gracias", "muchas gracias", "chau", "adios", "hasta luego", "eso es todo", "nada mas"],
+    "keywords": [
+      "gracias",
+      "muchas gracias",
+      "chau",
+      "adios",
+      "hasta luego",
+      "eso es todo",
+      "nada mas"
+    ],
     "variants": [
       "Listo, cualquier cosa aquí estoy. ¡Que tengas buen día!",
       "Con gusto. Si necesitas algo más sobre tu préstamo, escríbeme cuando quieras.",
       "Gracias a ti. Aquí estaré para tu próxima consulta o comprobante."
     ]
   },
-
   "no_entendido": {
     "mode": "variant",
     "description": "El mensaje no encaja en ninguna intención conocida (fallback).",
     "terminal_signal": "fallback",
     "escalation_reason": "fallback_exhausted",
     "requires_identity": false,
-    "chips": ["Consultar mi deuda", "Subir comprobante", "Hablar con un asesor"],
+    "chips": [
+      "Consultar mi deuda",
+      "Subir comprobante",
+      "Hablar con un asesor"
+    ],
     "variants": [
       "Disculpa, no te entendí bien. Puedo ayudarte con dos cosas: consultar tu deuda o validar un comprobante de pago. ¿Cuál necesitas?",
       "No estoy segura de haber entendido. ¿Quieres revisar el saldo de tu préstamo o registrar un comprobante de pago?",
       "Perdona, ¿me lo repites? Te puedo mostrar tu deuda o ayudarte a subir un comprobante."
     ]
   },
-
   "identidad_requerida": {
     "mode": "verbatim",
     "description": "Se pidió información de la cuenta sin haber verificado identidad (DNI).",
@@ -100,7 +126,6 @@
     "requires_identity": false,
     "template": "Para mostrarte los datos de tu cuenta necesito identificarte primero. Por favor, indícame tu número de DNI (8 dígitos)."
   },
-
   "identificar": {
     "mode": "verbatim",
     "description": "El usuario escribe su número de DNI (8 dígitos) para identificarse.",
@@ -108,13 +133,18 @@
     "requires_identity": false,
     "tool": "identificar_cliente",
     "capture": "dni",
-    "patterns": ["\\b(?P<dni>\\d{8})\\b"],
-    "chips": ["Ver mi deuda", "Subir comprobante", "Datos de pago"],
+    "patterns": [
+      "\\b(?P<dni>\\d{8})\\b"
+    ],
+    "chips": [
+      "Ver mi deuda",
+      "Subir comprobante",
+      "Datos de pago"
+    ],
     "template": "Listo, {nombre}. Verifiqué tu identidad. ¿Quieres ver tu deuda o validar un comprobante de pago?",
     "confirm": "Listo, {nombre}. Verifiqué tu identidad.",
     "not_found": "No encontré una cuenta con ese DNI. Verifica el número (son 8 dígitos) o, si prefieres, te derivo con un asesor."
   },
-
   "consulta_deuda": {
     "mode": "verbatim",
     "description": "El usuario pregunta por su deuda, saldo, cuota, vencimiento o estado de su préstamo.",
@@ -122,9 +152,30 @@
     "terminal_signal": "info_provided",
     "requires_identity": true,
     "tool": "consultar_deuda",
-    "keywords": ["mi deuda", "cuanto debo", "cuánto debo", "saldo", "mi saldo", "estado de cuenta", "mi prestamo", "mi préstamo", "consultar deuda", "cuanto tengo", "mi cuota", "mi credito", "mi crédito"],
-    "patterns": ["cu[aá]nt[oa].*(debo|pago|deuda|cuota)", "(saldo|deuda).*(pendiente|actual|tengo)"],
-    "chips": ["Subir comprobante", "Datos de pago", "Hablar con un asesor"],
+    "keywords": [
+      "mi deuda",
+      "cuanto debo",
+      "cuánto debo",
+      "saldo",
+      "mi saldo",
+      "estado de cuenta",
+      "mi prestamo",
+      "mi préstamo",
+      "consultar deuda",
+      "cuanto tengo",
+      "mi cuota",
+      "mi credito",
+      "mi crédito"
+    ],
+    "patterns": [
+      "cu[aá]nt[oa].*(debo|pago|deuda|cuota)",
+      "(saldo|deuda).*(pendiente|actual|tengo)"
+    ],
+    "chips": [
+      "Subir comprobante",
+      "Datos de pago",
+      "Hablar con un asesor"
+    ],
     "template": "Tienes {monto_vencido} vencido ({cuotas_vencidas} cuotas) para ponerte al día. Saldo total del préstamo: {saldo}. Próxima cuota {cuota} vence el {fecha_venc} ({dias_mora} días de mora). Inversionista: {inversionista}.",
     "list": {
       "header": "Tienes {n_creditos} créditos vigentes a tu nombre:",
@@ -135,9 +186,61 @@
       "header": "Este es un crédito grupal; lo comparten:",
       "item": "• {codeudor} ({rol}) — DNI {dni}.",
       "footer": "El saldo y las cuotas son compartidos por el grupo."
+    },
+    "credit_state_branches": {
+      "al_dia": {
+        "template": "Tu crédito está al día. ¿Qué deseas hacer?",
+        "options": [
+          {
+            "label": "Consultar cronograma"
+          },
+          {
+            "label": "Subir comprobante"
+          },
+          {
+            "label": "Hablar con un asesor"
+          }
+        ]
+      },
+      "por_vencer": {
+        "template": "Tu próxima cuota vence el {fecha_venc} por S/{cuota}.",
+        "options": [
+          {
+            "label": "Subir comprobante"
+          },
+          {
+            "label": "Ver cuentas bancarias"
+          },
+          {
+            "label": "Consultar cronograma"
+          },
+          {
+            "label": "Hablar con un asesor"
+          }
+        ]
+      },
+      "vencido": {
+        "template": "Tienes cuotas vencidas con {dias_mora} días de atraso. Saldo pendiente: {saldo}.",
+        "options": [
+          {
+            "label": "Realizar pago"
+          },
+          {
+            "label": "Pago parcial"
+          },
+          {
+            "label": "Compromiso de pago"
+          },
+          {
+            "label": "Ver alternativas"
+          },
+          {
+            "label": "Hablar con un asesor"
+          }
+        ]
+      }
     }
   },
-
   "elegir_credito": {
     "mode": "verbatim",
     "description": "Hay más de un crédito y se necesita que el usuario elija sobre cuál operar.",
@@ -149,52 +252,111 @@
       "footer": "Respóndeme con el número o el código del crédito."
     }
   },
-
   "politica_pago": {
     "mode": "verbatim",
     "description": "El usuario pide un plan de pago, fraccionar, refinanciar, negociar, descuento o rebaja (fuera de alcance).",
     "capability": "politica_pago",
     "terminal_signal": "info_provided",
     "requires_identity": false,
-    "keywords": ["plan de pago", "fraccionar", "pagar en cuotas", "refinanciar", "refinanciamiento", "negociar", "descuento", "rebaja"],
-    "patterns": ["(plan|acuerdo).*(pago|cuotas)", "refinanci\\w*"],
-    "chips": ["Hablar con un asesor", "Ver mi deuda", "Subir comprobante"],
+    "keywords": [
+      "plan de pago",
+      "fraccionar",
+      "pagar en cuotas",
+      "refinanciar",
+      "refinanciamiento",
+      "negociar",
+      "descuento",
+      "rebaja"
+    ],
+    "patterns": [
+      "(plan|acuerdo).*(pago|cuotas)",
+      "refinanci\\w*"
+    ],
+    "chips": [
+      "Hablar con un asesor",
+      "Ver mi deuda",
+      "Subir comprobante"
+    ],
     "template": "Por este canal solo puedo ayudarte a consultar tu deuda y a validar comprobantes de pago. Los acuerdos de pago o refinanciamiento los ve un asesor; si quieres, te derivo con uno."
   },
-
   "donde_pagar": {
     "mode": "verbatim",
     "description": "El usuario pregunta dónde, cómo o a qué cuenta pagar su crédito.",
     "capability": "cuentas_bancarias",
     "terminal_signal": "info_provided",
     "requires_identity": true,
-    "keywords": ["donde pago", "dónde pago", "como pago", "cómo pago", "a que cuenta", "a qué cuenta", "numero de cuenta", "cuenta para pagar", "cci"],
-    "patterns": ["(d[oó]nde|c[oó]mo|qu[eé] cuenta).*(pag|abon|deposit)"],
-    "chips": ["Subir comprobante", "Ver mi deuda", "Hablar con un asesor"],
+    "keywords": [
+      "donde pago",
+      "dónde pago",
+      "como pago",
+      "cómo pago",
+      "a que cuenta",
+      "a qué cuenta",
+      "numero de cuenta",
+      "cuenta para pagar",
+      "cci"
+    ],
+    "patterns": [
+      "(d[oó]nde|c[oó]mo|qu[eé] cuenta).*(pag|abon|deposit)"
+    ],
+    "chips": [
+      "Subir comprobante",
+      "Ver mi deuda",
+      "Hablar con un asesor"
+    ],
     "template": "Puedes pagar tu crédito {loan} al inversionista {inversionista} a la cuenta CCI {cci} del banco {banco} (número de cuenta: {cuenta_bancaria}). Cuando pagues, envíame foto del comprobante con el monto y te lo registro."
   },
-
   "comprobante_reportar": {
     "mode": "verbatim",
     "capability": "comprobante",
     "flow": true,
     "doc": "El usuario quiere SUBIR/CARGAR/ENVIAR/REGISTRAR su comprobante, o REPORTA un pago ya hecho. SIN template a propósito: renderiza vacío → el turno cae al agente LLM, que pide los datos faltantes (foto, monto, inversionista) y ejecuta validar_comprobante. flow:true activa el sticky-flow para que una palabra suelta ('es un cci') no secuestre el flujo; el flag se libera al ejecutar la tool o tras 6 turnos. keywords/patterns hacen que 'subir comprobante' caiga aquí por Layer-1 (determinístico) y arme el flow, en vez de jugárselo a la clasificación LLM (que a veces lo mandaba a derivar_asesor).",
     "description": "El usuario quiere SUBIR, CARGAR, ENVIAR o REGISTRAR su comprobante/voucher de pago, o avisa que YA hizo/realizó un pago, transferencia o depósito de su crédito. NO es preguntar dónde pagar ni hablar con un asesor; es subir/reportar un pago.",
-    "keywords": ["subir comprobante", "subir mi comprobante", "cargar comprobante", "cargar mi comprobante", "enviar comprobante", "enviar mi comprobante", "mandar comprobante", "registrar comprobante", "registrar mi pago", "registrar pago", "validar comprobante", "subir voucher", "enviar voucher", "mi voucher", "ya pagué", "ya pague", "hice el pago", "hice mi pago", "ya transferí", "ya transferi", "ya deposité", "ya deposite", "acabo de pagar"],
-    "patterns": ["(sub[ií]r|carg|registr|valid).*(comprobante|voucher|pago)", "(env[ií]a|mand).*(comprobante|voucher)", "ya.*(pagu[eé]|deposit|transfer)"],
+    "keywords": [
+      "subir comprobante",
+      "subir mi comprobante",
+      "cargar comprobante",
+      "cargar mi comprobante",
+      "enviar comprobante",
+      "enviar mi comprobante",
+      "mandar comprobante",
+      "registrar comprobante",
+      "registrar mi pago",
+      "registrar pago",
+      "validar comprobante",
+      "subir voucher",
+      "enviar voucher",
+      "mi voucher",
+      "ya pagué",
+      "ya pague",
+      "hice el pago",
+      "hice mi pago",
+      "ya transferí",
+      "ya transferi",
+      "ya deposité",
+      "ya deposite",
+      "acabo de pagar"
+    ],
+    "patterns": [
+      "(sub[ií]r|carg|registr|valid).*(comprobante|voucher|pago)",
+      "(env[ií]a|mand).*(comprobante|voucher)",
+      "ya.*(pagu[eé]|deposit|transfer)"
+    ],
     "requires_identity": true
   },
-
   "comprobante_resultado": {
     "mode": "verbatim",
     "capability": "comprobante",
     "terminal_signal": "proof",
     "requires_identity": true,
     "classifiable": false,
-    "chips": ["Ver mi deuda", "Datos de pago", "Hablar con un asesor"],
+    "chips": [
+      "Ver mi deuda",
+      "Datos de pago",
+      "Hablar con un asesor"
+    ],
     "template": "Recibí tu comprobante sobre el crédito {loan}. Quedó registrado y EN REVISIÓN: un asesor lo concilia contra el banco y, de estar conforme, se aplica a tu cuenta."
   },
-
   "derivar_asesor": {
     "mode": "verbatim",
     "description": "El usuario quiere hablar con una persona/asesor, o pide algo fuera de alcance (reclamo, queja).",
@@ -202,57 +364,378 @@
     "escalation_reason": "explicit_agent_request",
     "requires_identity": false,
     "tool": "escalate_to_human",
-    "keywords": ["asesor", "hablar con alguien", "agente", "persona", "humano", "reclamo", "queja"],
-    "chips": ["Ver mi deuda", "Subir comprobante"],
+    "keywords": [
+      "asesor",
+      "hablar con alguien",
+      "agente",
+      "persona",
+      "humano",
+      "reclamo",
+      "queja"
+    ],
+    "chips": [
+      "Ver mi deuda",
+      "Subir comprobante"
+    ],
     "template": "Te derivo con un asesor de PrestamYpe para que te ayude con eso. En breve se comunican contigo."
   },
-
   "enviar_estado": {
     "mode": "verbatim",
     "description": "El usuario pide que le ENVÍEN su estado de cuenta / resumen de deuda (a su correo o WhatsApp).",
     "capability": "estado_cuenta",
     "terminal_signal": "info_provided",
     "requires_identity": true,
-    "keywords": ["enviame mi estado", "envíame mi estado", "mandame mi estado", "mándame mi estado", "enviar estado de cuenta", "enviame el estado", "quiero mi estado de cuenta", "enviame mi deuda", "mandame mi deuda"],
-    "patterns": ["(env[ií]a|m[aá]nda|p[aá]sa).*(estado|deuda|saldo)"],
-    "set_session": { "tipo": "estado_cuenta" },
+    "keywords": [
+      "enviame mi estado",
+      "envíame mi estado",
+      "mandame mi estado",
+      "mándame mi estado",
+      "enviar estado de cuenta",
+      "enviame el estado",
+      "quiero mi estado de cuenta",
+      "enviame mi deuda",
+      "mandame mi deuda"
+    ],
+    "patterns": [
+      "(env[ií]a|m[aá]nda|p[aá]sa).*(estado|deuda|saldo)"
+    ],
+    "set_session": {
+      "tipo": "estado_cuenta"
+    },
     "template": "Claro, te puedo enviar tu estado de cuenta. ¿Te lo envío a tu correo o por WhatsApp?"
   },
-
   "enviar_datos_pago": {
     "mode": "verbatim",
     "description": "El usuario pide que le ENVÍEN los datos de pago (CCI, banco, monto, vencimiento) a su correo o WhatsApp.",
     "capability": "cuentas_bancarias",
     "terminal_signal": "info_provided",
     "requires_identity": true,
-    "keywords": ["enviame los datos de pago", "envíame los datos de pago", "mandame el cci", "mándame el cci", "enviar datos de pago", "enviame donde pagar", "mandame la cuenta", "enviame la cuenta para pagar"],
-    "patterns": ["(env[ií]a|m[aá]nda|p[aá]sa).*(datos de pago|cci|cuenta para pagar)"],
-    "set_session": { "tipo": "datos_pago" },
+    "keywords": [
+      "enviame los datos de pago",
+      "envíame los datos de pago",
+      "mandame el cci",
+      "mándame el cci",
+      "enviar datos de pago",
+      "enviame donde pagar",
+      "mandame la cuenta",
+      "enviame la cuenta para pagar"
+    ],
+    "patterns": [
+      "(env[ií]a|m[aá]nda|p[aá]sa).*(datos de pago|cci|cuenta para pagar)"
+    ],
+    "set_session": {
+      "tipo": "datos_pago"
+    },
     "template": "Perfecto, te envío los datos para pagar tu crédito. ¿A tu correo o por WhatsApp?"
   },
-
   "enviar_constancia": {
     "mode": "verbatim",
     "description": "El usuario pide una constancia/comprobante de que recibimos su pago o comprobante.",
     "capability": "constancia",
     "terminal_signal": "info_provided",
     "requires_identity": true,
-    "keywords": ["enviame la constancia", "envíame la constancia", "constancia de recepcion", "constancia de recepción", "comprobante de recepcion", "mandame la constancia", "quiero una constancia"],
-    "patterns": ["(env[ií]a|m[aá]nda|quiero).*(constancia|recepci[oó]n)"],
-    "set_session": { "tipo": "constancia_comprobante" },
+    "keywords": [
+      "enviame la constancia",
+      "envíame la constancia",
+      "constancia de recepcion",
+      "constancia de recepción",
+      "comprobante de recepcion",
+      "mandame la constancia",
+      "quiero una constancia"
+    ],
+    "patterns": [
+      "(env[ií]a|m[aá]nda|quiero).*(constancia|recepci[oó]n)"
+    ],
+    "set_session": {
+      "tipo": "constancia_comprobante"
+    },
     "template": "Claro, te envío la constancia de recepción de tu comprobante. ¿A tu correo o por WhatsApp?"
   },
-
   "elegir_canal": {
     "mode": "verbatim",
     "description": "El usuario eligió el canal de envío respondiendo 'correo' o 'whatsapp' a la pregunta de a dónde enviarle la información.",
     "requires_identity": true,
     "tool": "enviar_info",
     "capture": "canal",
-    "patterns": ["\\b(?P<canal>correo|email|e-?mail|whats?app|wsp|wasap)\\b"],
-    "set_session": { "canal": "{capture}" },
-    "needs_session": ["tipo", "canal"],
+    "patterns": [
+      "\\b(?P<canal>correo|email|e-?mail|whats?app|wsp|wasap)\\b"
+    ],
+    "set_session": {
+      "canal": "{capture}"
+    },
+    "needs_session": [
+      "tipo",
+      "canal"
+    ],
     "rerender_with_result": true,
     "template": "Te envío la información al canal que elegiste."
+  },
+  "alternativas": {
+    "mode": "verbatim",
+    "description": "El usuario pide alternativas de pago, reclama o quiere hablar con un asesor.",
+    "requires_identity": false,
+    "tool": "escalate_to_human",
+    "keywords": [
+      "alternativas",
+      "otras opciones",
+      "reclamo",
+      "queja",
+      "no estoy de acuerdo"
+    ],
+    "template": "Te derivo con un asesor de PrestamYpe para que analice tu caso y te ofrezca las mejores alternativas."
+  },
+  "comprobante_proxima_cuota_pregunta": {
+    "mode": "verbatim",
+    "description": "Pre-pregunta del flujo de comprobante: pregunta si el comprobante corresponde a la próxima cuota.",
+    "requires_identity": true,
+    "classifiable": false,
+    "template": "¿El comprobante que vas a subir corresponde al pago de tu próxima cuota?",
+    "options": [
+      {
+        "label": "Sí",
+        "action": "continue_comprobante"
+      },
+      {
+        "label": "No",
+        "action": "asesor"
+      }
+    ]
+  },
+  "compromiso_pago": {
+    "mode": "verbatim",
+    "description": "El usuario vencido quiere registrar un compromiso de pago para una fecha próxima.",
+    "requires_identity": true,
+    "keywords": [
+      "compromiso de pago",
+      "me comprometo a pagar",
+      "voy a pagar el"
+    ],
+    "template": "¿En qué fecha realizarás el pago? (formato DD/MM/AAAA o AAAA-MM-DD)"
+  },
+  "consulta_deuda_total": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta por su deuda total o quiere pagarla completa.",
+    "requires_identity": true,
+    "keywords": [
+      "deuda total",
+      "pagar todo",
+      "cancelar todo",
+      "saldo total"
+    ],
+    "template": "¿Deseas pagar toda tu deuda?",
+    "options": [
+      {
+        "label": "Sí",
+        "action": "asesor_deuda_total"
+      },
+      {
+        "label": "No",
+        "action": "menu_estado"
+      }
+    ]
+  },
+  "credit_selector": {
+    "mode": "verbatim",
+    "description": "El usuario tiene 2 créditos vigentes y debe elegir sobre cuál operar (MCD-01 selector).",
+    "requires_identity": true,
+    "classifiable": false,
+    "template": "Tienes 2 créditos activos. ¿Sobre cuál deseas consultar?\n• {credit_label_1}\n• {credit_label_2}\nResponde con el número o código del crédito."
+  },
+  "cronograma": {
+    "mode": "verbatim",
+    "description": "El usuario pide ver el cronograma o calendario de pagos de su crédito.",
+    "requires_identity": true,
+    "tool": "consultar_cronograma",
+    "keywords": [
+      "cronograma",
+      "calendario de pagos",
+      "mis cuotas",
+      "cuotas pendientes",
+      "plan de cuotas"
+    ],
+    "template": "Aquí está tu cronograma de pagos para el crédito {loan}."
+  },
+  "cuentas_bancarias": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta a qué cuenta depositar, pedir las cuentas bancarias o el CCI del inversionista.",
+    "requires_identity": true,
+    "keywords": [
+      "cuentas bancarias",
+      "cuenta bancaria",
+      "numero de cuenta",
+      "cuenta para depositar",
+      "inversionista cuenta",
+      "datos bancarios"
+    ],
+    "template": "Para pagar tu crédito {loan}, transfiere a:\nInversionista: {inversionista} | CCI: {cci}",
+    "list": {
+      "header": "Datos bancarios para tus créditos:",
+      "item": "• Crédito {loan}: Inversionista {inversionista} | CCI {cci}",
+      "footer": "Envíanos el comprobante una vez realizado el pago."
+    }
+  },
+  "cuotas_pagadas": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta cuántas cuotas ha pagado.",
+    "requires_identity": true,
+    "keywords": [
+      "cuotas pagadas",
+      "cuántas cuotas pagué",
+      "cuantas pagué",
+      "cuánto llevo pagado"
+    ],
+    "template": "Has pagado {cuotas_pagadas} cuotas de tu crédito {loan}."
+  },
+  "cuotas_pendientes": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta cuántas cuotas le faltan por pagar.",
+    "requires_identity": true,
+    "keywords": [
+      "cuotas pendientes",
+      "cuántas cuotas me faltan",
+      "cuantas me faltan",
+      "cuánto me falta"
+    ],
+    "template": "Te faltan {cuotas_pendientes} cuotas por pagar en el crédito {loan}."
+  },
+  "domingo_feriado_al_dia_por_vencer": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta qué pasa si su fecha de vencimiento cae en domingo o feriado (solo aplica a créditos al día o próximos a vencer).",
+    "requires_identity": true,
+    "keywords": [
+      "domingo",
+      "feriado",
+      "día no hábil",
+      "que pasa si cae en feriado"
+    ],
+    "template": "Si tu fecha de vencimiento cae en domingo o feriado, se traslada al siguiente día hábil. No hay cargo adicional por este motivo."
+  },
+  "domingo_feriado_vencido_redirect": {
+    "mode": "verbatim",
+    "description": "Respuesta cuando un cliente vencido pregunta sobre domingo/feriado — redirige al menú de vencido.",
+    "requires_identity": true,
+    "classifiable": false,
+    "template": "Para tu caso, lo más importante es regularizar el pago pendiente. ¿Cómo te podemos ayudar?",
+    "options": [
+      {
+        "label": "Realizar pago"
+      },
+      {
+        "label": "Compromiso de pago"
+      },
+      {
+        "label": "Ver alternativas"
+      },
+      {
+        "label": "Hablar con un asesor"
+      }
+    ]
+  },
+  "fecha_venc_contrato": {
+    "mode": "verbatim",
+    "description": "El usuario pregunta cuándo vence su contrato o la fecha de la última cuota.",
+    "requires_identity": true,
+    "keywords": [
+      "fecha vencimiento",
+      "cuándo vence mi contrato",
+      "cuando termina mi prestamo",
+      "última cuota",
+      "vencimiento contrato"
+    ],
+    "template": "Tu contrato vence el {fecha_venc_contrato}."
+  },
+  "fuera_de_horario": {
+    "mode": "verbatim",
+    "description": "El bot detecta que la consulta llega fuera del horario de atención.",
+    "requires_identity": false,
+    "template": "En este momento estamos fuera del horario de atención (Lun-Vie 9:00–18:30, con pausa 13:00–14:00). Puedes dejarnos tu consulta y un asesor te contactará en el próximo horario hábil."
+  },
+  "id_contrato_dni_prompt": {
+    "mode": "verbatim",
+    "description": "Solicitar el DNI al usuario después de que ingresó su número de contrato (segundo factor IDC-01).",
+    "requires_identity": false,
+    "classifiable": false,
+    "template": "Gracias. Ahora ingresa tu número de DNI para verificar tu identidad."
+  },
+  "id_contrato_max_retries": {
+    "mode": "verbatim",
+    "description": "Derivar al asesor después de agotar los intentos de identificación por contrato (IDC-01).",
+    "requires_identity": false,
+    "classifiable": false,
+    "tool": "escalate_to_human",
+    "template": "No pude verificar tu identidad. Te derivo con un asesor de PrestamYpe para que te ayude directamente."
+  },
+  "id_contrato_not_found": {
+    "mode": "verbatim",
+    "description": "Respuesta neutral cuando el contrato no se encuentra o el DNI no coincide (IDC-01 fail-closed). NUNCA revela cuál de los dos falló.",
+    "requires_identity": false,
+    "classifiable": false,
+    "template": "No pude verificar tu identidad con esos datos. Por favor, revísalos e inténtalo de nuevo, o indícame tu DNI directamente para continuar."
+  },
+  "id_contrato_prompt": {
+    "mode": "verbatim",
+    "description": "Invitar al usuario a ingresar su número de contrato para identificarse (IDC-01).",
+    "requires_identity": false,
+    "classifiable": true,
+    "keywords": [
+      "número de contrato",
+      "nro contrato",
+      "id contrato",
+      "identificarme con contrato"
+    ],
+    "template": "Por favor, ingresa tu número de contrato (por ejemplo: P04069)."
+  },
+  "no_comprendida_1": {
+    "mode": "verbatim",
+    "description": "Primera vez que el bot no entiende la consulta del usuario (strike 1).",
+    "requires_identity": false,
+    "classifiable": false,
+    "template": "No entendí bien tu consulta. ¿Puedes reformularla? Puedo ayudarte con el estado de tu crédito, cronograma de pagos, comprobantes y más."
+  },
+  "no_comprendida_2_asesor": {
+    "mode": "verbatim",
+    "description": "Segunda vez consecutiva que el bot no entiende — escala a asesor (strike 2).",
+    "requires_identity": false,
+    "classifiable": false,
+    "tool": "escalate_to_human",
+    "template": "Parece que no estoy pudiendo ayudarte bien. Te derivo con un asesor de PrestamYpe para que te atienda directamente."
+  },
+  "no_puede_pagar": {
+    "mode": "verbatim",
+    "description": "El usuario indica que no puede pagar su cuota.",
+    "requires_identity": true,
+    "keywords": [
+      "no puedo pagar",
+      "no tengo dinero",
+      "no me alcanza",
+      "dificultades para pagar"
+    ],
+    "template": "Entiendo la situación. ¿Cuál es el motivo por el que no puedes pagar en este momento?"
+  },
+  "realizar_pago_vencido": {
+    "mode": "verbatim",
+    "description": "El usuario con crédito vencido quiere realizar el pago de la cuota vencida.",
+    "requires_identity": true,
+    "tool": "escalate_to_human",
+    "keywords": [
+      "realizar pago",
+      "quiero pagar",
+      "pagar mi cuota"
+    ],
+    "template": "Te derivo con un asesor para coordinar el pago de tu cuota vencida. Te indicarán el monto exacto incluyendo los cargos aplicables."
+  },
+  "ya_pague": {
+    "mode": "verbatim",
+    "description": "El usuario indica que ya realizó un pago y quiere registrarlo.",
+    "requires_identity": true,
+    "keywords": [
+      "ya pagué",
+      "ya pague",
+      "hice un pago",
+      "realicé el pago",
+      "ya deposité",
+      "ya deposite"
+    ],
+    "template": "Perfecto. Para registrar tu pago, por favor sube el comprobante. ¿Tienes el comprobante a la mano?"
   }
 }

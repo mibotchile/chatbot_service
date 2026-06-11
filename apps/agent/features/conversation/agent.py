@@ -19,6 +19,7 @@ from shared.ports.tool_registry import NullToolRegistry, ToolRegistryPort
 from features.conversation.response_builder import build_ui_actions
 from features.conversation.debtor_profile import build_debtor_profile, truncate_history
 from features.conversation import responses as responses_engine
+from features.cobranza.scenario import classify_credit_state
 
 # ── Sticky LLM-flow (data-driven multi-turn tool gathering) ───────────────────
 # When a ``flow: true`` intent routes a turn to the LLM (e.g. validar_comprobante
@@ -282,6 +283,33 @@ class SoreliaAgent:
         # The data-driven requires_identity flag gates the rest.
         prof = profile or {}
 
+        # Thread credit_state into session_state and profile once the identity is
+        # verified. This runs on every canned turn so the value stays current.
+        # credit_state = INPUT axis (al_dia/por_vencer/vencido) from the debt profile.
+        # NOT the gestión typification n1/n2/n3 — those are the OUTPUT axis.
+        if verified and profile and session_state is not None:
+            cobranza_cfg = getattr(getattr(self, "tenant", None), "cobranza", {}) or {}
+            _window = cobranza_cfg.get("proxima_vencer_window_days", 5)
+            _cs = classify_credit_state(profile, _window)
+            session_state["credit_state"] = _cs
+            profile["credit_state"] = _cs
+
+            # INF-12 (GAP-1): enrich vencido profile with moratoria fields so
+            # calcular_penalidad / calcular_interes_compensatorio can fire in the
+            # overdue display. Fetched once per session (skip if already present).
+            if _cs == "vencido" and profile.get("amortizacion_cuota") is None:
+                try:
+                    from features.cobranza.doris_debt_source import get_moratoria_fields  # noqa: PLC0415
+                    _tenant_id = cobranza_cfg.get("tenant_id") or getattr(
+                        getattr(self, "tenant", None), "slug", ""
+                    ) or ""
+                    _account_id = profile.get("account_id", "")
+                    if _account_id:
+                        _mora = get_moratoria_fields(_account_id, _tenant_id)
+                        profile.update(_mora)
+                except Exception:
+                    logger.opt(exception=True).debug("get_moratoria_fields failed (non-blocking)")
+
         outcome = responses_engine.route_layer1(
             text, spec, prof, session_state=session_state, identity_verified=verified,
         )
@@ -292,6 +320,9 @@ class SoreliaAgent:
             _arm_llm_flow(session_state, outcome.arm_flow_intent)
             return None
         if outcome.handled:
+            outcome = responses_engine.apply_comprobante_prequestion_gate(
+                outcome, spec, prof, session_state=session_state,
+            )
             return await self._canned_result(outcome, spec, session_state=session_state)
 
         if outcome.needs_llm_classification:
@@ -301,7 +332,21 @@ class SoreliaAgent:
                     intent, spec, prof, session_state=session_state, identity_verified=verified,
                 )
                 if resolved.handled:
+                    resolved = responses_engine.apply_comprobante_prequestion_gate(
+                        resolved, spec, prof, session_state=session_state,
+                    )
                     return await self._canned_result(resolved, spec, session_state=session_state)
+                # Not handled → check if it's a comprobante intent that needs the gate
+                # (comprobante_reportar renders empty → falls to LLM; apply gate before that).
+                if intent in responses_engine._COMPROBANTE_INTENTS and verified:
+                    gated = responses_engine.apply_comprobante_prequestion_gate(
+                        responses_engine.RouterOutcome(
+                            handled=False, intent=intent, source=responses_engine.SOURCE_INTENT,
+                        ),
+                        spec, prof, session_state=session_state,
+                    )
+                    if gated.handled:
+                        return await self._canned_result(gated, spec, session_state=session_state)
                 # Not handled → this intent hands the turn to the LLM. If it's a
                 # ``flow`` intent, ARM the sticky flag so subsequent turns bypass
                 # the router until the tool resolves (or the cap fires).
@@ -410,6 +455,12 @@ class SoreliaAgent:
             return fallback
         intent = outcome.intent
         cfg = (getattr(spec, "intents", {}) or {}).get(intent, {}) if spec else {}
+
+        # CPR-01: abono after comprobante → chain to compromiso flow (no menu shown).
+        # classify_tipo returns "abono" for partial payments (< cuota, not cancellation).
+        if tool_result.get("tipo") == "abono" and session_state is not None:
+            session_state["pending_intent"] = "compromiso_pago"
+            logger.info("abono detected after comprobante → chaining to compromiso_pago")
 
         # Delivery-style intents (envío de info bajo demanda): the tool builds the
         # customer-facing confirmation WITH the masked destination (or an error

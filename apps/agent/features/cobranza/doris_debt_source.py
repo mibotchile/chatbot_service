@@ -233,6 +233,15 @@ def _build_sql_window(
     # (total remaining) is secondary context. Joined from the pagos_agg CTE below.
     select_parts.append("COALESCE(agg.monto_vencido, 0) AS monto_vencido")
     select_parts.append("COALESCE(agg.cuotas_vencidas, 0) AS cuotas_vencidas")
+    # Cuotas / contract-window aggregates (additive — share pagos_agg's GROUP BY).
+    # cuotas_pagadas/pendientes drive INF-03; fecha_venc_contrato/fecha_inicio drive
+    # INF-02; plazo (= MAX nro_cuotas) is the total installment count.
+    select_parts.append("agg.cuotas_pagadas AS cuotas_pagadas")
+    select_parts.append("agg.cuotas_pendientes AS cuotas_pendientes")
+    select_parts.append("agg.fecha_venc_contrato AS fecha_venc_contrato")
+    select_parts.append("agg.fecha_venc_contrato AS fecha_vencimiento_contrato")
+    select_parts.append("agg.fecha_inicio_prestamo AS fecha_inicio_prestamo")
+    select_parts.append("agg.plazo AS plazo")
 
     select_clause = ",\n    ".join(select_parts)
 
@@ -246,15 +255,27 @@ def _build_sql_window(
         f"  FROM {db}.{pagos}\n"
         f"),\n"
         f"pagos_agg AS (\n"
-        f"  -- Overdue aggregate: unpaid installments whose expected date has passed.\n"
-        f"  -- monto_vencido = what the borrower owes to get current (PRIMARY display).\n"
+        f"  -- Whole-credit aggregate over ALL installments (one row per credit).\n"
+        f"  -- monto_vencido/cuotas_vencidas use a CASE-filtered overdue subset so the\n"
+        f"  -- PRIMARY 'cuánto debo' display keeps its exact overdue semantics, while the\n"
+        f"  -- contract-window aggregates (cuotas_pagadas/pendientes, fecha_*/plazo) span\n"
+        f"  -- the full schedule — all on the SAME GROUP BY {pagos_key} (no clash).\n"
         f"  SELECT\n"
         f"    {pagos_key} AS {pagos_key},\n"
-        f"    SUM(cuota_esperada_mensual) AS monto_vencido,\n"
-        f"    COUNT(*) AS cuotas_vencidas\n"
+        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NULL\n"
+        f"             AND fecha_de_pago_esperada_original <= CURDATE()\n"
+        f"             THEN cuota_esperada_mensual ELSE 0 END) AS monto_vencido,\n"
+        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NULL\n"
+        f"             AND fecha_de_pago_esperada_original <= CURDATE()\n"
+        f"             THEN 1 ELSE 0 END) AS cuotas_vencidas,\n"
+        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NOT NULL\n"
+        f"             THEN 1 ELSE 0 END) AS cuotas_pagadas,\n"
+        f"    SUM(CASE WHEN fecha_de_pago_del_cliente IS NULL\n"
+        f"             THEN 1 ELSE 0 END) AS cuotas_pendientes,\n"
+        f"    MAX(fecha_de_pago_esperada_original) AS fecha_venc_contrato,\n"
+        f"    MIN(fecha_de_pago_esperada_original) AS fecha_inicio_prestamo,\n"
+        f"    MAX(nro_cuotas) AS plazo\n"
         f"  FROM {db}.{pagos}\n"
-        f"  WHERE fecha_de_pago_del_cliente IS NULL\n"
-        f"    AND fecha_de_pago_esperada_original <= CURDATE()\n"
         f"  GROUP BY {pagos_key}\n"
         f"),\n"
         f"asig_sel AS (\n"
@@ -380,6 +401,47 @@ def _row_to_profile(row: dict) -> dict:
     # monto_vencido is a float (currency amount); cuotas_vencidas is a count (int).
     profile["monto_vencido"] = _to_float(row.get("monto_vencido", 0))
     profile["cuotas_vencidas"] = int(_to_float(row.get("cuotas_vencidas", 0)))
+
+    # Phase 3 — INF-03 / INF-02: cuotas counts + contract end date.
+    # These come from the pagos table aggregates; they may be pre-mapped in the
+    # column_map (future-proof) or computed here from the raw counts when absent.
+    cuotas_pagadas = row.get("cuotas_pagadas")
+    cuotas_pendientes = row.get("cuotas_pendientes")
+    fecha_venc_contrato = row.get("fecha_venc_contrato")
+
+    profile["cuotas_pagadas"] = (
+        int(_to_float(cuotas_pagadas)) if cuotas_pagadas is not None else None
+    )
+    profile["cuotas_pendientes"] = (
+        int(_to_float(cuotas_pendientes)) if cuotas_pendientes is not None else None
+    )
+    profile["fecha_venc_contrato"] = str(fecha_venc_contrato) if fecha_venc_contrato else None
+
+    # Phase 8 — MCD-01: 7 per-credit fields for multi-credit selector.
+    # Columns sourced from the verified Doris column names (confirmed 2026-06-10):
+    #   valor_cuota         ← cuota_esperada_mensual (pagos)
+    #   cuenta_bancaria     ← numero_de_cuenta (asignacion/debt)
+    #   cci                 ← codigo_de_cuenta_cci (debt; already mapped as 'cci')
+    #   inversionista       ← inversionista (debt; already in column_map)
+    #   plazo               ← MAX(nro_cuotas) per contract (pagos)
+    #   fecha_vencimiento_contrato ← MAX(fecha_de_pago_esperada_original) (pagos)
+    #   fecha_inicio_prestamo      ← MIN(fecha_de_pago_esperada_original) (pagos)
+    # All 7 pass through from the column_map; coerce types and normalise here.
+    valor_cuota_raw = row.get("valor_cuota")
+    profile["valor_cuota"] = _to_float(valor_cuota_raw) if valor_cuota_raw is not None else None
+
+    cuenta_bancaria_raw = row.get("numero_de_cuenta") or row.get("cuenta_bancaria")
+    profile["cuenta_bancaria"] = str(cuenta_bancaria_raw) if cuenta_bancaria_raw else None
+
+    plazo_raw = row.get("plazo")
+    profile["plazo"] = int(_to_float(plazo_raw)) if plazo_raw is not None else None
+
+    fvc_raw = row.get("fecha_vencimiento_contrato")
+    profile["fecha_vencimiento_contrato"] = str(fvc_raw) if fvc_raw else None
+
+    fip_raw = row.get("fecha_inicio_prestamo")
+    profile["fecha_inicio_prestamo"] = str(fip_raw) if fip_raw else None
+
     return profile
 
 
@@ -569,3 +631,278 @@ def validate_comprobante(
     }
 
 
+# ── Cronograma / moratoria / IDC-01 contract-resolution (PR2 net-new) ──────
+
+
+def get_cronograma(account_id: str, tenant_id: str) -> list[dict]:
+    """Return the installment schedule for a credit from Doris.
+
+    Queries ``batch_pagos_v2_bronze`` directly by ``codigo_contrato`` (the
+    per-installment table; same join key used in the profile query).
+
+    Returns a list of dicts with keys ``n_cuota``, ``fecha_venc``, ``monto``,
+    ``estado`` ordered by ``n_cuota``. Empty list when no rows or on error.
+    """
+    schema = _load_schema(tenant_id)
+    db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
+    pagos = _safe_ident(schema["pagos_table"], what="pagos_table")
+    pagos_key = _safe_ident(schema["join"]["pagos_key"], what="join.pagos_key")
+
+    sql = (
+        f"SELECT\n"
+        f"  nro_cuotas AS n_cuota,\n"
+        f"  fecha_de_pago_esperada_original AS fecha_venc,\n"
+        f"  cuota_esperada_mensual AS monto,\n"
+        f"  fecha_de_pago_del_cliente\n"
+        f"FROM {db}.{pagos}\n"
+        f"WHERE {pagos_key} = %s\n"
+        f"ORDER BY nro_cuotas"
+    )
+    try:
+        conn = _connect(db)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (account_id,))
+                rows = list(cur.fetchall())
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        return []
+
+    result: list[dict] = []
+    for row in rows:
+        fecha_raw = row.get("fecha_venc")
+        fecha_str = str(fecha_raw) if fecha_raw else None
+        paid = row.get("fecha_de_pago_del_cliente") is not None
+        monto_raw = row.get("monto")
+        result.append({
+            "n_cuota": int(row["n_cuota"]) if row.get("n_cuota") is not None else None,
+            "fecha_venc": fecha_str,
+            "monto": _to_float(monto_raw),
+            "estado": "pagada" if paid else "pendiente",
+        })
+    return result
+
+
+def get_moratoria_fields(account_id: str, tenant_id: str) -> dict:
+    """Return moratoria-specific fields for an overdue credit.
+
+    Fetches from Doris:
+      - amortizacion_cuota: amortizacion_esperada_original of the first unpaid
+        installment (NOT amortizacion_esperada_actualizado — 95% null).
+      - tasa_interes_mensual: tasa_de_interes from batch_asignacion_review_bronze,
+        parsed from varchar "X.XX%" to decimal (e.g. "3.50%" → 0.035). Uses
+        DISTINCT to collapse raw dupes in the debt table.
+
+    JOIN: batch_pagos_v2_bronze.codigo_contrato = batch_asignacion_review_bronze.id_credito
+
+    Returns a dict with keys:
+      amortizacion_cuota (float | None)
+      tasa_interes_mensual (float | None)
+
+    Returns {"amortizacion_cuota": None, "tasa_interes_mensual": None} on any
+    error or missing data — callers must handle None (omit moratoria display).
+    """
+    _empty: dict = {"amortizacion_cuota": None, "tasa_interes_mensual": None}
+    if not account_id:
+        return _empty
+
+    try:
+        schema = _load_schema(tenant_id)
+        db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
+        pagos = _safe_ident(schema["pagos_table"], what="pagos_table")
+        debt = _safe_ident(schema["debt_table"], what="debt_table")
+        pagos_key = _safe_ident(schema["join"]["pagos_key"], what="join.pagos_key")
+        debt_key = _safe_ident(schema["join"]["debt_key"], what="join.debt_key")
+
+        # First unpaid installment's amortization + credit's interest rate.
+        # DISTINCT on debt table prevents raw-dupe inflation of tasa_de_interes.
+        sql = (
+            f"SELECT\n"
+            f"  p.amortizacion_esperada_original AS amortizacion_cuota,\n"
+            f"  d.tasa_de_interes AS tasa_de_interes_raw\n"
+            f"FROM {db}.{pagos} p\n"
+            f"JOIN (\n"
+            f"  SELECT DISTINCT {debt_key}, tasa_de_interes\n"
+            f"  FROM {db}.{debt}\n"
+            f"  WHERE {debt_key} = %s\n"
+            f") d ON p.{pagos_key} = d.{debt_key}\n"
+            f"WHERE p.{pagos_key} = %s\n"
+            f"  AND p.fecha_de_pago_del_cliente IS NULL\n"
+            f"ORDER BY p.nro_cuotas\n"
+            f"LIMIT 1"
+        )
+        conn = _connect(db)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (account_id, account_id))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        return _empty
+
+    if not row:
+        return _empty
+
+    # Parse tasa_de_interes varchar "X.XX%" → decimal
+    tasa_raw = row.get("tasa_de_interes_raw")
+    tasa: float | None = None
+    if tasa_raw is not None:
+        try:
+            tasa_str = str(tasa_raw).replace("%", "").strip()
+            tasa = float(tasa_str) / 100
+        except (ValueError, TypeError):
+            tasa = None
+
+    amort_raw = row.get("amortizacion_cuota")
+    amort: float | None = _to_float(amort_raw) if amort_raw is not None else None
+
+    return {"amortizacion_cuota": amort, "tasa_interes_mensual": tasa}
+
+
+# ── IDC-01: Contract + DNI dual-factor identification ─────────────────────────
+
+# Roles that constitute an obligated party of the credit — authorized to access.
+# TESTIGO DE IDENTIDAD is explicitly excluded (witness only, not financially bound).
+# FIADOR SOLIDARIO included by default (solidary guarantor = obligated party)
+# — PENDING Naomi confirmation (2026-06-11).
+_AUTHORIZED_ROLES = frozenset({"SOLICITANTE", "GARANTE", "FIADOR SOLIDARIO"})
+
+
+def _query_contrato_rows(contrato_id: str, tenant_id: str) -> list[dict]:
+    """Query batch_asignacion_review_bronze for all person-rows of a contract.
+
+    Uses ROW_NUMBER() OVER (PARTITION BY id_credito ORDER BY creado_el DESC) to
+    collapse raw duplicates — callers receive at most one row per (id_credito,
+    posicion_contractual) combination. Returns the raw rows keyed by column name.
+    May raise on connection/query failure — caller must catch.
+    """
+    schema = _load_schema(tenant_id)
+    db = _safe_ident(schema.get("db") or settings.doris_db, what="db")
+    debt = _safe_ident(schema["debt_table"], what="debt_table")
+
+    # Read contrato_column from tenant cobranza config (default "id_contrato").
+    import json as _json  # noqa: PLC0415
+    _cfg_path = _tenants_root() / tenant_id / "tenant.config.json"
+    try:
+        _tcfg = _json.loads(_cfg_path.read_text(encoding="utf-8"))
+        _contrato_col_raw = (_tcfg.get("cobranza") or {}).get("contrato_column", "id_contrato")
+    except (OSError, _json.JSONDecodeError):
+        _contrato_col_raw = "id_contrato"
+    contrato_col = _safe_ident(_contrato_col_raw, what="contrato_column")
+
+    # Dedup: keep the most-recent row per (id_credito, posicion_contractual).
+    # batch_asignacion_review_bronze has ~3-6x raw duplicates (confirmed 2026-06-11).
+    sql = (
+        f"SELECT t.*\n"
+        f"FROM (\n"
+        f"  SELECT *,\n"
+        f"    ROW_NUMBER() OVER (\n"
+        f"      PARTITION BY id_credito, posicion_contractual\n"
+        f"      ORDER BY creado_el DESC\n"
+        f"    ) AS _rn\n"
+        f"  FROM {db}.{debt}\n"
+        f"  WHERE {contrato_col} = %s\n"
+        f"    AND posicion_contractual IN (\n"
+        f"      'SOLICITANTE', 'GARANTE', 'FIADOR SOLIDARIO'\n"
+        f"    )\n"
+        f") t\n"
+        f"WHERE t._rn = 1"
+    )
+    conn = _connect(db)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (contrato_id,))
+            return list(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def resolve_contrato(contrato_id: str, dni: str, tenant_id: str) -> dict | None:
+    """IDC-01: Dual-factor contract identification — contract ID + DNI.
+
+    Looks up all authorized parties (SOLICITANTE / GARANTE / FIADOR SOLIDARIO)
+    for ``contrato_id`` in batch_asignacion_review_bronze. Returns a borrower
+    profile dict ONLY IF ``dni`` matches one of those parties. Returns None on
+    any of: contract not found, DNI not in authorized set, or any DB exception.
+
+    Fail-closed: the same None is returned for "contract not found" and "DNI
+    mismatch" so the caller cannot distinguish the two (no information leak).
+
+    The profile shape is identical to resolve_dni for downstream compatibility.
+    """
+    if not contrato_id or not dni:
+        return None
+
+    norm_dni = _normalize_dni(dni)
+    if not norm_dni:
+        return None
+
+    try:
+        rows = _query_contrato_rows(contrato_id, tenant_id)
+    except Exception:  # noqa: BLE001
+        return None
+
+    if not rows:
+        return None
+
+    # Verify the provided DNI is an authorized party.
+    # Filter on posicion_contractual in Python as defense-in-depth (the SQL
+    # WHERE clause already restricts to authorized roles, but this layer ensures
+    # correctness even when rows come from mocks or partial queries).
+    authorized_dnis: set[str] = set()
+    for row in rows:
+        role = str(row.get("posicion_contractual") or "").strip().upper()
+        if role not in _AUTHORIZED_ROLES:
+            continue
+        row_dni = _normalize_dni(str(row.get("dni_ruc") or ""))
+        if row_dni:
+            authorized_dnis.add(row_dni)
+
+    if norm_dni not in authorized_dnis:
+        return None  # fail-closed: no reveal of contract existence
+
+    # DNI is authorized — build a single profile from the first row.
+    # All rows share the same id_credito; the profile is credit-level, not person-level.
+    # Map the raw debt row through _row_to_profile using the standard column_map aliases.
+    # Since _query_contrato_rows returns raw DB column names (not aliased), we build
+    # the profile from the raw row using the known field mapping.
+    first_row = rows[0]
+    profile = _row_from_contrato_raw(first_row, tenant_id)
+    return profile
+
+
+def _row_from_contrato_raw(raw: dict, tenant_id: str) -> dict:
+    """Map a raw batch_asignacion_review_bronze row to a borrower profile.
+
+    The contrato query returns raw DB column names (not the aliased column_map
+    names that the main profile SQL produces). This function bridges the gap by
+    iterating the column_map forward: for each debt-sourced non-aggregated field,
+    if the source column is present in the raw row, write the value under the
+    profile field name. A single raw column may map to multiple profile fields
+    (e.g. id_credito → account_id AND loan_number) — handled by forward iteration.
+    """
+    try:
+        schema = _load_schema(tenant_id)
+        column_map: dict = schema.get("column_map") or {}
+    except Exception:  # noqa: BLE001
+        column_map = {}
+
+    aliased: dict = {}
+
+    # Forward pass: copy raw columns that don't need aliasing first (pass-through).
+    for db_col, value in raw.items():
+        if not db_col.startswith("_"):
+            aliased[db_col] = value
+
+    # Forward pass: apply column_map — debt-sourced, non-aggregated fields only.
+    # Multiple profile fields may share the same source column (id_credito →
+    # account_id + loan_number); iterate all entries to handle this correctly.
+    for field, spec in column_map.items():
+        if spec.get("source", "debt") == "debt" and not spec.get("agg"):
+            db_col = spec["column"]
+            if db_col in raw:
+                aliased[field] = raw[db_col]
+
+    return _row_to_profile(aliased)

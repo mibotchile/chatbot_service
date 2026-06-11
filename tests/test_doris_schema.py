@@ -245,10 +245,21 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
         # Slice E: overdue aggregates always present (0 for al-día borrowers).
         "monto_vencido": 0.0,
         "cuotas_vencidas": 0,
+        # Phase 3 additions (INF-02, INF-03): present but None when not in Doris row.
+        "cuotas_pagadas": None,
+        "cuotas_pendientes": None,
+        "fecha_venc_contrato": None,
+        # Phase 8 additions (MCD-01): per-credit fields; None when absent from row.
+        # cuenta_bancaria is sourced from the row here (mapped above), so it keeps
+        # the mapped value, not None.
+        "valor_cuota": None,
+        "plazo": None,
+        "fecha_vencimiento_contrato": None,
+        "fecha_inicio_prestamo": None,
     }
     for key, value in expected.items():
         assert prof[key] == value, f"{key}: {prof.get(key)!r} != {value!r}"
-    # Exact key set — no extra fields leak.
+    # Key set now includes Phase 3 + Phase 8 additions.
     assert set(prof.keys()) == set(expected.keys())
 
 

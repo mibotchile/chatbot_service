@@ -134,6 +134,46 @@ async def consultar_deuda(profile: dict) -> dict:
         "cuotas_vencidas": profile.get("cuotas_vencidas", 0) or 0,
     }
 
+    # INF-12 — Moratoria: when credit is vencido, compute penalidad +
+    # interes_compensatorio from verified profile fields. Omit entirely when
+    # any required source field is missing (do NOT invent numbers).
+    credit_state = profile.get("credit_state", "")
+    if credit_state == "vencido":
+        dias_overdue = int(profile.get("days_overdue") or 0)
+        saldo_capital_inicial = profile.get("saldo_capital_inicial") or profile.get(
+            "saldo_por_cancelar"
+        )
+        amortizacion_cuota = profile.get("amortizacion_cuota")
+        tasa_interes_mensual = profile.get("tasa_interes_mensual")
+
+        if saldo_capital_inicial is not None and dias_overdue > 0:
+            from features.cobranza.scenario import calcular_penalidad  # noqa: PLC0415
+
+            summary["penalidad"] = calcular_penalidad(
+                float(saldo_capital_inicial), dias_overdue
+            )
+            summary["penalidad_formatted"] = _fmt(summary["penalidad"], sym)
+        else:
+            summary["penalidad"] = None
+
+        if (
+            amortizacion_cuota is not None
+            and tasa_interes_mensual is not None
+            and dias_overdue > 0
+        ):
+            from features.cobranza.scenario import calcular_interes_compensatorio  # noqa: PLC0415
+
+            summary["interes_compensatorio"] = calcular_interes_compensatorio(
+                float(amortizacion_cuota),
+                float(tasa_interes_mensual),
+                dias_overdue,
+            )
+            summary["interes_compensatorio_formatted"] = _fmt(
+                summary["interes_compensatorio"], sym
+            )
+        else:
+            summary["interes_compensatorio"] = None
+
     # PrestamYpe casuística: un mismo DNI puede tener VARIOS créditos vigentes.
     # Se exponen aquí para que el asistente los liste (saldo y estado de c/u).
     extra = profile.get("additional_credits") or []
@@ -162,7 +202,12 @@ async def consultar_deuda(profile: dict) -> dict:
 
 
 def _credit_brief(c: dict, sym: str) -> dict:
-    """Compact view of a single credit (for the multi-credit casuística)."""
+    """Compact view of a single credit (for the multi-credit casuística).
+
+    Phase 8 (MCD-01): exposes all 7 required per-credit fields:
+      valor_cuota, cuenta_bancaria, cci, inversionista, plazo,
+      fecha_vencimiento_contrato, fecha_inicio_prestamo.
+    """
     bal = c.get("balance", 0.0) or 0.0
     return {
         "account_id": c.get("account_id"),
@@ -180,8 +225,14 @@ def _credit_brief(c: dict, sym: str) -> dict:
         "banco": c.get("banco"),
         "cci": c.get("cci"),
         "cci_masked": _mask_cci(c.get("cci")),
-        "cuenta_bancaria": c.get("cuenta_bancaria") or None,
+        "cuenta_bancaria": c.get("cuenta_bancaria") or c.get("numero_de_cuenta") or None,
         "inversionista": c.get("inversionista") or None,
+        # MCD-01: remaining per-credit fields (cuenta_bancaria/inversionista above).
+        "valor_cuota": c.get("valor_cuota"),
+        "numero_de_cuenta": c.get("numero_de_cuenta") or c.get("cuenta_bancaria"),
+        "plazo": c.get("plazo"),
+        "fecha_vencimiento_contrato": c.get("fecha_vencimiento_contrato"),
+        "fecha_inicio_prestamo": c.get("fecha_inicio_prestamo"),
     }
 
 
@@ -202,6 +253,79 @@ def _mask_dni(dni: str) -> str:
 
 
 # ── 2. Registrar reclamo (Libro de Reclamaciones — Indecopi) ───────────────
+
+async def consultar_cronograma(profile: dict, tenant_id: str) -> dict:
+    """Return the installment schedule for the verified borrower's credit.
+
+    Fetches from Doris via ``get_cronograma``. If the schedule is empty or
+    unavailable, returns an asesor-escalation dict so the agent can surface
+    a helpful escalation instead of an empty list.
+    """
+    from features.cobranza.doris_debt_source import get_cronograma  # noqa: PLC0415
+
+    account_id = profile.get("account_id") or ""
+    cronograma = get_cronograma(account_id, tenant_id)
+    if not cronograma:
+        return {
+            "escalate": True,
+            "reason": "cronograma_unavailable",
+            "message": (
+                "No encontré el cronograma de pagos para tu crédito. "
+                "Te derivo con un asesor."
+            ),
+        }
+    return {
+        "escalate": False,
+        "account_id": account_id,
+        "cronograma": cronograma,
+    }
+
+
+def render_cuentas_bancarias(credits: list[dict]) -> str:
+    """Render bank account info for one or more credits — all 7 MCD-01 fields.
+
+    Single credit: returns a plain string (backward compatible).
+    Multiple credits: returns one labeled block per credit, e.g.:
+        [P02137] Inversionista: X | Cuenta: 001... | CCI: 003... |
+                 Cuota: S/ 420.00 | Plazo: 24 cuotas |
+                 Inicio: 2025-06-10 | Venc. contrato: 2027-06-10
+
+    MCD-01 7 fields: valor_cuota, cuenta_bancaria (numero_de_cuenta), cci,
+    inversionista, plazo, fecha_vencimiento_contrato, fecha_inicio_prestamo.
+    """
+    if not credits:
+        return ""
+
+    def _one(c: dict, *, labeled: bool) -> str:
+        cuenta = c.get("cuenta_bancaria") or c.get("numero_de_cuenta") or c.get("cci", "")
+        cci = c.get("cci", "")
+        inversionista = c.get("inversionista", "")
+        valor_cuota = c.get("valor_cuota")
+        plazo = c.get("plazo")
+        fecha_inicio = c.get("fecha_inicio_prestamo", "")
+        fecha_venc = c.get("fecha_vencimiento_contrato", "")
+
+        parts = [f"Inversionista: {inversionista}", f"Cuenta: {cuenta}", f"CCI: {cci}"]
+        if valor_cuota is not None:
+            parts.append(f"Cuota: S/ {float(valor_cuota):,.2f}")
+        if plazo is not None:
+            parts.append(f"Plazo: {plazo} cuotas")
+        if fecha_inicio:
+            parts.append(f"Inicio: {fecha_inicio}")
+        if fecha_venc:
+            parts.append(f"Venc. contrato: {fecha_venc}")
+
+        line = " | ".join(parts)
+        if labeled:
+            label = c.get("account_id") or c.get("loan_number") or "?"
+            return f"[{label}] {line}"
+        return line
+
+    if len(credits) == 1:
+        return _one(credits[0], labeled=False)
+
+    return "\n".join(_one(c, labeled=True) for c in credits)
+
 
 async def registrar_reclamo(profile: dict, tipo: str, descripcion: str) -> dict:
     """Register a claim/complaint in the (mock) Libro de Reclamaciones.
