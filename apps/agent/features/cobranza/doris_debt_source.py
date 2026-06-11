@@ -43,6 +43,7 @@ _NUMERIC_FIELDS = frozenset(
         "next_installment_amount",
         "cuota_esperada",
         "saldo_por_cancelar",
+        "saldo_capital_inicial",
         "monto_pagado",
     }
 )

@@ -76,7 +76,14 @@ def build_variables(profile: dict) -> dict[str, str]:
     # Moratoria (INF-12): compute penalidad + interés when vencido and the
     # profile carries the fields (enriched on vencido). Empty string otherwise.
     _pen_fmt, _int_fmt = "", ""
-    _saldo_ci = profile.get("saldo_capital_inicial") or profile.get("balance")
+    _saldo_ci = profile.get("saldo_capital_inicial")
+    if _saldo_ci is None and profile.get("balance") is not None:
+        from loguru import logger as _slog  # noqa: PLC0415
+        _slog.warning(
+            "templates: saldo_capital_inicial missing from profile "
+            "(capital column not mapped?); using outstanding balance"
+        )
+        _saldo_ci = profile.get("balance")
     _dov = int(profile.get("days_overdue") or 0)
     if _saldo_ci is not None and _dov > 0:
         try:
@@ -86,18 +93,21 @@ def build_variables(profile: dict) -> dict[str, str]:
             )
             from loguru import logger as _log  # noqa: PLC0415
 
-            _rate = profile.get("penalidad_rate_per_week")
+            _rate_w1 = profile.get("penalidad_rate_week1")
+            _rate_w2 = profile.get("penalidad_rate_week2_plus")
             _rounding = profile.get("penalidad_rounding", "ceil_decimo")
-            if _rate is None:
+            if _rate_w1 is None or _rate_w2 is None:
                 _log.warning(
-                    "templates: penalidad_rate_per_week not in profile; "
-                    "falling back to engine default 0.00008"
+                    "templates: penalidad_rate_week1/week2_plus not in profile; "
+                    "falling back to engine defaults 0.00008/0.00016"
                 )
-                _rate = 0.00008
+                _rate_w1 = 0.00008 if _rate_w1 is None else _rate_w1
+                _rate_w2 = 0.00016 if _rate_w2 is None else _rate_w2
             _pen_fmt = _money(
                 calcular_penalidad(
                     float(_saldo_ci), _dov,
-                    rate_per_week=float(_rate),
+                    rate_week1=float(_rate_w1),
+                    rate_week2_plus=float(_rate_w2),
                     rounding=str(_rounding),
                 ),
                 sym,
