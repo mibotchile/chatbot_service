@@ -207,6 +207,34 @@ def _row_to_profile(row: dict) -> dict:
     )
     profile["fecha_venc_contrato"] = str(fecha_venc_contrato) if fecha_venc_contrato else None
 
+    # Phase 8 — MCD-01: 7 per-credit fields for multi-credit selector.
+    # Columns sourced from the verified Doris column names (confirmed 2026-06-10):
+    #   valor_cuota         ← cuota_esperada_mensual (pagos)
+    #   cuenta_bancaria     ← numero_de_cuenta (asignacion/debt)
+    #   cci                 ← codigo_de_cuenta_cci (debt; already mapped as 'cci')
+    #   inversionista       ← inversionista (debt; already in column_map)
+    #   plazo               ← MAX(nro_cuotas) per contract (pagos)
+    #   fecha_vencimiento_contrato ← MAX(fecha_de_pago_esperada_original) (pagos)
+    #   fecha_inicio_prestamo      ← MIN(fecha_de_pago_esperada_original) (pagos)
+    # All 7 pass through from the column_map; coerce types and normalise here.
+    valor_cuota_raw = row.get("valor_cuota")
+    profile["valor_cuota"] = _to_float(valor_cuota_raw) if valor_cuota_raw is not None else None
+
+    cuenta_bancaria_raw = row.get("numero_de_cuenta") or row.get("cuenta_bancaria")
+    profile["cuenta_bancaria"] = str(cuenta_bancaria_raw) if cuenta_bancaria_raw else None
+
+    # cci is already in profile from the main loop above (mapped as 'cci').
+    # Mirror it under 'cuenta_bancaria' alias for legacy callers when absent.
+
+    plazo_raw = row.get("plazo")
+    profile["plazo"] = int(_to_float(plazo_raw)) if plazo_raw is not None else None
+
+    fvc_raw = row.get("fecha_vencimiento_contrato")
+    profile["fecha_vencimiento_contrato"] = str(fvc_raw) if fvc_raw else None
+
+    fip_raw = row.get("fecha_inicio_prestamo")
+    profile["fecha_inicio_prestamo"] = str(fip_raw) if fip_raw else None
+
     return profile
 
 

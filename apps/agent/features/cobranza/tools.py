@@ -189,7 +189,12 @@ async def consultar_deuda(profile: dict) -> dict:
 
 
 def _credit_brief(c: dict, sym: str) -> dict:
-    """Compact view of a single credit (for the multi-credit casuística)."""
+    """Compact view of a single credit (for the multi-credit casuística).
+
+    Phase 8 (MCD-01): exposes all 7 required per-credit fields:
+      valor_cuota, cuenta_bancaria, cci, inversionista, plazo,
+      fecha_vencimiento_contrato, fecha_inicio_prestamo.
+    """
     bal = c.get("balance", 0.0) or 0.0
     return {
         "account_id": c.get("account_id"),
@@ -207,6 +212,14 @@ def _credit_brief(c: dict, sym: str) -> dict:
         "banco": c.get("banco"),
         "cci": c.get("cci"),
         "cci_masked": _mask_cci(c.get("cci")),
+        # MCD-01: 7 per-credit fields
+        "inversionista": c.get("inversionista"),
+        "valor_cuota": c.get("valor_cuota"),
+        "cuenta_bancaria": c.get("cuenta_bancaria") or c.get("numero_de_cuenta"),
+        "numero_de_cuenta": c.get("numero_de_cuenta") or c.get("cuenta_bancaria"),
+        "plazo": c.get("plazo"),
+        "fecha_vencimiento_contrato": c.get("fecha_vencimiento_contrato"),
+        "fecha_inicio_prestamo": c.get("fecha_inicio_prestamo"),
     }
 
 
@@ -256,30 +269,49 @@ async def consultar_cronograma(profile: dict, tenant_id: str) -> dict:
 
 
 def render_cuentas_bancarias(credits: list[dict]) -> str:
-    """Render bank account info for one or more credits.
+    """Render bank account info for one or more credits — all 7 MCD-01 fields.
 
-    Single credit: returns a plain string (behavior unchanged).
+    Single credit: returns a plain string (backward compatible).
     Multiple credits: returns one labeled block per credit, e.g.:
-        [P02137] Inversionista: DEMO UNO | Cuenta: 001... | CCI: 003...
+        [P02137] Inversionista: X | Cuenta: 001... | CCI: 003... |
+                 Cuota: S/ 420.00 | Plazo: 24 cuotas |
+                 Inicio: 2025-06-10 | Venc. contrato: 2027-06-10
+
+    MCD-01 7 fields: valor_cuota, cuenta_bancaria (numero_de_cuenta), cci,
+    inversionista, plazo, fecha_vencimiento_contrato, fecha_inicio_prestamo.
     """
     if not credits:
         return ""
+
+    def _one(c: dict, *, labeled: bool) -> str:
+        cuenta = c.get("cuenta_bancaria") or c.get("numero_de_cuenta") or c.get("cci", "")
+        cci = c.get("cci", "")
+        inversionista = c.get("inversionista", "")
+        valor_cuota = c.get("valor_cuota")
+        plazo = c.get("plazo")
+        fecha_inicio = c.get("fecha_inicio_prestamo", "")
+        fecha_venc = c.get("fecha_vencimiento_contrato", "")
+
+        parts = [f"Inversionista: {inversionista}", f"Cuenta: {cuenta}", f"CCI: {cci}"]
+        if valor_cuota is not None:
+            parts.append(f"Cuota: S/ {float(valor_cuota):,.2f}")
+        if plazo is not None:
+            parts.append(f"Plazo: {plazo} cuotas")
+        if fecha_inicio:
+            parts.append(f"Inicio: {fecha_inicio}")
+        if fecha_venc:
+            parts.append(f"Venc. contrato: {fecha_venc}")
+
+        line = " | ".join(parts)
+        if labeled:
+            label = c.get("account_id") or c.get("loan_number") or "?"
+            return f"[{label}] {line}"
+        return line
+
     if len(credits) == 1:
-        c = credits[0]
-        return (
-            f"Inversionista: {c.get('inversionista', '')} | "
-            f"Cuenta: {c.get('numero_de_cuenta', c.get('cci', ''))} | "
-            f"CCI: {c.get('cci', '')}"
-        )
-    lines: list[str] = []
-    for c in credits:
-        label = c.get("account_id") or c.get("loan_number") or "?"
-        lines.append(
-            f"[{label}] Inversionista: {c.get('inversionista', '')} | "
-            f"Cuenta: {c.get('numero_de_cuenta', c.get('cci', ''))} | "
-            f"CCI: {c.get('cci', '')}"
-        )
-    return "\n".join(lines)
+        return _one(credits[0], labeled=False)
+
+    return "\n".join(_one(c, labeled=True) for c in credits)
 
 
 async def registrar_reclamo(profile: dict, tipo: str, descripcion: str) -> dict:

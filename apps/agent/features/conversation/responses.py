@@ -799,6 +799,99 @@ def check_due_date_holiday(
     return out
 
 
+# ── MCD-01: Multi-credit selector (Phase 8) ──────────────────────────────────
+
+def emit_credit_selector(
+    spec: ResponsesSpec,
+    profile: dict,
+    *,
+    session_state: dict | None,
+    source: str,
+) -> RouterOutcome | None:
+    """MCD-01: Emit the credit selector when the borrower has exactly 2 credits.
+
+    Returns a handled RouterOutcome with ``intent="credit_selector"`` when
+    ``len(profile["credits"]) == 2``. The selector text includes both credit IDs
+    and inversionistas so the borrower can choose.
+
+    Returns None when:
+    - profile has no "credits" key, OR
+    - len(credits) != 2 (single credit → skip selector; 0 or >2 → not handled here)
+
+    ``handle_credit_selection`` must be called once the user responds with their
+    choice to store ``session_state["selected_credit_id"]``.
+    """
+    credits: list[dict] = profile.get("credits") or []
+    if len(credits) != 2:
+        return None
+
+    c1, c2 = credits[0], credits[1]
+    label1 = (
+        f"{c1.get('account_id') or c1.get('loan_number', '?')} — "
+        f"{c1.get('inversionista', '')}"
+    )
+    label2 = (
+        f"{c2.get('account_id') or c2.get('loan_number', '?')} — "
+        f"{c2.get('inversionista', '')}"
+    )
+
+    cfg = spec.intents.get("credit_selector") or {}
+    raw_tpl = cfg.get("template") or (
+        "Tienes 2 créditos activos. ¿Sobre cuál deseas consultar?\n"
+        "• {credit_label_1}\n• {credit_label_2}\n"
+        "Responde con el número o código del crédito."
+    )
+    text = raw_tpl.replace("{credit_label_1}", label1).replace("{credit_label_2}", label2)
+
+    return RouterOutcome(
+        handled=True,
+        text=text,
+        intent="credit_selector",
+        source=source,
+    )
+
+
+def handle_credit_selection(
+    credit_id: str,
+    profile: dict,  # noqa: ARG001 — reserved for future validation
+    *,
+    session_state: dict,
+) -> None:
+    """MCD-01: Store the borrower's selected credit ID in session_state.
+
+    Called when the user replies to the credit selector with a credit ID.
+    Downstream intent handlers (cuentas_bancarias, consulta_deuda, cronograma)
+    read ``session_state["selected_credit_id"]`` to filter to the selected credit.
+
+    For single-credit users ``selected_credit_id`` is set automatically to the
+    only credit's account_id (no selector shown, no explicit call needed).
+    """
+    session_state["selected_credit_id"] = credit_id
+
+
+def resolve_selected_credit(profile: dict, session_state: dict | None) -> dict:
+    """Return the credit dict for the currently selected credit.
+
+    Resolution order:
+    1. If ``session_state["selected_credit_id"]`` is set, find the matching
+       credit in ``profile["credits"]`` and return it.
+    2. If profile has exactly 1 credit, return it directly.
+    3. Fall back to ``profile`` itself (legacy single-credit callers).
+
+    Always returns a non-None dict (may be the primary profile).
+    """
+    credits: list[dict] = profile.get("credits") or []
+    if session_state:
+        selected_id = session_state.get("selected_credit_id")
+        if selected_id and credits:
+            for c in credits:
+                if c.get("account_id") == selected_id or c.get("loan_number") == selected_id:
+                    return c
+    if len(credits) == 1:
+        return credits[0]
+    return profile
+
+
 def apply_comprobante_prequestion_gate(
     outcome: RouterOutcome,
     spec: ResponsesSpec,

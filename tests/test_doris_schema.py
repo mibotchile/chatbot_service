@@ -199,10 +199,16 @@ def test_row_to_profile_matches_legacy_prestamype_shape(monkeypatch):
         "cuotas_pagadas": None,
         "cuotas_pendientes": None,
         "fecha_venc_contrato": None,
+        # Phase 8 additions (MCD-01): 7 per-credit fields; None when absent from row.
+        "valor_cuota": None,
+        "cuenta_bancaria": None,
+        "plazo": None,
+        "fecha_vencimiento_contrato": None,
+        "fecha_inicio_prestamo": None,
     }
     for key, value in expected.items():
         assert prof[key] == value, f"{key}: {prof.get(key)!r} != {value!r}"
-    # Key set now includes the Phase 3 additions.
+    # Key set now includes Phase 3 + Phase 8 additions.
     assert set(prof.keys()) == set(expected.keys())
 
 

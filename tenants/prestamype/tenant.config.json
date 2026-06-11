@@ -36,7 +36,12 @@
       "cuota_esperada": { "source": "pagos", "column": "cuota_esperada_actualizada", "agg": "MAX" },
       "next_installment_amount": { "source": "pagos", "column": "cuota_esperada_actualizada", "agg": "MAX" },
       "saldo_por_cancelar": { "source": "pagos", "column": "saldo_por_cancelar", "agg": "MAX" },
-      "balance": { "source": "pagos", "column": "saldo_por_cancelar", "agg": "MAX" }
+      "balance": { "source": "pagos", "column": "saldo_por_cancelar", "agg": "MAX" },
+      "numero_de_cuenta": { "source": "debt", "column": "numero_de_cuenta" },
+      "valor_cuota": { "source": "pagos", "column": "cuota_esperada_mensual", "agg": "MAX" },
+      "plazo": { "source": "pagos", "column": "nro_cuotas", "agg": "MAX" },
+      "fecha_vencimiento_contrato": { "source": "pagos", "column": "fecha_de_pago_esperada_original", "agg": "MAX" },
+      "fecha_inicio_prestamo": { "source": "pagos", "column": "fecha_de_pago_esperada_original", "agg": "MIN" }
     }
   },
   "branding": {

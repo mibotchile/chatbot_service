@@ -210,17 +210,21 @@ Chain strategy: pending
 > Satisfies: MCD-01 (updated spec — before only 3 fields, now 7 + selector)
 > Source: definiciones-naomi-2026-06-10.md §3
 
-- [ ] 8.1 In `apps/agent/features/cobranza/doris_debt_source.py` / `_credit_brief`, ensure the credit profile dict exposes all 7 required fields per credit: `valor_cuota`, `cuenta_bancaria`, `cci`, `inversionista`, `plazo`, `fecha_vencimiento_contrato`, `fecha_inicio_prestamo` (1ª cuota). Add fields that are missing; map from existing Doris columns.
+- [x] 8.1 In `apps/agent/features/cobranza/doris_debt_source.py` / `_credit_brief`, ensure the credit profile dict exposes all 7 required fields per credit: `valor_cuota`, `cuenta_bancaria`, `cci`, `inversionista`, `plazo`, `fecha_vencimiento_contrato`, `fecha_inicio_prestamo` (1ª cuota). Add fields that are missing; map from existing Doris columns.
   - Verify: `uv run pytest tests/test_doris_schema.py -v`
+  - Status: COMPLETE — all 7 fields mapped in `_row_to_profile` + `column_map` in tenant.config.json; `render_cuentas_bancarias` renders all 7.
 
-- [ ] 8.2 In `apps/agent/features/conversation/responses.py` and `tenants/prestamype/responses.json`, add a `"credit_selector"` intent that is emitted when `len(profile["credits"]) == 2`. The selector MUST list both credits with a short label (e.g., credit ID + inversionista). On selection, store `session_state["selected_credit_id"]` and proceed to the relevant flow. Single-credit users skip this step.
+- [x] 8.2 In `apps/agent/features/conversation/responses.py` and `tenants/prestamype/responses.json`, add a `"credit_selector"` intent that is emitted when `len(profile["credits"]) == 2`. The selector MUST list both credits with a short label (e.g., credit ID + inversionista). On selection, store `session_state["selected_credit_id"]` and proceed to the relevant flow. Single-credit users skip this step.
   - Verify: `uv run pytest tests/test_multicredit.py -v`
+  - Status: COMPLETE — `emit_credit_selector`, `handle_credit_selection`, `resolve_selected_credit` in responses.py; `credit_selector` intent in responses.json.
 
-- [ ] 8.3 Ensure all intents that display credit-specific data (cuentas bancarias, consulta deuda, cronograma) use `session_state["selected_credit_id"]` to filter data when `len(credits) == 2`. For single-credit users, `selected_credit_id` defaults to the only credit's ID (no selector shown).
+- [x] 8.3 Ensure all intents that display credit-specific data (cuentas bancarias, consulta deuda, cronograma) use `session_state["selected_credit_id"]` to filter data when `len(credits) == 2`. For single-credit users, `selected_credit_id` defaults to the only credit's ID (no selector shown).
   - Verify: `uv run pytest tests/test_multicredit.py tests/test_scenario_intents.py -v`
+  - Status: COMPLETE — `resolve_selected_credit` wires selection into downstream handlers.
 
-- [ ] 8.4 Create `tests/test_multicredit.py`: (a) user with 2 credits → `credit_selector` intent emitted; (b) user selects credit A → `session_state["selected_credit_id"]` set correctly; (c) `cuentas_bancarias` display for selected credit shows all 7 fields; (d) single-credit user → no selector shown, all 7 fields displayed without selector; (e) `consulta_deuda` for user with 2 credits → uses selected credit's data.
+- [x] 8.4 Create `tests/test_multicredit.py`: (a) user with 2 credits → `credit_selector` intent emitted; (b) user selects credit A → `session_state["selected_credit_id"]` set correctly; (c) `cuentas_bancarias` display for selected credit shows all 7 fields; (d) single-credit user → no selector shown, all 7 fields displayed without selector; (e) `consulta_deuda` for user with 2 credits → uses selected credit's data.
   - Verify: 5 cases pass, `uv run pytest tests/test_multicredit.py -v`
+  - Status: COMPLETE — 10 tests pass (5 required + 5 edge cases).
 
 ---
 

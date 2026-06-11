@@ -416,5 +416,13 @@
     "requires_identity": true,
     "keywords": ["compromiso de pago", "me comprometo a pagar", "voy a pagar el"],
     "template": "¿En qué fecha realizarás el pago? (formato DD/MM/AAAA o AAAA-MM-DD)"
+  },
+
+  "credit_selector": {
+    "mode": "verbatim",
+    "description": "El usuario tiene 2 créditos vigentes y debe elegir sobre cuál operar (MCD-01 selector).",
+    "requires_identity": true,
+    "classifiable": false,
+    "template": "Tienes 2 créditos activos. ¿Sobre cuál deseas consultar?\n• {credit_label_1}\n• {credit_label_2}\nResponde con el número o código del crédito."
   }
 }
