@@ -364,6 +364,21 @@ def route_layer1(
     if not spec.enabled:
         return RouterOutcome(handled=False, source=SOURCE_LLM)
 
+    # ── IDC-01 (GAP-2): two-step id_contrato+DNI flow — runs before any other
+    # routing so a pending DNI input is never hijacked by a keyword match. ──
+    if is_id_contrato_flow_active(session_state):
+        _tenant_id = (getattr(spec, "_tenant_id", None) or "prestamype")
+        id_contrato_outcome = handle_id_contrato_step(
+            text, spec, profile,
+            session_state=session_state,
+            source=SOURCE_KEYWORD,
+            tenant_id=_tenant_id,
+        )
+        if id_contrato_outcome is not None:
+            return id_contrato_outcome
+        # None means resolved successfully → fall through to normal routing
+        # so the identity tool can re-render the confirmation copy.
+
     # ── Comprobante pre-question gate (CPR-01): while the pre-question is pending,
     # intercept Sí/No replies before normal routing. ──
     if identity_verified:

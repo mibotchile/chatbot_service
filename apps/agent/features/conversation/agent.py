@@ -294,6 +294,23 @@ class SoreliaAgent:
             session_state["credit_state"] = _cs
             profile["credit_state"] = _cs
 
+            # INF-12 (GAP-1): enrich vencido profile with moratoria fields so
+            # calcular_penalidad / calcular_interes_compensatorio can fire in the
+            # overdue display. Fetched once per session (skip if already present).
+            if _cs == "vencido" and profile.get("amortizacion_cuota") is None:
+                try:
+                    from features.cobranza.doris_debt_source import get_moratoria_fields  # noqa: PLC0415
+                    _tenant_id = (tenant_cfg.get("cobranza") or {}).get(
+                        "tenant_id",
+                        getattr(getattr(self, "tenant", None), "tenant_id", ""),
+                    ) or ""
+                    _account_id = profile.get("account_id", "")
+                    if _account_id:
+                        _mora = get_moratoria_fields(_account_id, _tenant_id)
+                        profile.update(_mora)
+                except Exception:
+                    logger.opt(exception=True).debug("get_moratoria_fields failed (non-blocking)")
+
         outcome = responses_engine.route_layer1(
             text, spec, prof, session_state=session_state, identity_verified=verified,
         )

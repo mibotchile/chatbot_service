@@ -321,14 +321,25 @@ class ToolRegistry:
         cuenta_destino: str | None = None,
         account_type: str = "cci",
         cci: str | None = None,
+        n_cuota: str | None = None,  # CPR-01: installment correlativo (1, 2, 3…)
     ) -> dict:
         """Validate a payment voucher for the verified borrower (PrestamYpe).
 
         The credit/identity come from the verified ``debt_context``; only the
         voucher fields (account_type, cuenta_destino, monto, nro_operacion) come
-        from the user. ``cci`` is accepted as a legacy alias for
-        ``cuenta_destino``.
+        from the user. ``cci`` is accepted as a legacy alias for ``cuenta_destino``.
+
+        GAP-3 (CPR-01): ``tenant_id`` is forwarded so ``validar_comprobante`` can
+        cross-validate ``n_cuota`` against the cronograma when ``n_cuota`` is
+        present. When ``n_cuota`` is absent (LLM multi-turn hasn't gathered it yet,
+        or the call comes from a legacy path) ``tenant_id`` is left blank so the
+        n_cuota gate is skipped — preserving backward compatibility while still
+        activating the gate for the CPR-01 canned/pre-question flow.
         """
+        # Pass tenant_id only when n_cuota was explicitly provided so the
+        # n_cuota correlativo gate fires. When n_cuota is absent (legacy / LLM
+        # multi-turn still gathering) the gate is bypassed.
+        effective_tenant_id = self._tenant_id if n_cuota is not None else ""
         return await validar_comprobante(
             self._debt_context,
             monto=monto,
@@ -336,6 +347,8 @@ class ToolRegistry:
             cuenta_destino=cuenta_destino,
             account_type=account_type,
             cci=cci,
+            n_cuota=n_cuota,
+            tenant_id=effective_tenant_id,
         )
 
     async def _escalate_to_human(self, reason: str = "Cliente solicitó hablar con un asesor") -> dict:

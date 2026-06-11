@@ -174,11 +174,13 @@ Chain strategy: pending
 ## Phase 6 — Integration Verification
 > Cross-cutting; all requirements
 
-- [ ] 6.1 Run full suite: `uv run pytest tests/ -v`. All pre-existing tests must remain green. Priority watch: `test_cobranza_prestamype.py`, `test_debtor_state_level.py`, `test_doris_fallthrough.py`. Confirm no code uses `nivel`, `n1/n2/n3` for routing (grep: `rg "nivel|n1|n2|n3" apps/agent/features/cobranza/scenario.py` → zero hits expected).
+- [x] 6.1 Run full suite: `uv run pytest tests/ -v`. All pre-existing tests must remain green. Priority watch: `test_cobranza_prestamype.py`, `test_debtor_state_level.py`, `test_doris_fallthrough.py`. Confirm no code uses `nivel`, `n1/n2/n3` for routing (grep: `rg "nivel|n1|n2|n3" apps/agent/features/cobranza/scenario.py` → zero hits expected).
+  - Result: 528/528 passed (0 regressions). nivel/n1/n2/n3 only in comment (docstring), not routing.
 
-- [ ] 6.2 Create `tests/test_scenario_integration.py` with mock-profile fixtures for P04069 (`al_dia` — caso real confirmado por Naomi 2026-06-10), P03638 (`al_dia`), P03700 (`por_vencer` — **NOTA: no hay caso real disponible en datos actuales**; usar data sintética con `days_until_next_due=3` para simular; vencimientos junio solo hasta 12/06 y regla activa a 5 días), P03871 (`vencido` single-credit), P03886 (`vencido` multi-credit). Assert: correct `credit_state` assigned, correct option menu emitted, no cross-state bleed (`al_dia` never shows compromiso option; `vencido` never shows `domingo_feriado` holiday copy).
-  - Verify: 5 cases pass (P04069 + 4 anteriores), `uv run pytest tests/test_scenario_integration.py -v`
+- [x] 6.2 Create `tests/test_scenario_integration.py` with mock-profile fixtures for P04069 (`al_dia` — caso real confirmado por Naomi 2026-06-10), P03638 (`al_dia`), P03700 (`por_vencer` — **NOTA: no hay caso real disponible en datos actuales**; usar data sintética con `days_until_next_due=3` para simular; vencimientos junio solo hasta 12/06 y regla activa a 5 días), P03871 (`vencido` single-credit), P03886 (`vencido` multi-credit). Assert: correct `credit_state` assigned, correct option menu emitted, no cross-state bleed (`al_dia` never shows compromiso option; `vencido` never shows `domingo_feriado` holiday copy).
+  - Verify: 15 tests pass (5 classifiers + 3 menu/bleed + 7 wiring gaps), `uv run pytest tests/test_scenario_integration.py -v`
   - Testing limitation (⚠️): caso real `por_vencer` no disponible. Validar flujo `por_vencer` con fixture sintético hasta que Naomi provea un caso real.
+  - Wiring gap assertions: (a) GAP-1 vencido moratoria enrichment verified via agent._try_canned async test; (b) GAP-2 id_contrato+DNI end-to-end through route_layer1 verified; (c) GAP-3 tenant_id forwarded in ToolRegistry._validar_comprobante verified.
 
 ---
 
