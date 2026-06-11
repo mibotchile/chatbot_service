@@ -1063,6 +1063,7 @@ _ID_CONTRATO_RETRY_KEY = "id_contrato_retry_count"
 
 
 _ID_CONTRATO_PENDING_KEY = "id_contrato_pending_contrato_id"
+_ID_CONTRATO_EXPECTING_KEY = "id_contrato_expecting_contrato"
 
 
 
@@ -1168,14 +1169,31 @@ def handle_id_contrato_step(
             spec, profile, session_state=session_state, source=source,
         )
 
+    # Step 1: the user was asked for their contrato_id (id_contrato_prompt emitted).
+    # The text IS the contrato_id — arm the DNI step and emit the DNI prompt.
+    if session_state.get(_ID_CONTRATO_EXPECTING_KEY):
+        contrato_id = text.strip()
+        session_state.pop(_ID_CONTRATO_EXPECTING_KEY, None)
+        arm_id_contrato_flow(session_state, contrato_id)
+        result = render_intent(spec, "id_contrato_dni_prompt", profile, source=source)
+        out_text = result.text if result else (
+            "Gracias. Ahora ingresa tu número de DNI (8 dígitos) para validar tu identidad."
+        )
+        return RouterOutcome(
+            handled=True, text=out_text, intent="id_contrato_dni_prompt", source=source,
+        )
+
     return None
 
 
 
 def is_id_contrato_flow_active(session_state: dict | None) -> bool:
-    """Return True when a two-step id_contrato flow is awaiting the DNI."""
+    """Return True when a two-step id_contrato flow is awaiting the contrato or DNI."""
     return bool(
-        session_state and session_state.get(_ID_CONTRATO_PENDING_KEY)
+        session_state and (
+            session_state.get(_ID_CONTRATO_PENDING_KEY)
+            or session_state.get(_ID_CONTRATO_EXPECTING_KEY)
+        )
     )
 
 
