@@ -1,7 +1,7 @@
 """Multi-turn integration tests — thread the REAL session_state across turns.
 
 These exist because the unit tests pre-armed pending flags (e.g.
-``arm_id_contrato_flow(session_state, ...)`` / ``session_state["compromiso_pago_pending_date"]=True``)
+``arm_id_contrato_flow(...)`` / ``session_state["compromiso_pago_pending_date"]=True``)
 and therefore never exercised the ARMING step. That gap let two production bugs
 ship: the compromiso date-reply gate and the id_contrato two-step flow both fell
 through to the LLM because nothing armed them on the direct path.
