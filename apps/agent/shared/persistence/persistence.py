@@ -321,7 +321,6 @@ async def upsert_gestion(
     - All other fields: overwrite with the provided value when not None.
     """
     table = _q(schema, "gestiones")
-    now = datetime.now(timezone.utc)
 
     # Capabilities: merge provided list with existing stored list (de-duplicate).
     new_caps = fields.get("capabilities_used")

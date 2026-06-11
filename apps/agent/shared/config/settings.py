@@ -149,6 +149,15 @@ class Settings(BaseSettings):
     chathub_outbound_timeout: float = 10.0
     chathub_outbound_verify_ssl: bool = False
 
+    # ── Layer-3 gestion inactivity sweep ──────────────────────────────────────
+    # How often the sweep loop runs (seconds). Env: COBRANZA_GESTION_SWEEP_INTERVAL_SECONDS.
+    gestion_sweep_interval_seconds: int = 300  # 5 minutes
+
+    # Default per-tenant inactivity TTL (minutes) when tenant config does not
+    # specify cobranza.gestion_inactivity_ttl_minutes.
+    # Env: COBRANZA_GESTION_INACTIVITY_TTL_MINUTES.
+    gestion_inactivity_ttl_minutes: int = 30
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="COBRANZA_",
