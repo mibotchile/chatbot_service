@@ -286,6 +286,22 @@ async def _process_whatsapp_message(
 
         _deliverables, _delivery_mode = m._delivery_for(tenant_id)
         _wa_agent_spec = m.agent_type_registry.get("cobranza")
+        # Resolve brand from tenant config so no brand is hardcoded here.
+        # Same resolution order as AgentSoul.from_tenant_config (soul block
+        # overrides top-level keys) so this router can't diverge from
+        # conversations/chathub for future tenants.
+        _wa_tcfg = m._load_tenant_config(tenant_id) or {}
+        _wa_soul = _wa_tcfg.get("soul") or {}
+        _wa_tenant_name = _wa_soul.get("company") or _wa_tcfg.get("name", "")
+        _wa_agent_name = (
+            _wa_soul.get("name") or (_wa_tcfg.get("agent") or {}).get("agent_name", "")
+        )
+        _wa_contact_email = (_wa_tcfg.get("contact") or {}).get("email", "")
+        _wa_from_email = (
+            f"{_wa_tenant_name} <{_wa_contact_email}>"
+            if _wa_contact_email and _wa_tenant_name
+            else _wa_contact_email
+        )
         registry = ToolRegistry(
             meilisearch_client=meili_client,
             lead_machine=conv.debtor,
@@ -296,6 +312,9 @@ async def _process_whatsapp_message(
             debt_context=conv.debt_context,
             download_base_url=m.settings.public_base_url,
             tenant_id=tenant_id,
+            tenant_name=_wa_tenant_name,
+            agent_name=_wa_agent_name,
+            tenant_from_email=_wa_from_email,
             on_identity_resolved=_persist_identity_wa,
             deliverables=_deliverables,
             delivery_mode=_delivery_mode,

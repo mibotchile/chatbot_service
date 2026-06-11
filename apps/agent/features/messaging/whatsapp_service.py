@@ -277,14 +277,18 @@ class WhatsAppService:
         doc_label: str,
         media_url: str = "",
         caption: str = "",
+        company_name: str = "",
     ) -> bool:
         """Send a cobranza document (PDF) to the borrower via WhatsApp.
 
         Uses Evolution /message/sendMedia with the PDF URL + caption. When
         Evolution is not configured (demo default), send_media logs an honest
         dry-run — we never fake a successful delivery.
+        ``company_name`` comes from tenant config; falls back to a generic
+        phrase when not provided.
         """
-        cap = caption or f"Hola {customer_name}, aquí tienes tu {doc_label} de PrestaUnion."
+        _suffix = f" de {company_name}" if company_name else ""
+        cap = caption or f"Hola {customer_name}, aquí tienes tu {doc_label}{_suffix}."
         if not media_url:
             # No URL to attach yet — log honestly and report not-sent.
             logger.info(

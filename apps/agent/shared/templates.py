@@ -10,8 +10,23 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from loguru import logger
+
 
 # ── Profile normalization (generic: principal + additional_credits → credits) ──
+
+def _resolve_sym(profile: dict, context: str = "normalize_credits") -> str:
+    """Resolve currency_symbol from profile with a loguru warning on fallback."""
+    sym = profile.get("currency_symbol")
+    if not sym:
+        logger.warning(
+            "{}: currency_symbol missing from profile; falling back to 'S/'. "
+            "Check Doris moneda column mapping.",
+            context,
+        )
+        return "S/"
+    return sym
+
 
 def normalize_credits(profile: dict) -> list[dict]:
     """Flatten a borrower profile into a uniform list of credits.
@@ -22,7 +37,7 @@ def normalize_credits(profile: dict) -> list[dict]:
     (loan, saldo, cuota, fecha_venc, …) the templates reference. Purely
     in-memory — the fixture on disk is untouched.
     """
-    sym = profile.get("currency_symbol", "S/")
+    sym = _resolve_sym(profile, "normalize_credits")
 
     def _one(c: dict, fallback_sym: str) -> dict:
         csym = c.get("currency_symbol", fallback_sym)
@@ -52,7 +67,7 @@ def build_variables(profile: dict) -> dict[str, str]:
     These mirror the principal credit + borrower identity. For list/grupal the
     renderer iterates ``normalize_credits`` / ``codeudores`` instead.
     """
-    sym = profile.get("currency_symbol", "S/")
+    sym = _resolve_sym(profile, "build_variables")
     first_name = str(profile.get("borrower_name", "")).split(" ")[0].title()
     monto_vencido = float(profile.get("monto_vencido") or 0.0)
     cuotas_vencidas = int(profile.get("cuotas_vencidas") or 0)
@@ -122,7 +137,7 @@ def build_variables(profile: dict) -> dict[str, str]:
     }
 
 
-def _money(amount: Any, sym: str = "S/") -> str:
+def _money(amount: Any, sym: str) -> str:
     try:
         return f"{sym} {float(amount or 0.0):,.2f}"
     except (TypeError, ValueError):
@@ -178,7 +193,7 @@ def render_template(tpl: Any, profile: dict) -> str:
             total_vars = {
                 **variables,
                 "n_creditos": str(len(credits)),
-                "total": _money(total, profile.get("currency_symbol", "S/")),
+                "total": _money(total, _resolve_sym(profile, "render_template/footer")),
             }
             parts.append(_fill(footer, total_vars).strip())
         return "\n".join(p for p in parts if p)

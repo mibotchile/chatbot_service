@@ -67,7 +67,7 @@ def test_branding_prestamype_green_and_logo(client):
     b = r.json()
     assert b["primary_color"] == "#00b369"
     assert b["logo_url"] == "https://d14bodb4yrsx8y.cloudfront.net/static/logo.svg"
-    assert b["name"] == "PrestamYpe"
+    assert b["name"] == "Prestamype"
     assert b["footer"] == "Powered by Onbotgo"
     # 5 demo cards come from the fixture tokens (demo-1..5), one per casuística.
     tokens = {c["token"] for c in b["demo_tokens"]}
@@ -75,7 +75,7 @@ def test_branding_prestamype_green_and_logo(client):
 
 
 def test_branding_prestamype_minimalist_content_stays_empty(client):
-    # PrestamYpe opts OUT of the rich landing: it omits kicker/hero_subline/
+    # Prestamype opts OUT of the rich landing: it omits kicker/hero_subline/
     # features in its config so those blocks render empty/hidden. This guards
     # that the data-driven refactor did NOT inject prestaunion-style content
     # into prestamype (its minimalist green look must be unchanged).

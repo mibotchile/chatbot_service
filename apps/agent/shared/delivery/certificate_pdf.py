@@ -38,13 +38,14 @@ def generate_certificate(
     borrower_name: str,
     business_name: str,
     loan_number: str,
-    company_name: str = "PrestaUnion",
+    company_name: str,
     cancelled_at: str | None = None,
 ) -> Path:
     """Render the certificate PDF and return its path.
 
-    Args are pre-resolved server-side (borrower profile). Returns the file path
-    on disk; the caller turns it into a download link.
+    Args are pre-resolved server-side (borrower profile). ``company_name``
+    must be supplied by the caller (resolved from tenant config → name).
+    Returns the file path on disk; the caller turns it into a download link.
     """
     _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = _OUTPUT_DIR / f"{folio}.pdf"

@@ -53,9 +53,22 @@ async def list_reclamos():
 
 # ── Tenant branding helpers ──
 
-def _casuistica_label(prof: dict) -> str:
+def _prof_currency(prof: dict, tenant_id: str) -> str:
+    """Profile currency code with a loguru warning on fallback (F9 policy)."""
+    currency = prof.get("currency")
+    if not currency:
+        logger.warning(
+            "tenant {}: profile missing 'currency'; falling back to 'PEN'. "
+            "Check fixture/Doris moneda mapping.",
+            tenant_id,
+        )
+        return "PEN"
+    return currency
+
+
+def _casuistica_label(prof: dict, tenant_id: str = "") -> str:
     """Human casuística label derived from the borrower profile (truthful to data)."""
-    currency = prof.get("currency", "PEN")
+    currency = _prof_currency(prof, tenant_id)
     status = prof.get("status", "")
     days = int(prof.get("days_overdue") or 0)
     balance = prof.get("balance") or 0
@@ -110,10 +123,10 @@ def _demo_tokens_for(tenant_id: str) -> list[dict]:
         prof = borrowers.get(account_id) or {}
         cards.append({
             "token": token,
-            "label": _casuistica_label(prof),
+            "label": _casuistica_label(prof, tenant_id),
             "status": prof.get("status", "") or "al_dia",
             "status_label": prof.get("status_label", ""),
-            "currency": prof.get("currency", "PEN"),
+            "currency": _prof_currency(prof, tenant_id),
         })
     return cards
 
@@ -138,10 +151,10 @@ def _demo_cases_for(tenant_id: str) -> list[dict]:
         rows.append({
             "name": _title_case(prof.get("borrower_name", "")),
             "dni": str(prof.get("dni") or ""),
-            "casuistica": _casuistica_label(prof),
+            "casuistica": _casuistica_label(prof, tenant_id),
             "status": prof.get("status", "") or "al_dia",
             "status_label": prof.get("status_label", ""),
-            "currency": prof.get("currency", "PEN"),
+            "currency": _prof_currency(prof, tenant_id),
         })
     return rows
 
@@ -161,6 +174,12 @@ async def tenant_branding(tenant_id: str):
     branding = cfg.get("branding", {}) or {}
     content = cfg.get("content", {}) or {}
     soul = cfg.get("soul", {}) or {}
+    if not soul.get("currency"):
+        logger.warning(
+            "tenant {}: soul.currency missing in tenant.config.json; "
+            "falling back to 'soles (S/)'.",
+            tenant_id,
+        )
 
     # Resolve the current publishable key for this tenant.
     # It is PUBLIC by design (the widget needs it to authenticate API calls).

@@ -27,9 +27,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from shared.config.settings import settings
 from shared.delivery.certificate_pdf import generate_certificate
-from shared.debt_math import classify_tipo, normalize_cci
 
 # ── Reclamos persistence (mock JSON so the demo can show registered claims) ──
 _RECLAMOS_PATH = Path("/tmp/prestaunion_reclamos.json")
@@ -69,8 +67,21 @@ def _add_business_days(start: date, days: int) -> date:
     return d
 
 
-def _fmt(amount: float, sym: str = "S/") -> str:
+def _fmt(amount: float, sym: str) -> str:
     return f"{sym} {amount:,.2f}"
+
+
+def _resolve_sym(profile: dict, context: str) -> str:
+    """Resolve currency_symbol from profile with a loguru warning on fallback."""
+    sym = profile.get("currency_symbol")
+    if not sym:
+        logger.warning(
+            "{}: currency_symbol missing from profile; falling back to 'S/'. "
+            "Check Doris moneda column mapping.",
+            context,
+        )
+        return "S/"
+    return sym
 
 
 def _title(s: str) -> str:
@@ -86,7 +97,7 @@ async def consultar_deuda(profile: dict) -> dict:
     Reads ONLY from the server-injected profile. Returns a structured payload
     the LLM can narrate (it must not invent any number not present here).
     """
-    sym = profile.get("currency_symbol", "S/")
+    sym = _resolve_sym(profile, "consultar_deuda")
     status = profile.get("status", "")
     pending = profile.get("installments_pending", 0)
 
@@ -287,7 +298,7 @@ async def consultar_cronograma(profile: dict, tenant_id: str) -> dict:
             ),
         }
     # INF-01: build a customer-facing message listing the installments (capped).
-    sym = profile.get("currency_symbol", "S/")
+    sym = _resolve_sym(profile, "consultar_cronograma")
     shown = cronograma[:12]
     lines = [
         f"Cuota {c.get('n_cuota')}: vence {c.get('fecha_venc')} — {_fmt(c.get('monto') or 0, sym)}"
@@ -404,13 +415,26 @@ async def registrar_reclamo(profile: dict, tipo: str, descripcion: str) -> dict:
 
 # ── 3. Emitir certificado de no adeudo ─────────────────────────────────────
 
-async def emitir_certificado_no_adeudo(profile: dict, download_base_url: str = "") -> dict:
+async def emitir_certificado_no_adeudo(
+    profile: dict,
+    download_base_url: str = "",
+    tenant_name: str = "",
+) -> dict:
     """Issue a no-debt certificate PDF if the verified account has zero balance.
 
     If balance > 0 the certificate does NOT proceed and the tool explains why.
+    ``tenant_name`` comes from tenant config → name; falls back with a warning
+    when not provided.
     """
     balance = profile.get("balance", 0.0) or 0.0
-    sym = profile.get("currency_symbol", "S/")
+    sym = _resolve_sym(profile, "emitir_certificado_no_adeudo")
+    _company = tenant_name
+    if not _company:
+        logger.warning(
+            "emitir_certificado_no_adeudo: tenant_name not provided; "
+            "certificate will have no company name. Pass from tenant config."
+        )
+        _company = ""
 
     if balance > 0:
         return {
@@ -431,7 +455,7 @@ async def emitir_certificado_no_adeudo(profile: dict, download_base_url: str = "
         borrower_name=profile.get("borrower_name", ""),
         business_name=profile.get("business_name", ""),
         loan_number=profile.get("loan_number", ""),
-        company_name="PrestaUnion",
+        company_name=_company,
         cancelled_at=profile.get("cancelled_at"),
     )
     filename = pdf_path.name
@@ -467,7 +491,7 @@ _DOC_LABELS = {
 
 def _estado_cuenta_html(profile: dict) -> str:
     """Formatted account-statement summary (HTML body) from the verified profile."""
-    sym = profile.get("currency_symbol", "S/")
+    sym = profile.get("currency_symbol") or "S/"
     rows = [
         ("Negocio", profile.get("business_name", "")),
         ("Préstamo", profile.get("loan_number", "")),
@@ -491,15 +515,17 @@ def _estado_cuenta_html(profile: dict) -> str:
     return f'<table style="border-collapse:collapse;width:100%;">{cells}</table>'
 
 
-def _estado_cuenta_text(profile: dict) -> str:
+def _estado_cuenta_text(profile: dict, tenant_name: str = "") -> str:
     """Plain-text account-statement summary for WhatsApp (no HTML).
 
     Mirrors ``_estado_cuenta_html`` but renders a WhatsApp-legible message
     using line breaks and the platform's *bold* markers.
+    ``tenant_name`` comes from tenant config → name; omitted when empty.
     """
-    sym = profile.get("currency_symbol", "S/")
+    sym = profile.get("currency_symbol") or "S/"
+    _header = f"*Estado de cuenta — {tenant_name}*" if tenant_name else "*Estado de cuenta*"
     lines = [
-        "*Estado de cuenta — PrestaUnion*",
+        _header,
         "",
         f"Negocio: {profile.get('business_name', '')}",
         f"Préstamo: {profile.get('loan_number', '')}",
@@ -638,6 +664,7 @@ async def enviar_info(
     delivery_mode: str = "simulate",
     email_service=None,
     chathub_outbound=None,
+    tenant_slug: str = "",
 ) -> dict:
     """Send a data-driven deliverable to the borrower's REGISTERED destination.
 
@@ -683,6 +710,7 @@ async def enviar_info(
                 sent = await email_service.send_document(
                     destino, name, label,
                     summary_html=rendered.get("body", ""),
+                    tenant_slug=tenant_slug,
                 )
             logger.info("enviar_info REAL correo tipo={} to_masked={} sent={}", tipo_norm, masked, sent)
         else:  # simulate (demo)
@@ -743,6 +771,10 @@ async def enviar_documento(
     email_service=None,
     whatsapp_service=None,
     download_base_url: str = "",
+    tenant_name: str = "",
+    agent_name: str = "",
+    from_email: str = "",
+    tenant_slug: str = "",
 ) -> dict:
     """Deliver a cobranza document to the destination the USER provided.
 
@@ -801,7 +833,9 @@ async def enviar_documento(
     pdf_path = None
     summary_html = ""
     if tipo_norm == "certificado_no_adeudo":
-        cert = await emitir_certificado_no_adeudo(profile, download_base_url=download_base_url)
+        cert = await emitir_certificado_no_adeudo(
+            profile, download_base_url=download_base_url, tenant_name=tenant_name,
+        )
         if not cert.get("issued"):
             return cert  # not eligible (balance > 0) — propagate the explanation
         pdf_path = cert.get("pdf_path")
@@ -814,7 +848,10 @@ async def enviar_documento(
         sent = False
         if email_service:
             sent = await email_service.send_document(
-                destino, name, label, pdf_path=pdf_path, summary_html=summary_html,
+                destino, name, label,
+                pdf_path=pdf_path, summary_html=summary_html,
+                company_name=tenant_name, agent_name=agent_name,
+                from_email=from_email, tenant_slug=tenant_slug,
             )
         return {
             "delivered": bool(sent),
@@ -836,13 +873,17 @@ async def enviar_documento(
     if tipo_norm == "estado_cuenta":
         # No hay PDF: el estado se envía como TEXTO legible vía send_text.
         if whatsapp_service:
-            sent = await whatsapp_service.send_text(destino, _estado_cuenta_text(profile))
+            sent = await whatsapp_service.send_text(
+                destino, _estado_cuenta_text(profile, tenant_name=tenant_name)
+            )
     else:  # certificado_no_adeudo → documento PDF adjunto
         media_url = ""
         if pdf_path and download_base_url:
             media_url = f"{download_base_url.rstrip('/')}/api/v1/cobranza/certificate/{Path(pdf_path).name}"
         if whatsapp_service:
-            sent = await whatsapp_service.send_document(destino, name, label, media_url=media_url)
+            sent = await whatsapp_service.send_document(
+                destino, name, label, media_url=media_url, company_name=tenant_name,
+            )
     return {
         "delivered": bool(sent),
         "canal": "whatsapp",

@@ -239,6 +239,15 @@ async def _run_chathub_engine_turn(
         _chathub_agent_spec = m.agent_type_registry.get(
             tenant_config.agent_type if tenant_config is not None else "cobranza"
         )
+        _chathub_tenant_name = tenant_config.soul.company if tenant_config is not None else ""
+        _chathub_agent_name = tenant_config.soul.name if tenant_config is not None else ""
+        _chathub_raw_cfg = cfg or {}
+        _chathub_contact_email = (_chathub_raw_cfg.get("contact") or {}).get("email", "")
+        _chathub_from_email = (
+            f"{_chathub_tenant_name} <{_chathub_contact_email}>"
+            if _chathub_contact_email and _chathub_tenant_name
+            else _chathub_contact_email
+        )
         registry = ToolRegistry(
             lead_machine=conv.debtor,
             visitor_memory=m.visitor_memory,
@@ -248,6 +257,9 @@ async def _run_chathub_engine_turn(
             debt_context=conv.debt_context,
             download_base_url=download_base,
             tenant_id=tenant_id,
+            tenant_name=_chathub_tenant_name,
+            agent_name=_chathub_agent_name,
+            tenant_from_email=_chathub_from_email,
             on_identity_resolved=_persist_identity,
             deliverables=_deliverables,
             delivery_mode=_delivery_mode,
