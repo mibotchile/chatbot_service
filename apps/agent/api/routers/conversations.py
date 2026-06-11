@@ -333,6 +333,10 @@ async def chat(request: Request, body: ChatRequest):
             user_text=body.text,
             result=result,
         )
+        # Fire-and-forget Layer-3 gestion tracking (terminal hook + Doris sink).
+        conv.tenant_id = body.tenant_id
+        conv.channel = body.channel
+        m._spawn_gestion(conv, result, tool_pairs)  # m dispatches to wiring._spawn_gestion
     except (KeyError, ValueError, TypeError, LLMError) as exc:
         logger.exception("Agent processing error (recoverable)")
         content = m._fallback_response(body.text, conv)
